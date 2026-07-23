@@ -1,0 +1,57 @@
+name: mobile_absensi
+description: A new Flutter project.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.4.0
+  geolocator: ^14.0.3
+  excel: ^4.0.0
+  pdf: ^3.10.0
+  image_picker: ^1.2.2
+  google_maps_flutter: ^2.17.1
+  intl: ^0.20.3
+  http: ^1.2.0
+  geocoding: ^3.0.0
+  permission_handler: ^11.0.0 #
+  google_fonts: ^6.3.2
+  flutter_local_notifications: ^17.0.0 # Cek versi terbaru
+  timezone: ^0.9.4
+  shared_preferences: ^2.5.5
+  camera: ^0.11.0
+  flutter_image_compress: ^2.3.0
+  flutter_timezone: ^4.1.1
+  firebase_core: ^3.0.0
+  firebase_messaging: ^15.0.0
+  flutter_app_badger: 
+    path: ./libs/flutter_app_badger
+  url_launcher: ^6.3.2
+  
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  
+  image_path: "assets/images/icon_tetra.png"
+  android: "launcher_icon"
+  ios: true
+  remove_alpha_ios: true
+
+  
+flutter:
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+  assets:
+    - assets/images/logo_tetra.png
+    
+  

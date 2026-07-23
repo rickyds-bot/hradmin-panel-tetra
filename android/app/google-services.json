@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1013632939287",
+    "project_id": "hris-tetra",
+    "storage_bucket": "hris-tetra.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1013632939287:android:bec9fe03430492d1c7f352",
+        "android_client_info": {
+          "package_name": "com.tetra.absensi"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC7arHjR6skSQyXleBNuhVA2E8u4e8gy_I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
