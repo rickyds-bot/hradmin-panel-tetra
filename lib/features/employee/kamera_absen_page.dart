@@ -1,43 +1,413 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
+import 'dart:math';
+
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:flutter/services.dart' show DeviceOrientation;
+import 'face_net_service.dart';
+
+enum _LivenessStep {
+  lookStraight,
+  blink,
+  turnLeft,
+  turnRight,
+}
 
 class KameraAbsenPage extends StatefulWidget {
   final CameraDescription camera;
-  const KameraAbsenPage({Key? key, required this.camera}) : super(key: key);
+  final List<double> registeredEmbedding;
+
+  const KameraAbsenPage({
+    super.key,
+    required this.camera,
+    required this.registeredEmbedding,
+  });
 
   @override
-  _KameraAbsenPageState createState() => _KameraAbsenPageState();
+  State<KameraAbsenPage> createState() => _KameraAbsenPageState();
 }
 
 class _KameraAbsenPageState extends State<KameraAbsenPage> {
-  late CameraController _controller;
+  static const _deviceOrientations = <DeviceOrientation, int>{
+    DeviceOrientation.portraitUp: 0,
+    DeviceOrientation.landscapeLeft: 90,
+    DeviceOrientation.portraitDown: 180,
+    DeviceOrientation.landscapeRight: 270,
+  };
+
+  late final CameraController _controller;
+  late final FaceDetector _faceDetector;
+
+  bool _isDetecting = false;
+  bool _isVerifying = false;
+  bool _isMatched = false;
+  bool _hasBlinkedClosed = false;
+
+  DateTime? _lastProcessedAt;
+
+  _LivenessStep _step = _LivenessStep.lookStraight;
+  String _statusText = 'Posisikan wajah Anda di dalam bingkai';
+  Color _statusColor = Colors.blue;
 
   @override
   void initState() {
     super.initState();
-    _controller = CameraController(widget.camera, ResolutionPreset.medium);
-    _controller.initialize().then((_) {
+
+    _faceDetector = FaceDetector(
+      options: FaceDetectorOptions(
+        enableClassification: true,
+        enableTracking: true,
+        performanceMode: FaceDetectorMode.accurate,
+      ),
+    );
+
+    _controller = CameraController(
+      widget.camera,
+      ResolutionPreset.medium,
+      enableAudio: false,
+      imageFormatGroup: Platform.isAndroid
+          ? ImageFormatGroup.nv21
+          : ImageFormatGroup.bgra8888,
+    );
+
+    _initializeCamera();
+  }
+
+  Future<void> _initializeCamera() async {
+    try {
+      await _controller.initialize();
+
       if (!mounted) return;
       setState(() {});
+
+      await _startLiveRecognition();
+    } catch (e) {
+      debugPrint('Gagal inisialisasi kamera: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kamera tidak dapat digunakan: $e')),
+        );
+        Navigator.pop(context);
+      }
+    }
+  }
+
+  Future<void> _startLiveRecognition() async {
+    if (!_controller.value.isInitialized ||
+        _controller.value.isStreamingImages ||
+        _isMatched ||
+        _isVerifying) {
+      return;
+    }
+
+    await _controller.startImageStream((CameraImage image) async {
+      if (_isDetecting || _isMatched || _isVerifying) return;
+
+      final now = DateTime.now();
+      if (_lastProcessedAt != null &&
+          now.difference(_lastProcessedAt!) <
+              const Duration(milliseconds: 350)) {
+        return;
+      }
+      _lastProcessedAt = now;
+
+      _isDetecting = true;
+      try {
+        await _processFrame(image);
+      } finally {
+        _isDetecting = false;
+      }
     });
+  }
+
+  Future<void> _processFrame(CameraImage image) async {
+    try {
+      final frameInput = _convertCameraImageToInputImage(image);
+      if (frameInput == null) return;
+
+      final faces = await _faceDetector.processImage(frameInput.inputImage);
+
+      if (faces.isEmpty) {
+        _updateStatus('Mencari wajah...', Colors.blue);
+        return;
+      }
+
+      if (faces.length > 1) {
+        _updateStatus('Pastikan hanya satu wajah di kamera', Colors.orange);
+        return;
+      }
+
+      final face = faces.first;
+
+      if (min(face.boundingBox.width, face.boundingBox.height) < 100) {
+        _updateStatus('Dekatkan wajah ke kamera', Colors.orange);
+        return;
+      }
+
+      await _checkLiveness(
+        image: image,
+        face: face,
+        rotationDegrees: frameInput.rotationDegrees,
+      );
+    } catch (e) {
+      debugPrint('Gagal memproses frame: $e');
+      _updateStatus('Gagal memproses wajah. Coba lagi.', Colors.red);
+    }
+  }
+
+  Future<void> _checkLiveness({
+    required CameraImage image,
+    required Face face,
+    required int rotationDegrees,
+  }) async {
+    final eulerY = face.headEulerAngleY;
+    final leftEye = face.leftEyeOpenProbability;
+    final rightEye = face.rightEyeOpenProbability;
+
+    switch (_step) {
+      case _LivenessStep.lookStraight:
+        if (eulerY != null && eulerY > -10 && eulerY < 10) {
+          _setStep(
+            _LivenessStep.blink,
+            'Bagus. Sekarang silakan berkedip',
+          );
+        } else {
+          _updateStatus('Mohon lihat lurus ke depan', Colors.blue);
+        }
+        break;
+
+      case _LivenessStep.blink:
+        if (leftEye == null || rightEye == null) {
+          _updateStatus(
+            'Pastikan wajah terlihat jelas dan cukup terang',
+            Colors.orange,
+          );
+          return;
+        }
+
+        if (leftEye < 0.25 && rightEye < 0.25) {
+          _hasBlinkedClosed = true;
+          _updateStatus('Bagus, sekarang buka mata kembali', Colors.blue);
+        } else if (_hasBlinkedClosed && leftEye > 0.75 && rightEye > 0.75) {
+          _setStep(
+            _LivenessStep.turnLeft,
+            'Bagus. Sekarang toleh perlahan ke kiri',
+          );
+        } else {
+          _updateStatus('Silakan berkedip satu kali', Colors.blue);
+        }
+        break;
+
+      case _LivenessStep.turnLeft:
+        if (eulerY != null && eulerY < -20) {
+          _setStep(
+            _LivenessStep.turnRight,
+            'Bagus. Sekarang toleh perlahan ke kanan',
+          );
+        } else {
+          _updateStatus('Toleh perlahan ke kiri', Colors.blue);
+        }
+        break;
+
+      case _LivenessStep.turnRight:
+        if (eulerY != null && eulerY > 20) {
+          await _verifyFace(
+            image: image,
+            face: face,
+            rotationDegrees: rotationDegrees,
+          );
+        } else {
+          _updateStatus('Toleh perlahan ke kanan', Colors.blue);
+        }
+        break;
+    }
+  }
+
+  Future<void> _verifyFace({
+    required CameraImage image,
+    required Face face,
+    required int rotationDegrees,
+  }) async {
+    if (_isVerifying || _isMatched) return;
+
+    setState(() {
+      _isVerifying = true;
+      _statusText = 'Memverifikasi wajah...';
+      _statusColor = Colors.amber;
+    });
+
+    try {
+      final currentEmbedding = await FaceNetService().getFaceEmbedding(
+        image,
+        face,
+        rotationDegrees: rotationDegrees,
+      );
+
+      final isMatch = FaceNetService().isFaceMatching(
+        widget.registeredEmbedding,
+        currentEmbedding,
+      );
+
+      if (!isMatch) {
+        _resetLiveness('Wajah tidak cocok. Silakan ulangi verifikasi.');
+        return;
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _isMatched = true;
+        _statusText = 'Wajah cocok. Menyimpan bukti absensi...';
+        _statusColor = Colors.green;
+      });
+
+      if (_controller.value.isStreamingImages) {
+        await _controller.stopImageStream();
+      }
+
+      final imageFile = await _controller.takePicture();
+
+      if (mounted) {
+        Navigator.pop(context, imageFile.path);
+      }
+    } catch (e) {
+      debugPrint('Gagal verifikasi wajah: $e');
+
+      _resetLiveness('Verifikasi gagal. Coba lagi.');
+
+      try {
+        await _startLiveRecognition();
+      } catch (streamError) {
+        debugPrint('Gagal memulai ulang stream kamera: $streamError');
+      }
+    } finally {
+      if (mounted && !_isMatched) {
+        setState(() => _isVerifying = false);
+      }
+    }
+  }
+
+  void _setStep(_LivenessStep step, String message) {
+    if (!mounted) return;
+
+    setState(() {
+      _step = step;
+      _statusText = message;
+      _statusColor = Colors.blue;
+    });
+  }
+
+  void _resetLiveness(String message) {
+    if (!mounted) return;
+
+    setState(() {
+      _step = _LivenessStep.lookStraight;
+      _hasBlinkedClosed = false;
+      _statusText = message;
+      _statusColor = Colors.red;
+    });
+  }
+
+  void _updateStatus(String text, Color color) {
+    if (!mounted || (_statusText == text && _statusColor == color)) return;
+
+    setState(() {
+      _statusText = text;
+      _statusColor = color;
+    });
+  }
+
+  _FrameInput? _convertCameraImageToInputImage(CameraImage image) {
+    try {
+      final rotationDegrees = _getRotationDegrees();
+      if (rotationDegrees == null) return null;
+
+      final rotation = InputImageRotationValue.fromRawValue(rotationDegrees);
+      final format = InputImageFormatValue.fromRawValue(image.format.raw);
+
+      if (rotation == null || format == null) {
+        debugPrint(
+          'Format/rotasi kamera tidak didukung. '
+          'format=${image.format.raw}, rotation=$rotationDegrees',
+        );
+        return null;
+      }
+
+      final allBytes = WriteBuffer();
+      for (final plane in image.planes) {
+        allBytes.putUint8List(plane.bytes);
+      }
+
+      return _FrameInput(
+        inputImage: InputImage.fromBytes(
+          bytes: allBytes.done().buffer.asUint8List(),
+          metadata: InputImageMetadata(
+            size: Size(
+              image.width.toDouble(),
+              image.height.toDouble(),
+            ),
+            rotation: rotation,
+            format: format,
+            bytesPerRow: image.planes.first.bytesPerRow,
+          ),
+        ),
+        rotationDegrees: rotationDegrees,
+      );
+    } catch (e) {
+      debugPrint('Gagal membuat InputImage: $e');
+      return null;
+    }
+  }
+
+  int? _getRotationDegrees() {
+    final sensorOrientation = widget.camera.sensorOrientation;
+
+    if (Platform.isIOS) {
+      return sensorOrientation;
+    }
+
+    final deviceOrientation =
+        _deviceOrientations[_controller.value.deviceOrientation];
+
+    if (deviceOrientation == null) return null;
+
+    if (widget.camera.lensDirection == CameraLensDirection.front) {
+      return (sensorOrientation + deviceOrientation) % 360;
+    }
+
+    return (sensorOrientation - deviceOrientation + 360) % 360;
   }
 
   @override
   void dispose() {
+    if (_controller.value.isInitialized &&
+        _controller.value.isStreamingImages) {
+      _controller.stopImageStream();
+    }
+
     _controller.dispose();
+    _faceDetector.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_controller.value.isInitialized)
-      return const Scaffold(backgroundColor: Colors.black);
+    if (!_controller.value.isInitialized) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Column(
         children: [
-          // 1. AREA KAMERA (Menggunakan AspectRatio agar tidak lonjong)
           Expanded(
             child: AspectRatio(
               aspectRatio: _controller.value.aspectRatio,
@@ -45,54 +415,72 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
                 alignment: Alignment.center,
                 children: [
                   CameraPreview(_controller),
-                  // Bingkai Wajah (Overlay)
-                  // Ganti bagian Container lingkaran sebelumnya dengan ini:
                   Container(
                     width: 250,
-                    height:
-                        320, // Tinggi lebih besar agar muat wajah & sedikit bahu
+                    height: 320,
                     decoration: BoxDecoration(
-                      color: Colors.transparent, // Transparan di tengah
                       border: Border.all(
-                        color: Colors.white,
+                        color: _statusColor,
                         width: 3,
-                      ), // Garis bingkai
-                      borderRadius: BorderRadius.circular(
-                        15,
-                      ), // Sudut tumpul agar tidak tajam
+                      ),
+                      borderRadius: BorderRadius.circular(15),
                     ),
                   ),
+                  if (_isMatched)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black54,
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            color: Colors.green,
+                            strokeWidth: 5,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
           ),
-
-          // 2. AREA TOMBOL (Hitam di bawah)
           Container(
-            height: 120,
+            height: 150,
+            width: double.infinity,
             color: Colors.black,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Tombol Batal
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white, size: 35),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                // Tombol Jepret
-                FloatingActionButton(
-                  backgroundColor: Colors.white,
-                  child: const Icon(
-                    Icons.camera_alt,
-                    color: Colors.blue,
-                    size: 30,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 8,
                   ),
-                  onPressed: () async {
-                    final image = await _controller.takePicture();
-                    Navigator.pop(context, image.path);
-                  },
+                  decoration: BoxDecoration(
+                    color: _statusColor.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _statusColor),
+                  ),
+                  child: Text(
+                    _statusText,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _statusColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 40), // Spasi penyeimbang
+                const SizedBox(height: 20),
+                IconButton(
+                  icon: const Icon(
+                    Icons.close,
+                    color: Colors.white,
+                    size: 40,
+                  ),
+                  onPressed: (_isMatched || _isVerifying)
+                      ? null
+                      : () => Navigator.pop(context),
+                ),
               ],
             ),
           ),
@@ -100,4 +488,14 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
       ),
     );
   }
+}
+
+class _FrameInput {
+  final InputImage inputImage;
+  final int rotationDegrees;
+
+  const _FrameInput({
+    required this.inputImage,
+    required this.rotationDegrees,
+  });
 }

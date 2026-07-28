@@ -4,8 +4,9 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:flutter_app_badger/flutter_app_badger.dart';
+//import 'package:flutter_timezone/flutter_timezone.dart';
 
 class NotificationService {
   // --- Singleton Pattern ---
@@ -21,12 +22,24 @@ class NotificationService {
   // =======================================================
   Future<void> initialize() async {
     try {
+      // Inisialisasi Timezone secara lengkap
       tz.initializeTimeZones();
-      tz.setLocalLocation(tz.getLocation('Asia/Jakarta'));
+      try {
+        tz.setLocalLocation(tz.getLocation('Asia/Jakarta'));
+      } catch (_) {
+        // Fallback jika Asia/Jakarta gagal ter-set
+        tz.setLocalLocation(tz.getLocation('UTC'));
+      }
 
+      // Request Izin Notifikasi Biasa
       var status = await Permission.notification.status;
       if (!status.isGranted) {
         await Permission.notification.request();
+      }
+
+      // Request Izin Exact Alarm untuk Android 12+ (Penting!)
+      if (await Permission.scheduleExactAlarm.isDenied) {
+        await Permission.scheduleExactAlarm.request();
       }
 
       const AndroidInitializationSettings initializationSettingsAndroid =
@@ -35,7 +48,32 @@ class NotificationService {
       const InitializationSettings initializationSettings =
           InitializationSettings(android: initializationSettingsAndroid);
 
-      await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+      await flutterLocalNotificationsPlugin.initialize(
+        initializationSettings,
+        onDidReceiveNotificationResponse: (NotificationResponse response) {
+          debugPrint("Notifikasi diklik: ${response.payload}");
+        },
+      );
+
+      final androidPlugin =
+          flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+
+      await androidPlugin?.requestNotificationsPermission();
+      await androidPlugin?.requestExactAlarmsPermission();
+
+      // Buat Channel Notifikasi Khusus Absensi di Android OS
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'absensi_channel', // id
+        'Absensi Reminder', // name
+        description: 'Notifikasi pengingat check-in dan check-out absensi',
+        importance: Importance.max,
+      );
+
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
 
       // Jalankan listener FCM
       _listenToForegroundNotifications();
@@ -49,8 +87,8 @@ class NotificationService {
   // =======================================================
   Future<void> setupFCMToken(int employeeId) async {
     try {
-      NotificationSettings settings = await FirebaseMessaging.instance
-          .requestPermission();
+      NotificationSettings settings =
+          await FirebaseMessaging.instance.requestPermission();
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized) {
         String? fcmToken = await FirebaseMessaging.instance.getToken();
@@ -58,16 +96,14 @@ class NotificationService {
         if (fcmToken != null) {
           await Supabase.instance.client
               .from('employees')
-              .update({'fcm_token': fcmToken})
-              .eq('id', employeeId);
+              .update({'fcm_token': fcmToken}).eq('id', employeeId);
           debugPrint("FCM Token berhasil disimpan: $fcmToken");
         }
 
         FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
           await Supabase.instance.client
               .from('employees')
-              .update({'fcm_token': newToken})
-              .eq('id', employeeId);
+              .update({'fcm_token': newToken}).eq('id', employeeId);
         });
       }
     } catch (e) {
@@ -116,14 +152,12 @@ class NotificationService {
       minute,
     );
 
-    // FIX: Menggeser jadwal minimal 1 hari ke depan jika skipToday aktif
     if (skipToday &&
         scheduledDate.day == now.day &&
         scheduledDate.month == now.month) {
       scheduledDate = scheduledDate.add(const Duration(days: 1));
     }
 
-    // Geser hari sampai menemukan hari kerja yang tepat (Senin-Jumat)
     while (scheduledDate.weekday != weekday || scheduledDate.isBefore(now)) {
       scheduledDate = scheduledDate.add(const Duration(days: 1));
     }
@@ -161,13 +195,16 @@ class NotificationService {
             priority: Priority.high,
           ),
         ),
+        // Gunakan inexactAllowWhileIdle agar ramah aturan baterai Android 12+ & anti-crash
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
       );
+      debugPrint(
+        "Berhasil dijadwalkan notifikasi ID $id untuk tanggal $scheduledDate",
+      );
     } catch (e) {
-      // FIX CRASH: Menangkap error jika Android menolak jadwal (misal karena waktu terlewat)
       debugPrint("Gagal menjadwalkan notifikasi ID $id: $e");
     }
   }
@@ -218,7 +255,6 @@ class NotificationService {
   Future<void> onCheckIn() async {
     int hariIni = DateTime.now().weekday;
     if (hariIni >= 1 && hariIni <= 5) {
-      // Timpa jadwal hari ini ke minggu depan dengan mengaktifkan skipToday
       await _scheduleWeekly(
         100 + hariIni,
         hariIni,
@@ -243,7 +279,6 @@ class NotificationService {
   Future<void> onCheckOut() async {
     int hariIni = DateTime.now().weekday;
     if (hariIni >= 1 && hariIni <= 5) {
-      // Timpa jadwal hari ini ke minggu depan dengan mengaktifkan skipToday
       await _scheduleWeekly(
         300 + hariIni,
         hariIni,

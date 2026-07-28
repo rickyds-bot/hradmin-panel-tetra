@@ -1,3 +1,4 @@
+import 'dart:async'; // Tambahkan ini untuk menggunakan StreamSubscription
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'web_dashboard_page.dart';
@@ -13,6 +14,43 @@ class _WebLoginPageState extends State<WebLoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+
+  // Tambahkan variabel untuk memantau status sesi
+  late final StreamSubscription<AuthState> _authStateSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Dengarkan status otentikasi saat halaman ini pertama kali dimuat (saat refresh)
+    _authStateSubscription =
+        Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      final AuthChangeEvent event = data.event;
+      final Session? session = data.session;
+
+      // Jika sistem mendeteksi ada sesi yang masih aktif (dari Local Storage browser)
+      if (event == AuthChangeEvent.initialSession ||
+          event == AuthChangeEvent.signedIn) {
+        if (session != null) {
+          if (mounted) {
+            // Langsung alihkan ke halaman Dashboard tanpa harus login ulang
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const WebDashboardPage()),
+            );
+          }
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    // Wajib hentikan pantauan stream saat berpindah halaman agar tidak error
+    _authStateSubscription.cancel();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   Future<void> _loginAdmin() async {
     setState(() => _isLoading = true);
@@ -96,7 +134,7 @@ class _WebLoginPageState extends State<WebLoginPage> {
                   ),
                   const SizedBox(height: 14),
                   const Text(
-                    'Admin Portal',
+                    'Admin Dashboard',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,

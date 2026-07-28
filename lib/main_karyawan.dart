@@ -4,10 +4,16 @@ import 'features/auth/login_page.dart';
 import 'features/auth/register_page.dart';
 import 'features/employee/karyawan_page.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:timezone/data/latest_all.dart' as tz;
+//import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:firebase_core/firebase_core.dart';
 import 'features/employee/notification_services.dart';
 import 'firebase_options.dart';
+
+//import 'package:mobile_absensi/features/auth/login_page.dart';
+//import 'package:mobile_absensi/features/auth/register_page.dart';
+//import 'package:mobile_absensi/features/employee/karyawan_page.dart';
+//import 'package:mobile_absensi/features/employee/notification_services.dart';
+import 'package:mobile_absensi/features/employee/face_net_service.dart';
 
 void main() async {
   // Pastikan binding ini dipanggil paling pertama
@@ -16,6 +22,7 @@ void main() async {
   // 2. Gunakan DefaultFirebaseOptions yang baru saja kita buat
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await NotificationService().initialize();
+
   //tz.initializeTimeZones();
 
   await Supabase.initialize(
@@ -24,6 +31,7 @@ void main() async {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNybnVmeGh3bXJ2YXppeGl0aGt1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2NjcyMDMsImV4cCI6MjA5NzI0MzIwM30.Dj5yinnmQbF0DUN7LapjsiUeD7yPxirkUMCPLQporpU',
   );
 
+  await FaceNetService().loadModel();
   runApp(const MyApp());
 }
 

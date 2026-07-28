@@ -10,6 +10,8 @@ import 'web_lembur.dart';
 import 'web_lokasi.dart';
 import 'web_log.dart';
 import 'web_dashboard_content.dart';
+import 'web_laporan_karyawan_page.dart';
+import 'web_laporan_absensi.dart';
 
 class WebDashboardPage extends StatefulWidget {
   const WebDashboardPage({super.key});
@@ -46,8 +48,8 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
     const WebLokasiPage(),
     const WebLogPage(),
     // Halaman Laporan (Sementara menggunakan halaman terkait atau placeholder khusus laporan)
-    const WebKaryawanPage(), // Laporan Karyawan
-    const WebAbsensiPage(), // Laporan Absensi
+    const WebLaporanKaryawanPage(), // Laporan Karyawan
+    const WebLaporanAbsensiPage(), // Laporan Absensi
     const WebCutiPage(), // Laporan Cuti
     const WebLemburPage(), // Laporan Lembur
   ];
@@ -273,9 +275,8 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                     onSelected: (value) async {
                       if (value == 'theme') {
                         setState(() {
-                          themeNotifier.value = isDarkMode
-                              ? ThemeMode.light
-                              : ThemeMode.dark;
+                          themeNotifier.value =
+                              isDarkMode ? ThemeMode.light : ThemeMode.dark;
                         });
                       } else if (value == 'password') {
                         _showGantiPasswordDialog(context);
@@ -424,9 +425,8 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 12,
-                        fontWeight: isSelected
-                            ? FontWeight.w600
-                            : FontWeight.w500,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w500,
                         color: isSelected ? Colors.blueAccent : null,
                       ),
                     ),
@@ -555,9 +555,8 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 11,
-                      fontWeight: isSelected
-                          ? FontWeight.w600
-                          : FontWeight.w500,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.w500,
                       color: isSelected ? Colors.blueAccent : Colors.grey[700],
                     ),
                   ),

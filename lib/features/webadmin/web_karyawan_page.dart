@@ -155,8 +155,7 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
     final cd = karyawan['children_data'] ?? karyawan['childern_data'];
     if (cd != null) {
       if (cd is Map) {
-        childDataText =
-            cd['info']?.toString() ??
+        childDataText = cd['info']?.toString() ??
             cd.values.where((v) => v != null).join(', ');
       } else {
         childDataText = cd.toString();
@@ -383,7 +382,7 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                   color: const Color(0xFF1E293B),
                 ),
               ),
-              ElevatedButton.icon(
+              /* ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
@@ -408,11 +407,10 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                   'Tambah Karyawan',
                   style: GoogleFonts.plusJakartaSans(fontSize: 12),
                 ),
-              ),
+              ), */
             ],
           ),
           const SizedBox(height: 16),
-
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -497,7 +495,6 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
             ],
           ),
           const SizedBox(height: 16),
-
           Expanded(
             child: Card(
               elevation: 0,
@@ -509,215 +506,222 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _filteredList.isEmpty
-                  ? Center(
-                      child: Text(
-                        'Data karyawan tidak ditemukan.',
-                        style: GoogleFonts.plusJakartaSans(fontSize: 12),
-                      ),
-                    )
-                  : LayoutBuilder(
-                      builder: (context, constraints) {
-                        return Scrollbar(
-                          controller: _horizontalScrollCtrl,
-                          thumbVisibility: true,
-                          trackVisibility: true,
-                          child: SingleChildScrollView(
-                            controller: _horizontalScrollCtrl,
-                            scrollDirection: Axis.horizontal,
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                minWidth: constraints.maxWidth > 1000
-                                    ? constraints.maxWidth
-                                    : 1000,
-                              ),
+                      ? Center(
+                          child: Text(
+                            'Data karyawan tidak ditemukan.',
+                            style: GoogleFonts.plusJakartaSans(fontSize: 12),
+                          ),
+                        )
+                      : LayoutBuilder(
+                          builder: (context, constraints) {
+                            return Scrollbar(
+                              controller: _horizontalScrollCtrl,
+                              thumbVisibility: true,
+                              trackVisibility: true,
                               child: SingleChildScrollView(
-                                scrollDirection: Axis.vertical,
-                                child: DataTable(
-                                  showCheckboxColumn: false,
-                                  columnSpacing:
-                                      25, // <-- TAMBAHKAN INI AGAR JARAK ANTAR KOLOM MERAPAT
-                                  horizontalMargin:
-                                      16, // <-- TAMBAHKAN INI AGAR PADDING KIRI/KANAN PAS
-                                  headingRowColor: WidgetStateProperty.all(
-                                    Colors.grey[50],
+                                controller: _horizontalScrollCtrl,
+                                scrollDirection: Axis.horizontal,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minWidth: constraints.maxWidth > 1000
+                                        ? constraints.maxWidth
+                                        : 1000,
                                   ),
-                                  dataRowMaxHeight: 48,
-                                  headingTextStyle: GoogleFonts.plusJakartaSans(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black87,
-                                  ),
-                                  dataTextStyle: GoogleFonts.plusJakartaSans(
-                                    fontSize: 12,
-                                    color: Colors.black87,
-                                  ),
-                                  columns: const [
-                                    DataColumn(label: Text('No')),
-                                    DataColumn(label: Text('Foto')),
-                                    DataColumn(label: Text('NIK')),
-                                    DataColumn(label: Text('Nama Lengkap')),
-                                    DataColumn(label: Text('No. KTP')),
-                                    DataColumn(label: Text('No. HP')),
-                                    DataColumn(label: Text('Action')),
-                                  ],
-                                  rows: List<DataRow>.generate(
-                                    _filteredList.length > _rowsPerPage
-                                        ? _rowsPerPage
-                                        : _filteredList.length,
-                                    (index) {
-                                      final karyawan = _filteredList[index];
-                                      return DataRow(
-                                        onSelectChanged: (selected) {
-                                          if (selected != null && selected) {
-                                            _showBiodataDialog(karyawan);
-                                          }
-                                        },
-                                        cells: [
-                                          DataCell(Text('${index + 1}')),
-                                          DataCell(
-                                            CircleAvatar(
-                                              radius: 14,
-                                              backgroundColor:
-                                                  Colors.blueGrey[50],
-                                              backgroundImage:
-                                                  (karyawan['photo_url'] !=
-                                                      null)
-                                                  ? NetworkImage(
-                                                      karyawan['photo_url'],
-                                                    )
-                                                  : null,
-                                              child:
-                                                  (karyawan['photo_url'] ==
-                                                      null)
-                                                  ? const Icon(
-                                                      Icons.person,
-                                                      color: Colors.blueGrey,
-                                                      size: 16,
-                                                    )
-                                                  : null,
-                                            ),
-                                          ),
-                                          DataCell(
-                                            Text(karyawan['nik'] ?? '-'),
-                                          ),
-                                          DataCell(
-                                            Text(
-                                              karyawan['full_name'] ?? '-',
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w500,
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.vertical,
+                                    child: DataTable(
+                                      showCheckboxColumn: false,
+                                      columnSpacing:
+                                          25, // <-- TAMBAHKAN INI AGAR JARAK ANTAR KOLOM MERAPAT
+                                      horizontalMargin:
+                                          16, // <-- TAMBAHKAN INI AGAR PADDING KIRI/KANAN PAS
+                                      headingRowColor: WidgetStateProperty.all(
+                                        Colors.grey[50],
+                                      ),
+                                      dataRowMaxHeight: 48,
+                                      headingTextStyle:
+                                          GoogleFonts.plusJakartaSans(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.black87,
+                                      ),
+                                      dataTextStyle:
+                                          GoogleFonts.plusJakartaSans(
+                                        fontSize: 12,
+                                        color: Colors.black87,
+                                      ),
+                                      columns: const [
+                                        DataColumn(label: Text('No')),
+                                        DataColumn(label: Text('Foto')),
+                                        DataColumn(label: Text('NIK')),
+                                        DataColumn(label: Text('Nama Lengkap')),
+                                        DataColumn(label: Text('No. KTP')),
+                                        DataColumn(label: Text('No. HP')),
+                                        DataColumn(label: Text('Action')),
+                                      ],
+                                      rows: List<DataRow>.generate(
+                                        _filteredList.length > _rowsPerPage
+                                            ? _rowsPerPage
+                                            : _filteredList.length,
+                                        (index) {
+                                          final karyawan = _filteredList[index];
+                                          return DataRow(
+                                            onSelectChanged: (selected) {
+                                              if (selected != null &&
+                                                  selected) {
+                                                _showBiodataDialog(karyawan);
+                                              }
+                                            },
+                                            cells: [
+                                              DataCell(Text('${index + 1}')),
+                                              DataCell(
+                                                CircleAvatar(
+                                                  radius: 14,
+                                                  backgroundColor:
+                                                      Colors.blueGrey[50],
+                                                  backgroundImage: (karyawan[
+                                                              'photo_url'] !=
+                                                          null)
+                                                      ? NetworkImage(
+                                                          karyawan['photo_url'],
+                                                        )
+                                                      : null,
+                                                  child:
+                                                      (karyawan['photo_url'] ==
+                                                              null)
+                                                          ? const Icon(
+                                                              Icons.person,
+                                                              color: Colors
+                                                                  .blueGrey,
+                                                              size: 16,
+                                                            )
+                                                          : null,
+                                                ),
                                               ),
-                                            ),
-                                          ),
-                                          DataCell(
-                                            Text(karyawan['ktp_number'] ?? '-'),
-                                          ),
-                                          DataCell(
-                                            Text(karyawan['phone'] ?? '-'),
-                                          ),
-                                          DataCell(
-                                            PopupMenuButton<String>(
-                                              icon: const Icon(
-                                                Icons.more_vert,
-                                                color: Colors.black54,
-                                                size: 18,
+                                              DataCell(
+                                                Text(karyawan['nik'] ?? '-'),
                                               ),
-                                              tooltip: 'Pilihan Tindakan',
-                                              onSelected: (value) {
-                                                if (value == 'detail') {
-                                                  _showBiodataDialog(karyawan);
-                                                }
-                                                if (value == 'edit') {
-                                                  showDialog(
-                                                    context: context,
-                                                    barrierDismissible: false,
-                                                    builder: (context) =>
-                                                        EditKaryawanDialog(
+                                              DataCell(
+                                                Text(
+                                                  karyawan['full_name'] ?? '-',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                              DataCell(
+                                                Text(karyawan['ktp_number'] ??
+                                                    '-'),
+                                              ),
+                                              DataCell(
+                                                Text(karyawan['phone'] ?? '-'),
+                                              ),
+                                              DataCell(
+                                                PopupMenuButton<String>(
+                                                  icon: const Icon(
+                                                    Icons.more_vert,
+                                                    color: Colors.black54,
+                                                    size: 18,
+                                                  ),
+                                                  tooltip: 'Pilihan Tindakan',
+                                                  onSelected: (value) {
+                                                    if (value == 'detail') {
+                                                      _showBiodataDialog(
+                                                          karyawan);
+                                                    }
+                                                    if (value == 'edit') {
+                                                      showDialog(
+                                                        context: context,
+                                                        barrierDismissible:
+                                                            false,
+                                                        builder: (context) =>
+                                                            EditKaryawanDialog(
                                                           karyawan: karyawan,
                                                           onSuccess:
                                                               _fetchKaryawan,
                                                         ),
-                                                  );
-                                                }
-                                                if (value == 'delete') {
-                                                  _deleteKaryawan(karyawan);
-                                                }
-                                              },
-                                              itemBuilder: (context) => [
-                                                PopupMenuItem(
-                                                  value: 'detail',
-                                                  child: ListTile(
-                                                    leading: const Icon(
-                                                      Icons
-                                                          .contact_page_outlined,
-                                                      color: Colors.green,
-                                                      size: 16,
-                                                    ),
-                                                    title: Text(
-                                                      'Lihat Biodata',
-                                                      style:
-                                                          GoogleFonts.plusJakartaSans(
+                                                      );
+                                                    }
+                                                    if (value == 'delete') {
+                                                      _deleteKaryawan(karyawan);
+                                                    }
+                                                  },
+                                                  itemBuilder: (context) => [
+                                                    PopupMenuItem(
+                                                      value: 'detail',
+                                                      child: ListTile(
+                                                        leading: const Icon(
+                                                          Icons
+                                                              .contact_page_outlined,
+                                                          color: Colors.green,
+                                                          size: 16,
+                                                        ),
+                                                        title: Text(
+                                                          'Lihat Biodata',
+                                                          style: GoogleFonts
+                                                              .plusJakartaSans(
                                                             fontSize: 12,
                                                           ),
+                                                        ),
+                                                        contentPadding:
+                                                            EdgeInsets.zero,
+                                                        dense: true,
+                                                      ),
                                                     ),
-                                                    contentPadding:
-                                                        EdgeInsets.zero,
-                                                    dense: true,
-                                                  ),
-                                                ),
-                                                PopupMenuItem(
-                                                  value: 'edit',
-                                                  child: ListTile(
-                                                    leading: const Icon(
-                                                      Icons.edit_outlined,
-                                                      color: Colors.blue,
-                                                      size: 16,
-                                                    ),
-                                                    title: Text(
-                                                      'Edit Data',
-                                                      style:
-                                                          GoogleFonts.plusJakartaSans(
+                                                    PopupMenuItem(
+                                                      value: 'edit',
+                                                      child: ListTile(
+                                                        leading: const Icon(
+                                                          Icons.edit_outlined,
+                                                          color: Colors.blue,
+                                                          size: 16,
+                                                        ),
+                                                        title: Text(
+                                                          'Edit Data',
+                                                          style: GoogleFonts
+                                                              .plusJakartaSans(
                                                             fontSize: 12,
                                                           ),
+                                                        ),
+                                                        contentPadding:
+                                                            EdgeInsets.zero,
+                                                        dense: true,
+                                                      ),
                                                     ),
-                                                    contentPadding:
-                                                        EdgeInsets.zero,
-                                                    dense: true,
-                                                  ),
-                                                ),
-                                                PopupMenuItem(
-                                                  value: 'delete',
-                                                  child: ListTile(
-                                                    leading: const Icon(
-                                                      Icons.delete_outline,
-                                                      color: Colors.red,
-                                                      size: 16,
-                                                    ),
-                                                    title: Text(
-                                                      'Hapus Data',
-                                                      style:
-                                                          GoogleFonts.plusJakartaSans(
+                                                    PopupMenuItem(
+                                                      value: 'delete',
+                                                      child: ListTile(
+                                                        leading: const Icon(
+                                                          Icons.delete_outline,
+                                                          color: Colors.red,
+                                                          size: 16,
+                                                        ),
+                                                        title: Text(
+                                                          'Hapus Data',
+                                                          style: GoogleFonts
+                                                              .plusJakartaSans(
                                                             fontSize: 12,
                                                           ),
+                                                        ),
+                                                        contentPadding:
+                                                            EdgeInsets.zero,
+                                                        dense: true,
+                                                      ),
                                                     ),
-                                                    contentPadding:
-                                                        EdgeInsets.zero,
-                                                    dense: true,
-                                                  ),
+                                                  ],
                                                 ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      );
-                                    },
+                                              ),
+                                            ],
+                                          );
+                                        },
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                            );
+                          },
+                        ),
             ),
           ),
         ],
@@ -726,7 +730,7 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
   }
 }
 
-// ============================================================================
+/* // ============================================================================
 // WIDGET TAMBAH KARYAWAN
 // ============================================================================
 class AddKaryawanDialog extends StatefulWidget {
@@ -1058,100 +1062,99 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
         ),
       ),
     );
-  }
+  } */
 
-  Widget _buildTextField(
-    TextEditingController ctrl,
-    String label, {
-    bool isRequired = false,
-    bool isFullWidth = false,
-    bool readOnly = false,
-    VoidCallback? onTap,
-    Widget? suffixIcon,
-  }) {
-    return SizedBox(
-      width: isFullWidth ? double.infinity : 350,
-      child: TextFormField(
-        controller: ctrl,
-        readOnly: readOnly,
-        onTap: onTap,
-        style: GoogleFonts.plusJakartaSans(fontSize: 12),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: GoogleFonts.plusJakartaSans(
-            color: Colors.black54,
-            fontSize: 12,
-          ),
-          filled: true,
-          fillColor: Colors.grey[50],
-          suffixIcon: suffixIcon,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 10,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(6),
-            borderSide: BorderSide(color: Colors.grey[300]!),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(6),
-            borderSide: BorderSide(color: Colors.grey[300]!),
-          ),
+Widget _buildTextField(
+  TextEditingController ctrl,
+  String label, {
+  bool isRequired = false,
+  bool isFullWidth = false,
+  bool readOnly = false,
+  VoidCallback? onTap,
+  Widget? suffixIcon,
+}) {
+  return SizedBox(
+    width: isFullWidth ? double.infinity : 350,
+    child: TextFormField(
+      controller: ctrl,
+      readOnly: readOnly,
+      onTap: onTap,
+      style: GoogleFonts.plusJakartaSans(fontSize: 12),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: GoogleFonts.plusJakartaSans(
+          color: Colors.black54,
+          fontSize: 12,
         ),
-        validator: isRequired
-            ? (val) => val == null || val.isEmpty ? 'Wajib diisi' : null
-            : null,
+        filled: true,
+        fillColor: Colors.grey[50],
+        suffixIcon: suffixIcon,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 10,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
       ),
-    );
-  }
+      validator: isRequired
+          ? (val) => val == null || val.isEmpty ? 'Wajib diisi' : null
+          : null,
+    ),
+  );
+}
 
-  Widget _buildDropdown(
-    String label,
-    List<String> items,
-    String? val,
-    ValueChanged<String?> onChanged,
-  ) {
-    return SizedBox(
-      width: 350,
-      child: DropdownButtonFormField<String>(
-        value: val,
-        items: items
-            .map(
-              (e) => DropdownMenuItem(
-                value: e,
-                child: Text(
-                  e,
-                  style: GoogleFonts.plusJakartaSans(fontSize: 12),
-                ),
+Widget _buildDropdown(
+  String label,
+  List<String> items,
+  String? val,
+  ValueChanged<String?> onChanged,
+) {
+  return SizedBox(
+    width: 350,
+    child: DropdownButtonFormField<String>(
+      value: val,
+      items: items
+          .map(
+            (e) => DropdownMenuItem(
+              value: e,
+              child: Text(
+                e,
+                style: GoogleFonts.plusJakartaSans(fontSize: 12),
               ),
-            )
-            .toList(),
-        onChanged: onChanged,
-        style: GoogleFonts.plusJakartaSans(fontSize: 12, color: Colors.black87),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: GoogleFonts.plusJakartaSans(
-            color: Colors.black54,
-            fontSize: 12,
-          ),
-          filled: true,
-          fillColor: Colors.grey[50],
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 10,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(6),
-            borderSide: BorderSide(color: Colors.grey[300]!),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(6),
-            borderSide: BorderSide(color: Colors.grey[300]!),
-          ),
+            ),
+          )
+          .toList(),
+      onChanged: onChanged,
+      style: GoogleFonts.plusJakartaSans(fontSize: 12, color: Colors.black87),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: GoogleFonts.plusJakartaSans(
+          color: Colors.black54,
+          fontSize: 12,
+        ),
+        filled: true,
+        fillColor: Colors.grey[50],
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 10,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: BorderSide(color: Colors.grey[300]!),
         ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 // ============================================================================
@@ -1265,8 +1268,7 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
       text: widget.karyawan['address_ktp']?.toString() ?? '',
     );
     _jabatanCtrl = TextEditingController(
-      text:
-          (widget.karyawan['jabatan_name'] ?? widget.karyawan['jabatan'])
+      text: (widget.karyawan['jabatan_name'] ?? widget.karyawan['jabatan'])
               ?.toString() ??
           '',
     );
@@ -1280,8 +1282,7 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
         widget.karyawan['children_data'] ?? widget.karyawan['childern_data'];
     if (cd != null) {
       if (cd is Map) {
-        initChildData =
-            cd['info']?.toString() ??
+        initChildData = cd['info']?.toString() ??
             cd.values.where((v) => v != null).join(', ');
       } else if (cd is List) {
         initChildData = cd.join(', ');
@@ -1340,35 +1341,32 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
     try {
-      await Supabase.instance.client
-          .from('employees')
-          .update({
-            'nik': _nikCtrl.text,
-            'full_name': _nameCtrl.text,
-            'gender': _selectedGender,
-            'ktp_number': _ktpCtrl.text,
-            'npwp_number': _npwpCtrl.text,
-            'address_ktp': _addrKtpCtrl.text,
-            'phone': _phoneCtrl.text,
-            'birth_place': _birthPlaceCtrl.text,
-            'birth_date': _birthDateCtrl.text,
-            'address_now': _addrNowCtrl.text,
-            'education': _selectedEducation,
-            'religion': _selectedReligion,
-            'marital_status': _selectedStatus,
-            'jabatan_name': _jabatanCtrl.text,
-            'role': _selectedRole,
-            'position_id': _getPositionId(
-              _selectedRole,
-            ), // Update position_id otomatis
-            'spouse_name': _spouseNameCtrl.text,
-            'children_data': {
-              'info': _childrenCountCtrl.text,
-            }, // Menggunakan children_data
-            'emergency_name': _emergencyNameCtrl.text,
-            'emergency_phone': _emergencyPhoneCtrl.text,
-          })
-          .eq('id', widget.karyawan['id']);
+      await Supabase.instance.client.from('employees').update({
+        'nik': _nikCtrl.text,
+        'full_name': _nameCtrl.text,
+        'gender': _selectedGender,
+        'ktp_number': _ktpCtrl.text,
+        'npwp_number': _npwpCtrl.text,
+        'address_ktp': _addrKtpCtrl.text,
+        'phone': _phoneCtrl.text,
+        'birth_place': _birthPlaceCtrl.text,
+        'birth_date': _birthDateCtrl.text,
+        'address_now': _addrNowCtrl.text,
+        'education': _selectedEducation,
+        'religion': _selectedReligion,
+        'marital_status': _selectedStatus,
+        'jabatan_name': _jabatanCtrl.text,
+        'role': _selectedRole,
+        'position_id': _getPositionId(
+          _selectedRole,
+        ), // Update position_id otomatis
+        'spouse_name': _spouseNameCtrl.text,
+        'children_data': {
+          'info': _childrenCountCtrl.text,
+        }, // Menggunakan children_data
+        'emergency_name': _emergencyNameCtrl.text,
+        'emergency_phone': _emergencyPhoneCtrl.text,
+      }).eq('id', widget.karyawan['id']);
 
       if (mounted) {
         Navigator.of(context).pop();
@@ -1455,7 +1453,6 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Divider(),
             ),
-
             Flexible(
               child: SingleChildScrollView(
                 child: Form(
@@ -1494,7 +1491,6 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                         _selectedReligion,
                         (val) => setState(() => _selectedReligion = val),
                       ),
-
                       _buildTextField(_ktpCtrl, 'Nomor KTP', isRequired: true),
                       _buildTextField(_npwpCtrl, 'Nomor NPWP'),
                       _buildTextField(_phoneCtrl, 'Nomor HP', isRequired: true),
@@ -1508,7 +1504,6 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                         'Alamat Domisili',
                         isFullWidth: true,
                       ),
-
                       _buildDropdown(
                         'Pendidikan Terakhir',
                         _educationList,
@@ -1526,7 +1521,6 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                         _selectedRole,
                         (val) => setState(() => _selectedRole = val),
                       ),
-
                       _buildDropdown(
                         'Status Pernikahan',
                         _statusList,
@@ -1551,7 +1545,6 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                 ),
               ),
             ),
-
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Divider(),

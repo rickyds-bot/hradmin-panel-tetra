@@ -1,17 +1,17 @@
 plugins {
     id("com.android.application")
-    // Add the dependency for the Google services Gradle plugin
-    id("com.google.gms.google-services") version "4.5.0" apply false
-
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id("com.google.gms.google-services") // Tanpa version & apply false di level app
+    id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
-    namespace = "com.example.mobile_absensi"
-    compileSdk = flutter.compileSdkVersion
+    namespace = "com.tetra.absensi"
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
+    
     buildFeatures {
+        buildConfig = true
         resValues = true
     }
 
@@ -21,14 +21,17 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-defaultConfig {
-        // Sesuaikan applicationId dengan ID awal aplikasi Anda
-        applicationId = "com.tetra.absensi" 
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
+    }
+
+    // --- PASTIKAN SEMUA BAGIAN INI BERADA DI DALAM BLOK android {} ---
+    defaultConfig {
+        applicationId = "com.tetra.absensi"
         minSdk = flutter.minSdkVersion
-        compileSdk = 36
         targetSdk = 36
-        
-        // --- INI YANG KITA PERBAIKI ---
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
@@ -50,18 +53,13 @@ defaultConfig {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
 }
+        
+   
 
-kotlin {
-    compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
-    }
-}
 
 flutter {
     source = "../.."

@@ -33,12 +33,10 @@ class _RegisterPageState extends State<RegisterPage> {
 
   Future<void> _loadDropdownData() async {
     try {
-      final deptData = await Supabase.instance.client
-          .from('departments')
-          .select('id, name');
-      final posData = await Supabase.instance.client
-          .from('positions')
-          .select('id, name');
+      final deptData =
+          await Supabase.instance.client.from('departments').select('id, name');
+      final posData =
+          await Supabase.instance.client.from('positions').select('id, name');
 
       if (mounted) {
         setState(() {
@@ -88,7 +86,9 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   Future<void> _register() async {
+    // Tambahkan validasi password juga di sini agar lebih aman
     if (_emailCtrl.text.isEmpty ||
+        _passwordCtrl.text.isEmpty ||
         _selectedStatus == null ||
         _tanggalMasukCtrl.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -108,14 +108,11 @@ class _RegisterPageState extends State<RegisterPage> {
 
       if (user != null) {
         final Map<String, dynamic> insertData = {
-          // 'id' tidak perlu dikirim karena sudah otomatis (setelah jalankan SQL Opsi 1)
           'email': _emailCtrl.text.trim(),
           'full_name': _fullNameCtrl.text.trim(),
           'employee_status': _selectedStatus?.toLowerCase(),
           'join_date': _tanggalMasukCtrl.text,
           'role': 'karyawan',
-
-          // Berikan nilai default 0 atau null jika tidak dipilih
           'department_id': _selectedDepartmentId ?? 0,
           'position_id': _selectedPositionId ?? 0,
           'location_id': 1,
@@ -127,16 +124,59 @@ class _RegisterPageState extends State<RegisterPage> {
         if (_selectedPositionId != null)
           insertData['position_id'] = _selectedPositionId;
 
+        // Simpan data profil ke tabel employees
         await Supabase.instance.client.from('employees').insert(insertData);
 
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Registrasi Berhasil!"),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pop(context);
+
+        // --- LOGIKA BARU: CEK KONFIRMASI EMAIL ---
+        if (authResponse.session == null) {
+          // Jika session null, artinya Supabase mewajibkan konfirmasi email
+          showDialog(
+            context: context,
+            barrierDismissible: false, // User tidak bisa menutup sembarangan
+            builder: (context) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+              title: const Row(
+                children: [
+                  Icon(Icons.mark_email_unread, color: Colors.blue),
+                  SizedBox(width: 10),
+                  Text("Cek Email Anda", style: TextStyle(fontSize: 18)),
+                ],
+              ),
+              content: const Text(
+                "Registrasi berhasil! Kami telah mengirimkan tautan konfirmasi ke email Anda.\n\n"
+                "Silakan periksa kotak masuk (atau folder spam) dan klik tautan tersebut sebelum melakukan login.",
+                style: TextStyle(height: 1.5),
+              ),
+              actions: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade900,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context); // Tutup dialog
+                    Navigator.pop(context); // Kembali ke halaman Login
+                  },
+                  child: const Text("Kembali ke Login"),
+                ),
+              ],
+            ),
+          );
+        } else {
+          // Jika fitur konfirmasi email Supabase dalam keadaan NONAKTIF (user langsung mendapat session)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Registrasi Berhasil!"),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context); // Kembali ke halaman Login
+        }
+        // ------------------------------------------
       }
     } catch (e) {
       _tampilkanDialogPesan("Registrasi Gagal", e.toString(), Colors.red);

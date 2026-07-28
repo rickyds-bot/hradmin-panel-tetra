@@ -1,0 +1,840 @@
+import 'package:web/web.dart' as web;
+import 'dart:js_interop';
+import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
+
+// Package Export
+import 'package:excel/excel.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+
+class WebLaporanAbsensiPage extends StatefulWidget {
+  const WebLaporanAbsensiPage({super.key});
+
+  @override
+  State<WebLaporanAbsensiPage> createState() => _WebLaporanAbsensiPageState();
+}
+
+class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
+  bool _isLoading = false;
+  List<Map<String, dynamic>> _employees = [];
+  List<Map<String, dynamic>> _locations = [];
+  Map<String, dynamic> _selectedEmployee = {
+    'id': 'all',
+    'full_name': 'Semua Karyawan',
+    'nik': 'ALL',
+    'jabatan_name': '-'
+  };
+
+  DateTime _startDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  DateTime _endDate = DateTime.now();
+
+  final TextEditingController _employeeSearchCtrl = TextEditingController();
+
+  Map<String, List<Map<String, dynamic>>> _groupedAttendanceData = {};
+  List<Map<String, dynamic>> _flatAttendanceData = [];
+
+  @override
+  void initState() {
+    super.initState();
+    initializeDateFormatting('id_ID', null).then((_) {
+      _fetchMasterData();
+    });
+  }
+
+  @override
+  void dispose() {
+    _employeeSearchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchMasterData() async {
+    setState(() => _isLoading = true);
+    try {
+      final empData = await Supabase.instance.client
+          .from('employees')
+          .select()
+          .order('full_name', ascending: true);
+
+      final locData = await Supabase.instance.client.from('locations').select();
+
+      setState(() {
+        _employees = List<Map<String, dynamic>>.from(empData);
+        _locations = List<Map<String, dynamic>>.from(locData);
+        _employeeSearchCtrl.text = _selectedEmployee['full_name'];
+      });
+
+      await _fetchAttendance();
+    } catch (e) {
+      _showSnackBar('Gagal memuat data master: $e', Colors.red);
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _fetchAttendance() async {
+    setState(() => _isLoading = true);
+
+    try {
+      DateTime startUtc =
+          DateTime(_startDate.year, _startDate.month, _startDate.day, 0, 0, 0)
+              .toUtc();
+      DateTime endUtc =
+          DateTime(_endDate.year, _endDate.month, _endDate.day, 23, 59, 59)
+              .toUtc();
+
+      var query = Supabase.instance.client.from('attendance').select('*');
+
+      if (_selectedEmployee['id'] != 'all') {
+        final empId = _selectedEmployee['id'];
+        query = query.eq('employee_id', empId);
+      }
+
+      final response = await query
+          .gte('created_at', startUtc.toIso8601String())
+          .lte('created_at', endUtc.toIso8601String())
+          .order('created_at', ascending: true);
+
+      List<dynamic> rawData = response as List<dynamic>? ?? [];
+      _processAttendanceData(rawData);
+    } catch (e) {
+      debugPrint('Error fetching attendance: $e');
+      _processAttendanceData([]);
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  double _calculateDistance(
+      double lat1, double lon1, double lat2, double lon2) {
+    const p = 0.017453292519943295;
+    final c = cos;
+    final a = 0.5 -
+        c((lat2 - lat1) * p) / 2 +
+        c(lat1 * p) * c(lat2 * p) * (1 - c((lon2 - lon1) * p)) / 2;
+    return 1000 * 12742 * asin(sqrt(a));
+  }
+
+  String _matchLocationName(dynamic latVal, dynamic lonVal) {
+    if (latVal == null || lonVal == null || _locations.isEmpty) return '-';
+
+    double? lat = double.tryParse(latVal.toString());
+    double? lon = double.tryParse(lonVal.toString());
+    if (lat == null || lon == null) return '-';
+
+    for (var loc in _locations) {
+      double? locLat = double.tryParse(loc['latitude']?.toString() ?? '');
+      double? locLon = double.tryParse(loc['longitude']?.toString() ?? '');
+      int radius =
+          int.tryParse(loc['radius_meter']?.toString() ?? '100') ?? 100;
+
+      if (locLat != null && locLon != null) {
+        double distance = _calculateDistance(lat, lon, locLat, locLon);
+        if (distance <= radius) {
+          return loc['name']?.toString() ?? 'Lokasi Kantor';
+        }
+      }
+    }
+    return 'Luar Area Kantor';
+  }
+
+  void _processAttendanceData(List<dynamic> rawData) {
+    Map<String, Map<String, List<dynamic>>> empDatePunches = {};
+
+    for (var item in rawData) {
+      final empId =
+          (item['employee_id'] ?? item['user_id'] ?? 'unknown').toString();
+      final createdAtStr = item['created_at']?.toString();
+      if (createdAtStr == null) continue;
+
+      DateTime? dt = DateTime.tryParse(createdAtStr)?.toLocal();
+      if (dt == null) continue;
+
+      String dateKey = DateFormat('yyyy-MM-dd').format(dt);
+
+      empDatePunches.putIfAbsent(empId, () => {});
+      empDatePunches[empId]!.putIfAbsent(dateKey, () => []);
+      empDatePunches[empId]![dateKey]!.add(item);
+    }
+
+    Map<String, List<Map<String, dynamic>>> grouped = {};
+    List<Map<String, dynamic>> flat = [];
+
+    List<Map<String, dynamic>> targetEmployees = [];
+    if (_selectedEmployee['id'] == 'all') {
+      targetEmployees = _employees;
+    } else {
+      targetEmployees = [_selectedEmployee];
+    }
+
+    for (var emp in targetEmployees) {
+      final empId = emp['id'].toString();
+      final empName = emp['full_name'] ?? 'Karyawan';
+      final empNik = emp['nik']?.toString() ?? '-';
+      final empJabatan = emp['jabatan_name'] ?? '-';
+
+      List<Map<String, dynamic>> empRows = [];
+      DateTime curr = _startDate;
+
+      while (curr.isBefore(_endDate) || curr.isAtSameMomentAs(_endDate)) {
+        String dateKey = DateFormat('yyyy-MM-dd').format(curr);
+        String dateFormatted = DateFormat('dd-MM-yyyy').format(curr);
+        String dayName = DateFormat('E', 'id_ID').format(curr);
+        bool isWeekend = curr.weekday == DateTime.saturday ||
+            curr.weekday == DateTime.sunday;
+
+        var punches = empDatePunches[empId]?[dateKey];
+
+        if (punches != null && punches.isNotEmpty) {
+          punches.sort((a, b) => DateTime.parse(a['created_at'])
+              .toLocal()
+              .compareTo(DateTime.parse(b['created_at']).toLocal()));
+
+          var firstPunch = punches.first;
+          var lastPunch = punches.last;
+
+          DateTime checkInDt =
+              DateTime.parse(firstPunch['created_at']).toLocal();
+          DateTime? checkOutDt = punches.length > 1
+              ? DateTime.parse(lastPunch['created_at']).toLocal()
+              : null;
+
+          String checkInTime = DateFormat('HH:mm:ss').format(checkInDt);
+          String checkOutTime = checkOutDt != null
+              ? DateFormat('HH:mm:ss').format(checkOutDt)
+              : '-';
+
+          String lateStr = '-';
+          DateTime limitTime = DateTime(
+              checkInDt.year, checkInDt.month, checkInDt.day, 8, 30, 0);
+          if (checkInDt.isAfter(limitTime)) {
+            Duration diff = checkInDt.difference(limitTime);
+            int hours = diff.inHours;
+            int minutes = diff.inMinutes % 60;
+            int seconds = diff.inSeconds % 60;
+            lateStr =
+                '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+          } else {
+            lateStr = '00:00:00';
+          }
+
+          bool isComplete = (checkOutDt != null);
+          String status = isComplete ? 'Bekerja' : '-';
+
+          String coordinate =
+              '${firstPunch['latitude'] ?? '-'}, ${firstPunch['longitude'] ?? '-'}';
+
+          String locationName = _matchLocationName(
+              firstPunch['latitude'], firstPunch['longitude']);
+
+          var row = {
+            'employee_id': empId,
+            'employee_name': empName,
+            'nik': empNik,
+            'jabatan': empJabatan,
+            'day': dayName,
+            'date': dateFormatted,
+            'work_hours': '08:30-17:30',
+            'check_in': checkInTime,
+            'check_out': checkOutTime,
+            'coordinate': coordinate,
+            'location': locationName,
+            'late': lateStr,
+            'status': status,
+          };
+          empRows.add(row);
+          flat.add(row);
+        } else {
+          var row = {
+            'employee_id': empId,
+            'employee_name': empName,
+            'nik': empNik,
+            'jabatan': empJabatan,
+            'day': dayName,
+            'date': dateFormatted,
+            'work_hours': '08:30-17:30',
+            'check_in': '-',
+            'check_out': '-',
+            'coordinate': '-',
+            'location': '-',
+            'late': '-',
+            'status': isWeekend ? 'Libur' : 'Alpa',
+          };
+          empRows.add(row);
+          flat.add(row);
+        }
+
+        curr = curr.add(const Duration(days: 1));
+      }
+
+      grouped[empId] = empRows;
+    }
+
+    setState(() {
+      _groupedAttendanceData = grouped;
+      _flatAttendanceData = flat;
+    });
+  }
+
+  void _showSnackBar(String msg, Color color) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content: Text(msg, style: TextStyle(fontSize: 12)),
+          backgroundColor: color),
+    );
+  }
+
+  Future<void> _selectStartDate(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+    if (picked != null) {
+      setState(() => _startDate = picked);
+      _fetchAttendance();
+    }
+  }
+
+  Future<void> _selectEndDate(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _endDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+    if (picked != null) {
+      setState(() => _endDate = picked);
+      _fetchAttendance();
+    }
+  }
+
+  Future<void> _exportAttendancePdf() async {
+    if (_groupedAttendanceData.isEmpty) return;
+
+    final pdf = pw.Document();
+    final headers = [
+      'Hari | Tanggal',
+      'Jam Kerja',
+      'Jam Check-in',
+      'Jam Check-out',
+      'Kordinat',
+      'Nama Lokasi',
+      'Terlambat',
+      'Aktifitas'
+    ];
+
+    _groupedAttendanceData.forEach((empId, rows) {
+      if (rows.isEmpty) return;
+      final firstRow = rows.first;
+      final empName = firstRow['employee_name'];
+      final empNik = firstRow['nik'];
+      final empJabatan = firstRow['jabatan'];
+
+      int totalHariKerja = 0;
+      int totalDetikTerlambat = 0;
+
+      final pdfData = rows.map((row) {
+        if (row['status'] == 'Bekerja' ||
+            (row['check_in'] != '-' && row['check_in'] != null)) {
+          totalHariKerja++;
+        }
+        String lateStr = row['late'] ?? '-';
+        if (lateStr != '-' && lateStr != '00:00:00') {
+          List<String> parts = lateStr.split(':');
+          if (parts.length == 3) {
+            int h = int.tryParse(parts[0]) ?? 0;
+            int m = int.tryParse(parts[1]) ?? 0;
+            int s = int.tryParse(parts[2]) ?? 0;
+            totalDetikTerlambat += (h * 3600) + (m * 60) + s;
+          }
+        }
+
+        return [
+          '${row['day']} | ${row['date']}',
+          row['work_hours'] ?? '-',
+          row['check_in'] ?? '-',
+          row['check_out'] ?? '-',
+          row['coordinate'] ?? '-',
+          row['location'] ?? '-',
+          row['late'] ?? '-',
+          row['status'] ?? '-',
+        ];
+      }).toList();
+
+      int th = totalDetikTerlambat ~/ 3600;
+      int tm = (totalDetikTerlambat % 3600) ~/ 60;
+      int ts = totalDetikTerlambat % 60;
+      String totalLateFormatted =
+          '${th.toString().padLeft(2, '0')}:${tm.toString().padLeft(2, '0')}:${ts.toString().padLeft(2, '0')}';
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.all(24),
+          build: (context) {
+            return [
+              pw.Text('LAPORAN KEHADIRAN KARYAWAN',
+                  style: pw.TextStyle(
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blue900)),
+              pw.SizedBox(height: 8),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('Nama: $empName',
+                          style: pw.TextStyle(
+                              fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                      pw.Text('ID / NIK: $empNik',
+                          style: pw.TextStyle(fontSize: 10)),
+                      pw.Text('Jabatan: $empJabatan',
+                          style: pw.TextStyle(fontSize: 10)),
+                    ],
+                  ),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                          'Periode: ${DateFormat('dd-MM-yyyy').format(_startDate)} s/d ${DateFormat('dd-MM-yyyy').format(_endDate)}',
+                          style: pw.TextStyle(fontSize: 10)),
+                    ],
+                  ),
+                ],
+              ),
+              pw.Divider(thickness: 1, height: 16),
+              pw.TableHelper.fromTextArray(
+                headers: headers,
+                data: pdfData,
+                border:
+                    pw.TableBorder.all(width: 0.5, color: PdfColors.grey400),
+                headerStyle: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.white),
+                headerDecoration:
+                    const pw.BoxDecoration(color: PdfColors.blue800),
+                cellStyle: pw.TextStyle(fontSize: 8),
+                cellAlignment: pw.Alignment.centerLeft,
+                cellPadding: const pw.EdgeInsets.all(6),
+              ),
+              pw.SizedBox(height: 12),
+              pw.Container(
+                padding: const pw.EdgeInsets.all(8),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                  borderRadius:
+                      const pw.BorderRadius.all(pw.Radius.circular(4)),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Total Hari Kerja: $totalHariKerja hari',
+                        style: pw.TextStyle(
+                            fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                    pw.SizedBox(height: 4),
+                    pw.Text('Total Jam Terlambat: $totalLateFormatted',
+                        style: pw.TextStyle(
+                            fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 20),
+            ];
+          },
+        ),
+      );
+    });
+
+    final bytes = await pdf.save();
+    final uint8List = Uint8List.fromList(bytes);
+    final blob = web.Blob(
+        [uint8List.toJS].toJS, web.BlobPropertyBag(type: 'application/pdf'));
+    final url = web.URL.createObjectURL(blob);
+    final fileName = _selectedEmployee['id'] == 'all'
+        ? "Laporan_Kehadiran_Semua_Karyawan_${DateTime.now().millisecondsSinceEpoch}.pdf"
+        : "Laporan_Kehadiran_${(_selectedEmployee['full_name']).replaceAll(' ', '_')}.pdf";
+    final anchor = web.HTMLAnchorElement()
+      ..href = url
+      ..download = fileName;
+    web.document.body?.append(anchor);
+    anchor.click();
+    anchor.remove();
+    web.URL.revokeObjectURL(url);
+  }
+
+  void _exportAttendanceExcel() {
+    if (_groupedAttendanceData.isEmpty) return;
+
+    var excel = Excel.createExcel();
+    excel.delete('Sheet1');
+
+    _groupedAttendanceData.forEach((empId, rows) {
+      if (rows.isEmpty) return;
+      final firstRow = rows.first;
+      final empName = firstRow['employee_name'] ?? 'Karyawan';
+      String sheetName = empName.replaceAll(RegExp(r'[\/?*\[\]:]'), '_');
+      if (sheetName.length > 31) sheetName = sheetName.substring(0, 31);
+
+      Sheet sheetObject = excel[sheetName];
+      excel.setDefaultSheet(sheetName);
+
+      sheetObject.appendRow([TextCellValue('LAPORAN KEHADIRAN KARYAWAN')]);
+      sheetObject.appendRow([
+        TextCellValue('Nama: $empName'),
+        TextCellValue('NIK: ${firstRow['nik']}'),
+        TextCellValue('Jabatan: ${firstRow['jabatan']}')
+      ]);
+      sheetObject.appendRow([
+        TextCellValue(
+            'Periode: ${DateFormat('dd-MM-yyyy').format(_startDate)} s/d ${DateFormat('dd-MM-yyyy').format(_endDate)}')
+      ]);
+      sheetObject.appendRow([]);
+
+      List<String> headers = [
+        'Hari',
+        'Tanggal',
+        'Jam Kerja',
+        'Jam Check-in',
+        'Jam Check-out',
+        'Kordinat',
+        'Nama Lokasi',
+        'Terlambat',
+        'Aktifitas'
+      ];
+      sheetObject.appendRow(headers.map((e) => TextCellValue(e)).toList());
+
+      int totalHariKerja = 0;
+      int totalDetikTerlambat = 0;
+
+      for (var row in rows) {
+        if (row['status'] == 'Bekerja' ||
+            (row['check_in'] != '-' && row['check_in'] != null)) {
+          totalHariKerja++;
+        }
+        String lateStr = row['late'] ?? '-';
+        if (lateStr != '-' && lateStr != '00:00:00') {
+          List<String> parts = lateStr.split(':');
+          if (parts.length == 3) {
+            int h = int.tryParse(parts[0]) ?? 0;
+            int m = int.tryParse(parts[1]) ?? 0;
+            int s = int.tryParse(parts[2]) ?? 0;
+            totalDetikTerlambat += (h * 3600) + (m * 60) + s;
+          }
+        }
+
+        List<String> rowData = [
+          row['day'] ?? '',
+          row['date'] ?? '',
+          row['work_hours'] ?? '',
+          row['check_in'] ?? '',
+          row['check_out'] ?? '',
+          row['coordinate'] ?? '',
+          row['location'] ?? '',
+          row['late'] ?? '',
+          row['status'] ?? '',
+        ];
+        sheetObject.appendRow(rowData.map((e) => TextCellValue(e)).toList());
+      }
+
+      int th = totalDetikTerlambat ~/ 3600;
+      int tm = (totalDetikTerlambat % 3600) ~/ 60;
+      int ts = totalDetikTerlambat % 60;
+      String totalLateFormatted =
+          '${th.toString().padLeft(2, '0')}:${tm.toString().padLeft(2, '0')}:${ts.toString().padLeft(2, '0')}';
+
+      sheetObject.appendRow([]);
+      sheetObject.appendRow([
+        TextCellValue('Total Hari Kerja:'),
+        TextCellValue('$totalHariKerja hari')
+      ]);
+      sheetObject.appendRow([
+        TextCellValue('Total Jam Terlambat:'),
+        TextCellValue(totalLateFormatted)
+      ]);
+    });
+
+    final fileBytes = excel.save();
+    if (fileBytes != null) {
+      final uint8List = Uint8List.fromList(fileBytes);
+      final blob = web.Blob(
+        [uint8List.toJS].toJS,
+        web.BlobPropertyBag(
+            type:
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+      );
+      final url = web.URL.createObjectURL(blob);
+      final fileName = _selectedEmployee['id'] == 'all'
+          ? "Laporan_Kehadiran_Semua_Karyawan_${DateTime.now().millisecondsSinceEpoch}.xlsx"
+          : "Laporan_Kehadiran_${(_selectedEmployee['full_name']).replaceAll(' ', '_')}.xlsx";
+
+      final anchor = web.HTMLAnchorElement()
+        ..href = url
+        ..download = fileName;
+
+      web.document.body?.append(anchor);
+      anchor.click();
+      anchor.remove();
+      web.URL.revokeObjectURL(url);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Laporan Kehadiran Karyawan',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue[900],
+                ),
+              ),
+              Row(
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _flatAttendanceData.isEmpty
+                        ? null
+                        : _exportAttendanceExcel,
+                    icon: const Icon(Icons.table_view, size: 16),
+                    label: Text('Export Excel', style: TextStyle(fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green[700],
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: _flatAttendanceData.isEmpty
+                        ? null
+                        : _exportAttendancePdf,
+                    icon: const Icon(Icons.picture_as_pdf, size: 16),
+                    label: Text('Export PDF', style: TextStyle(fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red[700],
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // --- FILTER CONTROLS ---
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(color: Colors.grey[300]!),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 260,
+                    child: Autocomplete<Map<String, dynamic>>(
+                      optionsBuilder: (TextEditingValue textEditingValue) {
+                        List<Map<String, dynamic>> allOptions = [
+                          {
+                            'id': 'all',
+                            'full_name': 'Semua Karyawan',
+                            'nik': 'ALL',
+                            'jabatan_name': '-'
+                          }
+                        ];
+                        allOptions.addAll(_employees);
+
+                        if (textEditingValue.text == '') {
+                          return allOptions;
+                        }
+                        return allOptions.where((emp) {
+                          final name =
+                              (emp['full_name'] ?? '').toString().toLowerCase();
+                          final nik =
+                              (emp['nik'] ?? '').toString().toLowerCase();
+                          final query = textEditingValue.text.toLowerCase();
+                          return name.contains(query) || nik.contains(query);
+                        });
+                      },
+                      displayStringForOption: (option) => option['id'] == 'all'
+                          ? 'Semua Karyawan'
+                          : '${option['full_name'] ?? ''} (${option['nik'] ?? '-'})',
+                      onSelected: (selection) {
+                        setState(() {
+                          _selectedEmployee = selection;
+                          _employeeSearchCtrl.text = selection['id'] == 'all'
+                              ? 'Semua Karyawan'
+                              : '${selection['full_name']} (${selection['nik']})';
+                        });
+                        _fetchAttendance();
+                      },
+                      fieldViewBuilder:
+                          (context, controller, focusNode, onFieldSubmitted) {
+                        if (controller.text.isEmpty) {
+                          controller.text = _selectedEmployee['id'] == 'all'
+                              ? 'Semua Karyawan'
+                              : '${_selectedEmployee['full_name']} (${_selectedEmployee['nik']})';
+                        }
+                        return TextField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          style: TextStyle(fontSize: 12),
+                          decoration: InputDecoration(
+                            labelText: 'Cari & Pilih Karyawan',
+                            labelStyle: TextStyle(fontSize: 12),
+                            isDense: true,
+                            prefixIcon:
+                                const Icon(Icons.person_search, size: 18),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: 180,
+                    child: InkWell(
+                      onTap: () => _selectStartDate(context),
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'Tanggal Mulai',
+                          labelStyle: TextStyle(fontSize: 12),
+                          isDense: true,
+                          prefixIcon:
+                              const Icon(Icons.calendar_today, size: 16),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: Text(
+                          DateFormat('dd-MM-yyyy').format(_startDate),
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 180,
+                    child: InkWell(
+                      onTap: () => _selectEndDate(context),
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'Tanggal Selesai',
+                          labelStyle: TextStyle(fontSize: 12),
+                          isDense: true,
+                          prefixIcon:
+                              const Icon(Icons.calendar_today, size: 16),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: Text(
+                          DateFormat('dd-MM-yyyy').format(_endDate),
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: _fetchAttendance,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[800],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 14, horizontal: 20),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: Text('Tampilkan',
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // --- TABLE PREVIEW ---
+          Expanded(
+            child: Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(color: Colors.grey[300]!),
+              ),
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _flatAttendanceData.isEmpty
+                      ? const Center(
+                          child: Text('Tidak ada data kehadiran.',
+                              style: TextStyle(fontSize: 12)))
+                      : SingleChildScrollView(
+                          scrollDirection: Axis.vertical,
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: DataTable(
+                              headingRowColor:
+                                  WidgetStateProperty.all(Colors.blue[50]),
+                              headingTextStyle: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                              dataTextStyle: TextStyle(fontSize: 12),
+                              columns: const [
+                                DataColumn(label: Text('Nama Karyawan')),
+                                DataColumn(label: Text('Hari | Tanggal')),
+                                DataColumn(label: Text('Jam Kerja')),
+                                DataColumn(label: Text('Jam Check-in')),
+                                DataColumn(label: Text('Jam Check-out')),
+                                DataColumn(label: Text('Kordinat')),
+                                DataColumn(label: Text('Nama Lokasi')),
+                                DataColumn(label: Text('Terlambat')),
+                                DataColumn(label: Text('Aktifitas')),
+                              ],
+                              rows: _flatAttendanceData.map((row) {
+                                return DataRow(
+                                  cells: [
+                                    DataCell(Text(row['employee_name'] ?? '-')),
+                                    DataCell(
+                                        Text('${row['day']} | ${row['date']}')),
+                                    DataCell(Text(row['work_hours'] ?? '-')),
+                                    DataCell(Text(row['check_in'] ?? '-')),
+                                    DataCell(Text(row['check_out'] ?? '-')),
+                                    DataCell(Text(row['coordinate'] ?? '-')),
+                                    DataCell(Text(row['location'] ?? '-')),
+                                    DataCell(Text(row['late'] ?? '-')),
+                                    DataCell(Text(row['status'] ?? '-')),
+                                  ],
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

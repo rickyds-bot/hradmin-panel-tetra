@@ -14,6 +14,7 @@ import 'package:camera/camera.dart';
 import 'kamera_absen_page.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'notification_services.dart';
+import 'register_face_page.dart';
 
 // ============================================================================
 // --- 1. CLASS UTAMA (KARYAWAN PAGE) ---
@@ -145,11 +146,9 @@ class _KaryawanPageState extends State<KaryawanPage> {
     // ===================================================================
     // --- LOGIKA ROLE BARU MENGGUNAKAN TEKS ---
     // ===================================================================
-    final String userRole = (userData!['pos_name'] ?? '')
-        .toString()
-        .toLowerCase();
-    final bool isApprover =
-        (userRole.contains('supervisor') ||
+    final String userRole =
+        (userData!['pos_name'] ?? '').toString().toLowerCase();
+    final bool isApprover = (userRole.contains('supervisor') ||
         userRole.contains('manager') ||
         userRole.contains('admin'));
 
@@ -393,22 +392,39 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
     try {
       // 1. Cek Permission Kamera & Lokasi
       var cameraStatus = await Permission.camera.request();
-      if (!cameraStatus.isGranted) {
+      if (!cameraStatus.isGranted)
         throw 'Izin kamera diperlukan untuk absensi.';
-      }
 
       // 2. Ambil Lokasi
       Position currentPos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
+      // --- AMBIL DATA KARYAWAN TERBARU (Termasuk Wajah) ---
       final empData = await Supabase.instance.client
           .from('employees')
-          .select('location_id')
+          .select('location_id, face_embedding, is_face_registered')
           .eq('id', userId)
           .single();
+
       final locId = empData['location_id'];
       if (locId == null) throw 'Lokasi kerja belum diatur.';
+
+      // --- VALIDASI WAJAH SUDAH DAFTAR ATAU BELUM ---
+      if (empData['is_face_registered'] != true ||
+          empData['face_embedding'] == null) {
+        throw 'Anda belum mendaftarkan wajah. Silakan ke menu Profil untuk mendaftar.';
+      }
+
+      // Parse data vektor wajah dari database (JSON string ke List<double>)
+      List<double> registeredFace;
+      try {
+        final decoded = jsonDecode(empData['face_embedding'].toString());
+        registeredFace = List<double>.from(decoded);
+      } catch (e) {
+        throw 'Data wajah korup. Silakan update data wajah di menu Profil.';
+      }
+      // ---------------------------------------------------
 
       final locData = await Supabase.instance.client
           .from('locations')
@@ -423,49 +439,47 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         double.parse(locData['longitude'].toString()),
       );
 
-      if (distance > (locData['radius_meter'] ?? 50))
+      if (distance > (locData['radius_meter'] ?? 50)) {
         throw 'Anda di luar radius (${distance.toStringAsFixed(0)}m).';
+      }
 
-      // 3. Buka Kamera Depan via Kamera Kustom
+      // 3. Buka Kamera Depan
       final cameras = await availableCameras();
       final frontCamera = cameras.firstWhere(
         (cam) => cam.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
       );
 
+      // Buka Halaman Auto-Capture & Face Verification
       final String? photoPath = await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => KameraAbsenPage(camera: frontCamera),
+          builder: (context) => KameraAbsenPage(
+            camera: frontCamera,
+            registeredEmbedding: registeredFace,
+          ),
         ),
       );
 
-      // Jika user membatalkan kamera, hentikan proses
+      // Jika user membatalkan (menekan tombol silang / kembali)
       if (photoPath == null) return;
 
-      // 4. Upload & Insert ke Database
-      // Kita baca file dari path yang dikirim oleh KameraAbsenPage
+      // 4. Upload Foto Bukti & Insert Absen ke Database
       final file = File(photoPath);
       final bytes = await file.readAsBytes();
       final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
-      // --- PROSES KOMPRESI ---
-
       final compressedFile = await FlutterImageCompress.compressWithFile(
         file.absolute.path,
-        minWidth: 800, // Lebar maksimal 800px sudah sangat cukup untuk absensi
+        minWidth: 800,
         minHeight: 800,
-        quality: 40, // Kualitas 40% biasanya menghasilkan < 100KB
+        quality: 40,
       );
 
       if (compressedFile != null) {
-        // Gunakan compressedFile (Uint8List) untuk upload ke Supabase
         await Supabase.instance.client.storage
             .from('attendance_photos')
-            .uploadBinary(
-              fileName,
-              compressedFile,
-            ); // Pakai uploadBinary untuk bytes
+            .uploadBinary(fileName, compressedFile);
 
         final photoUrl = Supabase.instance.client.storage
             .from('attendance_photos')
@@ -477,46 +491,37 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
           'photo_url': photoUrl,
           'latitude': currentPos.latitude,
           'longitude': currentPos.longitude,
-        }).select();
+        });
 
-        await file.delete();
-        _refreshHistory(); // Refresh list riwayat
+        await file.delete(); // Hapus file lokal
+        _refreshHistory();
 
-        // --- LOGIKA SMART CANCEL NOTIFIKASI ---
         try {
-          if (tipe == 'check-in') {
+          if (tipe == 'check-in')
             await NotificationService().onCheckIn();
-          } else if (tipe == 'check-out') {
+          else if (tipe == 'check-out')
             await NotificationService().onCheckOut();
-          }
         } catch (e) {
           debugPrint("Info: Gagal menjalankan notifikasi lokal: $e");
         }
-        // ---------------------------------------------------------
 
         if (!mounted) return;
-
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Berhasil absen!"),
+            content: Text("Berhasil absen dengan verifikasi wajah!"),
             backgroundColor: Colors.green,
           ),
         );
-      } // <--- INI ADALAH PENUTUP DARI if (compressedFile != null)
+      }
     } catch (e) {
-      // <--- DI SINILAH VARIABEL 'e' DIDEFINISIKAN
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
       );
     } finally {
-      // Ini sudah benar
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
-  } // <--- INI ADALAH PENUTUP DARI FUNGSI _absen
+  }
 
   @override
   void dispose() {
@@ -556,99 +561,100 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
   bool _hasNewInfo = false;
 
   Widget _buildHeader() => Container(
-    padding: EdgeInsets.fromLTRB(
-      20,
-      MediaQuery.of(context).padding.top + 15,
-      20,
-      25,
-    ),
-    decoration: BoxDecoration(
-      color: Colors.blue.shade900,
-      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
-    ),
-    child: Row(
-      children: [
-        // 1. Foto Profil
-        CircleAvatar(
-          key: ValueKey(widget.userData['photo_url']),
-          radius: 32,
-          backgroundColor: Colors.white24,
-          backgroundImage: widget.userData['photo_url'] != null
-              ? NetworkImage(widget.userData['photo_url'])
-              : null,
-          child: widget.userData['photo_url'] == null
-              ? const Icon(Icons.person, size: 32, color: Colors.white)
-              : null,
+        padding: EdgeInsets.fromLTRB(
+          20,
+          MediaQuery.of(context).padding.top + 15,
+          20,
+          25,
         ),
-        const SizedBox(width: 15),
-
-        // 2. Kolom Sapaan & Nama
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _dapatkanSapaan(),
-              style: const TextStyle(color: Colors.white70, fontSize: 15),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              widget.userData['full_name'] ?? 'User',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 17,
-              ),
-            ),
-          ],
+        decoration: BoxDecoration(
+          color: Colors.blue.shade900,
+          borderRadius:
+              const BorderRadius.vertical(bottom: Radius.circular(30)),
         ),
-
-        // 3. Ikon Lonceng (Diletakkan di sini agar sejajar di kanan)
-        const Spacer(), // Mendorong ikon ke paling kanan
-        Stack(
-          alignment: Alignment.center,
+        child: Row(
           children: [
-            IconButton(
-              icon: const Icon(
-                Icons.notifications_none_rounded,
-                color: Colors.white,
-                size: 28,
-              ),
-              onPressed: () async {
-                // <--- KATA 'async' DITAMBAHKAN DI SINI
-                setState(() => _hasNewInfo = false);
+            // 1. Foto Profil
+            CircleAvatar(
+              key: ValueKey(widget.userData['photo_url']),
+              radius: 32,
+              backgroundColor: Colors.white24,
+              backgroundImage: widget.userData['photo_url'] != null
+                  ? NetworkImage(widget.userData['photo_url'])
+                  : null,
+              child: widget.userData['photo_url'] == null
+                  ? const Icon(Icons.person, size: 32, color: Colors.white)
+                  : null,
+            ),
+            const SizedBox(width: 15),
 
-                // --- SIMPAN STATUS BACA KE MEMORI HP ---
-                try {
-                  final data = await Supabase.instance.client
-                      .from('announcements')
-                      .select('id')
-                      .eq('is_active', true)
-                      .order('created_at', ascending: false)
-                      .limit(1);
+            // 2. Kolom Sapaan & Nama
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _dapatkanSapaan(),
+                  style: const TextStyle(color: Colors.white70, fontSize: 15),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  widget.userData['full_name'] ?? 'User',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 17,
+                  ),
+                ),
+              ],
+            ),
 
-                  if (data.isNotEmpty) {
-                    SharedPreferences prefs =
-                        await SharedPreferences.getInstance();
-                    await prefs.setInt(
-                      'last_seen_announcement_id',
-                      data[0]['id'],
-                    );
-                  }
-                } catch (e) {
-                  debugPrint("Gagal simpan status baca: $e");
-                }
-                // ---------------------------------------
+            // 3. Ikon Lonceng (Diletakkan di sini agar sejajar di kanan)
+            const Spacer(), // Mendorong ikon ke paling kanan
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.notifications_none_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                  onPressed: () async {
+                    // <--- KATA 'async' DITAMBAHKAN DI SINI
+                    setState(() => _hasNewInfo = false);
 
-                if (!mounted) return;
+                    // --- SIMPAN STATUS BACA KE MEMORI HP ---
+                    try {
+                      final data = await Supabase.instance.client
+                          .from('announcements')
+                          .select('id')
+                          .eq('is_active', true)
+                          .order('created_at', ascending: false)
+                          .limit(1);
 
-                // Animasi Pindah Halaman Geser dari Kanan
-                Navigator.push(
-                  context,
-                  PageRouteBuilder(
-                    pageBuilder: (context, animation, secondaryAnimation) =>
-                        const PengumumanPage(),
-                    transitionsBuilder:
-                        (context, animation, secondaryAnimation, child) {
+                      if (data.isNotEmpty) {
+                        SharedPreferences prefs =
+                            await SharedPreferences.getInstance();
+                        await prefs.setInt(
+                          'last_seen_announcement_id',
+                          data[0]['id'],
+                        );
+                      }
+                    } catch (e) {
+                      debugPrint("Gagal simpan status baca: $e");
+                    }
+                    // ---------------------------------------
+
+                    if (!mounted) return;
+
+                    // Animasi Pindah Halaman Geser dari Kanan
+                    Navigator.push(
+                      context,
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            const PengumumanPage(),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) {
                           const begin = Offset(
                             1.0,
                             0.0,
@@ -664,137 +670,138 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
                             child: child,
                           );
                         },
-                  ),
-                ).then((_) {
-                  // Refresh cek titik merah saat user kembali dari halaman pengumuman
-                  _checkNewAnnouncements();
-                });
-              },
-            ),
-
-            if (_hasNewInfo)
-              Positioned(
-                right: 10,
-                top: 10,
-                child: Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.blue.shade900, width: 1.5),
-                  ),
+                      ),
+                    ).then((_) {
+                      // Refresh cek titik merah saat user kembali dari halaman pengumuman
+                      _checkNewAnnouncements();
+                    });
+                  },
                 ),
-              ),
-          ],
-        ),
-      ],
-    ),
-  );
-
-  Widget _buildQuickMetrics() => Padding(
-    padding: const EdgeInsets.all(16),
-    child: Row(
-      children: [
-        _metricCard("Status", "Aktif", Icons.verified, Colors.green),
-        const SizedBox(width: 10),
-        _metricCard("Waktu", _timeString, Icons.timer, Colors.blue.shade900),
-      ],
-    ),
-  );
-
-  Widget _metricCard(String t, String v, IconData i, Color c) => Expanded(
-    child: Card(
-      child: Padding(
-        padding: const EdgeInsets.all(15),
-        child: Row(
-          children: [
-            Icon(i, color: c),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(t, style: TextStyle(fontSize: 10, color: Colors.grey)),
-                Text(v, style: TextStyle(fontWeight: FontWeight.bold)),
+                if (_hasNewInfo)
+                  Positioned(
+                    right: 10,
+                    top: 10,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                        border:
+                            Border.all(color: Colors.blue.shade900, width: 1.5),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ],
         ),
-      ),
-    ),
-  );
+      );
 
-  Widget _buildMapSection() => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16),
-    child: SizedBox(
-      height: 200,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(15),
-        child: _isLoadingMap
-            ? const Center(child: CircularProgressIndicator())
-            : GoogleMap(
-                initialCameraPosition: CameraPosition(
-                  target: LatLng(
-                    _currentPosition?.latitude ?? -6.2,
-                    _currentPosition?.longitude ?? 106.8,
-                  ),
-                  zoom: 16,
+  Widget _buildQuickMetrics() => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            _metricCard("Status", "Aktif", Icons.verified, Colors.green),
+            const SizedBox(width: 10),
+            _metricCard(
+                "Waktu", _timeString, Icons.timer, Colors.blue.shade900),
+          ],
+        ),
+      );
+
+  Widget _metricCard(String t, String v, IconData i, Color c) => Expanded(
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(15),
+            child: Row(
+              children: [
+                Icon(i, color: c),
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(t, style: TextStyle(fontSize: 10, color: Colors.grey)),
+                    Text(v, style: TextStyle(fontWeight: FontWeight.bold)),
+                  ],
                 ),
-                markers: _markers,
-              ),
-      ),
-    ),
-  );
-
-  Widget _buildActionButtons() => Padding(
-    padding: const EdgeInsets.all(16),
-    child: Column(
-      children: [
-        // --- Instruksi Manual ---
-        const Padding(
-          padding: EdgeInsets.only(bottom: 10),
-          child: Text(
-            "*Check-In/Check-Out hanya dapat dilakukan di lokasi kerja yang telah ditentukan & wajib swafoto.",
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.black,
-              //fontStyle: FontStyle.italic,
+              ],
             ),
-            textAlign: TextAlign.center,
           ),
         ),
-        _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _absen(context, 'check-in'),
-                      icon: const Icon(Icons.login),
-                      label: const Text("Check-In"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
+      );
+
+  Widget _buildMapSection() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SizedBox(
+          height: 200,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(15),
+            child: _isLoadingMap
+                ? const Center(child: CircularProgressIndicator())
+                : GoogleMap(
+                    initialCameraPosition: CameraPosition(
+                      target: LatLng(
+                        _currentPosition?.latitude ?? -6.2,
+                        _currentPosition?.longitude ?? 106.8,
                       ),
+                      zoom: 16,
                     ),
+                    markers: _markers,
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _absen(context, 'check-out'),
-                      icon: const Icon(Icons.logout),
-                      label: const Text("Check-Out"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
+          ),
+        ),
+      );
+
+  Widget _buildActionButtons() => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // --- Instruksi Manual ---
+            const Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child: Text(
+                "*Check-In/Check-Out hanya dapat dilakukan di lokasi kerja yang telah ditentukan & wajib daftar pengenalan wajah.",
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.black,
+                  //fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
               ),
-      ],
-    ),
-  );
+            ),
+            _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _absen(context, 'check-in'),
+                          icon: const Icon(Icons.login),
+                          label: const Text("Check-In"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _absen(context, 'check-out'),
+                          icon: const Icon(Icons.logout),
+                          label: const Text("Check-Out"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+          ],
+        ),
+      );
 
   Widget _buildHistoryList() {
     if (userUuid == null)
@@ -934,17 +941,14 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
             );
 
             // Update database Supabase secara otomatis
-            await Supabase.instance.client
-                .from('leave_balance')
-                .update({
-                  'total_leave': 12,
-                  'used_leave': 0,
-                  'remaining_leave': 12,
-                  'next_reset_date': DateFormat(
-                    'yyyy-MM-dd',
-                  ).format(newResetDate),
-                })
-                .eq('user_id', userUuid);
+            await Supabase.instance.client.from('leave_balance').update({
+              'total_leave': 12,
+              'used_leave': 0,
+              'remaining_leave': 12,
+              'next_reset_date': DateFormat(
+                'yyyy-MM-dd',
+              ).format(newResetDate),
+            }).eq('user_id', userUuid);
 
             // Perbarui UI ke angka jatah penuh
             setState(() {
@@ -1048,6 +1052,25 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
         final fileExt = _lampiran!.name.split('.').last;
         final fileName =
             '${widget.userData['id']}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+
+        final compressedBytes = await FlutterImageCompress.compressWithFile(
+          _lampiran!.path,
+          minWidth: 800, // Lebar standar yang masih jelas terbaca
+          minHeight: 800,
+          quality: 50, // Kualitas diturunkan ke 50% untuk menghemat ukuran
+        );
+
+        if (compressedBytes != null) {
+          // Upload menggunakan file yang sudah dikompres (compressedBytes)
+          await Supabase.instance.client.storage
+              .from('medical_document')
+              .uploadBinary(fileName, compressedBytes);
+
+          attachmentUrl = Supabase.instance.client.storage
+              .from('medical_document')
+              .getPublicUrl(fileName);
+        }
+        // --- AKHIR PENAMBAHAN KOMPRESI ---
 
         await Supabase.instance.client.storage
             .from('medical_document')
@@ -1225,9 +1248,8 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                   DropdownButtonFormField<String>(
                     value: _selectedLeaveType,
                     decoration: InputDecoration(
-                      labelText: _mode == 'Cuti'
-                          ? "Jenis Cuti"
-                          : "Kategori Izin",
+                      labelText:
+                          _mode == 'Cuti' ? "Jenis Cuti" : "Kategori Izin",
                       border: const OutlineInputBorder(),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 12,
@@ -1390,9 +1412,8 @@ class _RiwayatCutiListState extends State<RiwayatCutiList> {
   String _formatTanggalCantik(String? tgl) {
     if (tgl == null || tgl == '-' || tgl == 'null') return '-';
     try {
-      String datePart = tgl.contains('T')
-          ? tgl.split('T')[0]
-          : tgl.split(' ')[0];
+      String datePart =
+          tgl.contains('T') ? tgl.split('T')[0] : tgl.split(' ')[0];
       DateTime dt = DateTime.parse(datePart);
       return DateFormat('dd-MM-yyyy', 'id_ID').format(dt);
     } catch (e) {
@@ -1648,7 +1669,6 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const SizedBox(height: 15),
-
                   ElevatedButton.icon(
                     onPressed: _pickDate,
                     icon: const Icon(Icons.calendar_today),
@@ -1668,7 +1688,6 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
                     ),
                   ),
                   const SizedBox(height: 15),
-
                   Row(
                     children: [
                       Expanded(
@@ -1707,7 +1726,6 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
                     ],
                   ),
                   const SizedBox(height: 15),
-
                   TextField(
                     controller: _reasonCtrl,
                     decoration: const InputDecoration(
@@ -1721,7 +1739,6 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
                     maxLines: 2,
                   ),
                   const SizedBox(height: 15),
-
                   SizedBox(
                     width: double.infinity,
                     child: _isSubmitting
@@ -1791,9 +1808,8 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
   String _formatTanggalCantik(String? tgl) {
     if (tgl == null || tgl == '-' || tgl == 'null') return '-';
     try {
-      String datePart = tgl.contains('T')
-          ? tgl.split('T')[0]
-          : tgl.split(' ')[0];
+      String datePart =
+          tgl.contains('T') ? tgl.split('T')[0] : tgl.split(' ')[0];
       DateTime dt = DateTime.parse(datePart);
       return DateFormat('dd-MM-yyyy', 'id_ID').format(dt);
     } catch (e) {
@@ -1967,9 +1983,8 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
   String _formatTanggalCantik(String? tgl) {
     if (tgl == null || tgl == '-' || tgl == 'null') return '-';
     try {
-      String datePart = tgl.contains('T')
-          ? tgl.split('T')[0]
-          : tgl.split(' ')[0];
+      String datePart =
+          tgl.contains('T') ? tgl.split('T')[0] : tgl.split(' ')[0];
       DateTime dt = DateTime.parse(datePart);
       return DateFormat('dd-MM-yyyy', 'id_ID').format(dt);
     } catch (e) {
@@ -2089,8 +2104,7 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
     try {
       await Supabase.instance.client
           .from('leave_requests')
-          .update({'status': newStatus})
-          .eq('id', id);
+          .update({'status': newStatus}).eq('id', id);
 
       if (newStatus == 'approved' && userId != null) {
         DateTime start = DateTime.parse(startDate);
@@ -2112,13 +2126,10 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
         } else {
           int currentUsed = balanceData['used_leave'] ?? 0;
           int currentRemaining = balanceData['remaining_leave'] ?? 0;
-          await Supabase.instance.client
-              .from('leave_balance')
-              .update({
-                'used_leave': currentUsed + durasi,
-                'remaining_leave': currentRemaining - durasi,
-              })
-              .eq('user_id', userId);
+          await Supabase.instance.client.from('leave_balance').update({
+            'used_leave': currentUsed + durasi,
+            'remaining_leave': currentRemaining - durasi,
+          }).eq('user_id', userId);
         }
       }
       setState(() {});
@@ -2139,10 +2150,8 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
     double durasi,
   ) async {
     try {
-      await Supabase.instance.client
-          .from('overtime_requests')
-          .update({'status': newStatus, 'approved_by': widget.managerId})
-          .eq('id', id);
+      await Supabase.instance.client.from('overtime_requests').update(
+          {'status': newStatus, 'approved_by': widget.managerId}).eq('id', id);
 
       if (newStatus == 'approved' && employeeId != null) {
         final empData = await Supabase.instance.client
@@ -2155,8 +2164,8 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
         );
         await Supabase.instance.client
             .from('employees')
-            .update({'total_overtime_hours': currentTotal + durasi})
-            .eq('id', employeeId);
+            .update({'total_overtime_hours': currentTotal + durasi}).eq(
+                'id', employeeId);
       }
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2192,9 +2201,8 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
           itemBuilder: (context, index) {
             final row = list[index];
             final empName = row['full_name'] ?? 'Karyawan';
-            final rawStatus = (row['status'] ?? 'pending')
-                .toString()
-                .toLowerCase();
+            final rawStatus =
+                (row['status'] ?? 'pending').toString().toLowerCase();
 
             Color statusColor = Colors.orange;
             String statusText = "PENDING";
@@ -2363,9 +2371,8 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
           itemBuilder: (context, index) {
             final row = listLembur[index];
             final empName = row['full_name'] ?? 'Karyawan';
-            final rawStatus = (row['status'] ?? 'pending')
-                .toString()
-                .toLowerCase();
+            final rawStatus =
+                (row['status'] ?? 'pending').toString().toLowerCase();
 
             Color statusColor = Colors.orange;
             String statusText = "PENDING";
@@ -2777,16 +2784,14 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
 
       await Future.delayed(const Duration(milliseconds: 2000));
 
-      final imageUrl =
-          Supabase.instance.client.storage
+      final imageUrl = Supabase.instance.client.storage
               .from('profile_photos')
               .getPublicUrl(fileName) +
           "?v=${DateTime.now().millisecondsSinceEpoch}";
 
       await Supabase.instance.client
           .from('employees')
-          .update({'photo_url': imageUrl})
-          .eq('id', widget.userData['id']);
+          .update({'photo_url': imageUrl}).eq('id', widget.userData['id']);
 
       setState(() {
         _profileImageUrl = imageUrl;
@@ -2829,30 +2834,27 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
           )
           .toList();
 
-      await Supabase.instance.client
-          .from('employees')
-          .update({
-            'full_name': _nameCtrl.text,
-            'birth_place': _birthPlaceCtrl.text,
-            'birth_date': _birthDate != null
-                ? DateFormat('dd-MM-yyyy').format(_birthDate!)
-                : null,
-            'religion': _selectedReligion,
-            'marital_status': _selectedStatus,
-            'ktp_number': _ktpCtrl.text,
-            'npwp_number': _npwpCtrl.text,
-            'address_ktp': _addrKtpCtrl.text,
-            'address_now': _addrNowCtrl.text,
-            'phone': _phoneCtrl.text,
-            'education':
-                _selectedEducation, // Menyimpan pilihan Dropdown Pendidikan
-            'spouse_name': _spouseCtrl.text,
-            'spouse_birth_date': _spouseBirthCtrl.text,
-            'children_data': childrenJson,
-            'emergency_name': _emerNameCtrl.text,
-            'emergency_phone': _emerPhoneCtrl.text,
-          })
-          .eq('id', widget.userData['id']);
+      await Supabase.instance.client.from('employees').update({
+        'full_name': _nameCtrl.text,
+        'birth_place': _birthPlaceCtrl.text,
+        'birth_date': _birthDate != null
+            ? DateFormat('dd-MM-yyyy').format(_birthDate!)
+            : null,
+        'religion': _selectedReligion,
+        'marital_status': _selectedStatus,
+        'ktp_number': _ktpCtrl.text,
+        'npwp_number': _npwpCtrl.text,
+        'address_ktp': _addrKtpCtrl.text,
+        'address_now': _addrNowCtrl.text,
+        'phone': _phoneCtrl.text,
+        'education':
+            _selectedEducation, // Menyimpan pilihan Dropdown Pendidikan
+        'spouse_name': _spouseCtrl.text,
+        'spouse_birth_date': _spouseBirthCtrl.text,
+        'children_data': childrenJson,
+        'emergency_name': _emerNameCtrl.text,
+        'emergency_phone': _emerPhoneCtrl.text,
+      }).eq('id', widget.userData['id']);
 
       // Kunci kembali form setelah berhasil disimpan
       setState(() {
@@ -3066,7 +3068,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                               const Positioned.fill(
                                 child: CircularProgressIndicator(),
                               ),
-
                             Positioned(
                               bottom: 0,
                               right: 0,
@@ -3119,7 +3120,8 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                             String divisi =
                                 widget.userData['dept_name']?.toString() ?? '-';
                             String jabatan =
-                                widget.userData['pos_name']?.toString() ?? '-';
+                                widget.userData['jabatan_name']?.toString() ??
+                                    '-';
 
                             // 2. Format Join Date
                             String rawJoinDate =
@@ -3189,7 +3191,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                     child: Column(
                                       children: [
                                         Text(
-                                          "Role",
+                                          "Jabatan",
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: Colors.grey.shade500,
@@ -3370,7 +3372,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                             ),
                           ),
                           const SizedBox(height: 8),
-
                           if (!_isEditing && _childrenInputs.isEmpty)
                             const Align(
                               alignment: Alignment.centerLeft,
@@ -3382,7 +3383,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                 ),
                               ),
                             ),
-
                           ...List.generate(_childrenInputs.length, (index) {
                             return Card(
                               color: Colors.grey.shade50,
@@ -3431,10 +3431,8 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                         );
                                         if (picked != null)
                                           setState(
-                                            () =>
-                                                _childrenInputs[index]
-                                                        .birthDate =
-                                                    picked,
+                                            () => _childrenInputs[index]
+                                                .birthDate = picked,
                                           );
                                       },
                                     ),
@@ -3484,6 +3482,89 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                   ),
                 ),
                 const SizedBox(height: 20),
+
+                // ==========================================================
+                // --- TAMBAHAN BARU: MENU DAFTARKAN WAJAH ---
+                // ==========================================================
+                if (!_isEditing)
+                  Builder(builder: (context) {
+                    bool isFaceRegistered =
+                        widget.userData['is_face_registered'] == true;
+
+                    return Card(
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: ListTile(
+                        leading: Icon(
+                          isFaceRegistered
+                              ? Icons.face_retouching_natural
+                              : Icons.face,
+                          color:
+                              isFaceRegistered ? Colors.green : Colors.orange,
+                        ),
+                        title: Text(
+                          isFaceRegistered
+                              ? "Update Data Wajah"
+                              : "Daftarkan Wajah (Wajib)",
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: isFaceRegistered
+                                ? Colors.green
+                                : Colors.orange.shade900,
+                          ),
+                        ),
+                        subtitle: isFaceRegistered
+                            ? const Text("Data wajah sudah tersimpan",
+                                style:
+                                    TextStyle(fontSize: 10, color: Colors.grey))
+                            : const Text(
+                                "Daftarkan wajah untuk keperluan absensi",
+                                style:
+                                    TextStyle(fontSize: 10, color: Colors.red)),
+                        trailing:
+                            const Icon(Icons.chevron_right, color: Colors.grey),
+                        onTap: () async {
+                          // 1. Cek Permission Kamera
+                          var cameraStatus = await Permission.camera.request();
+                          if (!cameraStatus.isGranted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text('Izin kamera diperlukan!')));
+                            return;
+                          }
+
+                          // 2. Buka Kamera Depan
+                          final cameras = await availableCameras();
+                          final frontCamera = cameras.firstWhere(
+                            (cam) =>
+                                cam.lensDirection == CameraLensDirection.front,
+                            orElse: () => cameras.first,
+                          );
+
+                          // 3. Buka Halaman RegisterFacePage menggunakan Navigator.push
+                          final bool? isRegistered = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  RegisterFacePage(camera: frontCamera),
+                            ),
+                          );
+
+                          // 4. Jika sukses daftar, refresh data profil
+                          if (isRegistered == true) {
+                            setState(() {}); // Refresh UI state lokal
+                            widget
+                                .onProfileUpdated(); // Memanggil fungsi update bawaan widget
+                          }
+                        },
+                      ),
+                    );
+                  }),
+
+                if (!_isEditing) const SizedBox(height: 10),
 
                 // --- BAGIAN UBAH PASSWORD (Hanya Tampil Saat Read-Only) ---
                 if (!_isEditing)
@@ -3716,9 +3797,8 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
     DateTime? date,
     VoidCallback onTap,
   ) {
-    String dateStr = date != null
-        ? DateFormat('dd MMM yyyy').format(date)
-        : "-";
+    String dateStr =
+        date != null ? DateFormat('dd MMM yyyy').format(date) : "-";
     if (!_isEditing) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
