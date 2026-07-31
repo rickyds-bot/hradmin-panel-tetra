@@ -710,20 +710,20 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                                             GoogleFonts.plusJakartaSans(
                                                 fontSize: 12),
                                         columns: const [
-                                          DataColumn(label: Text('NO')),
-                                          DataColumn(label: Text('HARI')),
-                                          DataColumn(label: Text('TANGGAL')),
+                                          DataColumn(label: Text('No')),
+                                          DataColumn(label: Text('Hari')),
+                                          DataColumn(label: Text('Tanggal')),
                                           DataColumn(
-                                              label: Text('NAMA KARYAWAN')),
+                                              label: Text('Nama Karyawan')),
                                           DataColumn(
-                                              label: Text('PEKERJAAN LEMBUR')),
-                                          DataColumn(label: Text('JAM MULAI')),
+                                              label: Text('Pekerjaan Lembur')),
+                                          DataColumn(label: Text('Jam Mulai')),
                                           DataColumn(
-                                              label: Text('JAM SELESAI')),
-                                          DataColumn(label: Text('TOTAL JAM')),
-                                          DataColumn(label: Text('STATUS')),
+                                              label: Text('Jam Selesai')),
+                                          DataColumn(label: Text('Total Jam')),
+                                          DataColumn(label: Text('Status')),
                                           DataColumn(
-                                              label: Text('APPROVED BY')),
+                                              label: Text('Approved By')),
                                         ],
                                         rows: List<DataRow>.generate(
                                             _laporanList.length, (index) {

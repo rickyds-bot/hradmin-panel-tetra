@@ -729,7 +729,7 @@ class _DetailLaporanKaryawanDialogState
                               fontSize: 16,
                               fontWeight: pw.FontWeight.bold,
                               color: PdfColors.blue900)),
-                      pw.Text('FORMULIR BIODATA KARYAWAN',
+                      pw.Text('Biodata Karyawan',
                           style: const pw.TextStyle(
                               fontSize: 10, color: PdfColors.grey700)),
                     ],

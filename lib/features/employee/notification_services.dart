@@ -1,8 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/timezone.dart' as tz;
-import 'package:timezone/data/latest_all.dart'
-    as tzData; // <-- Alias dibedakan agar tidak bentrok
+import 'package:timezone/data/latest_all.dart' as tzData;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -18,7 +17,7 @@ class NotificationService {
 
   Future<void> initialize() async {
     try {
-      tzData.initializeTimeZones(); // Menggunakan alias yang benar
+      tzData.initializeTimeZones();
       try {
         tz.setLocalLocation(tz.getLocation('Asia/Jakarta'));
       } catch (_) {
@@ -47,7 +46,6 @@ class NotificationService {
           flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
 
-      // Plugin sudah mengurus izin exact alarm secara native, tidak perlu via permission_handler lagi
       await androidPlugin?.requestNotificationsPermission();
       await androidPlugin?.requestExactAlarmsPermission();
 
@@ -188,21 +186,13 @@ class NotificationService {
     }
   }
 
-  // LOGIKA BARU: Menerima status apakah hari ini sudah absen
+  // LOGIKA BARU: Hanya jam 08:30 (Check-in) dan jam 17:30 (Check-out)
   Future<void> setupAbsensiNotifications(
       {bool skipMorning = false, bool skipEvening = false}) async {
     for (int i = 1; i <= 5; i++) {
       bool isToday = DateTime.now().weekday == i;
 
-      await _scheduleWeekly(
-        100 + i,
-        i,
-        8,
-        15,
-        "Siap-siap Check-in!",
-        "15 Menit lagi waktu check-in dimulai. Yuk bersiap!",
-        skipToday: skipMorning && isToday,
-      );
+      // 1. Pengingat Check-in (Jam 08:30)
       await _scheduleWeekly(
         200 + i,
         i,
@@ -212,15 +202,8 @@ class NotificationService {
         "Sudah jam 08:30, jangan lupa absen pagi sekarang!",
         skipToday: skipMorning && isToday,
       );
-      await _scheduleWeekly(
-        300 + i,
-        i,
-        17,
-        15,
-        "Siap-siap Check-out!",
-        "15 Menit lagi waktu check-out. Rapikan pekerjaanmu!",
-        skipToday: skipEvening && isToday,
-      );
+
+      // 2. Pengingat Check-out (Jam 17:30)
       await _scheduleWeekly(
         400 + i,
         i,
@@ -237,15 +220,6 @@ class NotificationService {
     int hariIni = DateTime.now().weekday;
     if (hariIni >= 1 && hariIni <= 5) {
       await _scheduleWeekly(
-        100 + hariIni,
-        hariIni,
-        8,
-        15,
-        "Siap-siap Check-in!",
-        "15 Menit lagi waktu check-in. Yuk bersiap!",
-        skipToday: true,
-      );
-      await _scheduleWeekly(
         200 + hariIni,
         hariIni,
         8,
@@ -260,15 +234,6 @@ class NotificationService {
   Future<void> onCheckOut() async {
     int hariIni = DateTime.now().weekday;
     if (hariIni >= 1 && hariIni <= 5) {
-      await _scheduleWeekly(
-        300 + hariIni,
-        hariIni,
-        17,
-        15,
-        "Siap-siap Check-out!",
-        "15 Menit lagi waktu check-out. Rapikan pekerjaanmu!",
-        skipToday: true,
-      );
       await _scheduleWeekly(
         400 + hariIni,
         hariIni,

@@ -190,14 +190,14 @@ class _LaporanCutiPageState extends State<LaporanCutiPage> {
 
     // Header Tabel
     sheet.appendRow([
-      excel_lib.TextCellValue('NO'),
-      excel_lib.TextCellValue('JENIS CUTI'),
-      excel_lib.TextCellValue('TANGGAL MULAI'),
-      excel_lib.TextCellValue('TANGGAL SELESAI'),
-      excel_lib.TextCellValue('NAMA KARYAWAN'),
-      excel_lib.TextCellValue('ALASAN'),
-      excel_lib.TextCellValue('STATUS'),
-      excel_lib.TextCellValue('APPROVED BY'),
+      excel_lib.TextCellValue('No'),
+      excel_lib.TextCellValue('Jenis Cuti'),
+      excel_lib.TextCellValue('Tanggal Mulai'),
+      excel_lib.TextCellValue('Tanggal Selesai'),
+      excel_lib.TextCellValue('Nama Karyawan'),
+      excel_lib.TextCellValue('Alasan'),
+      excel_lib.TextCellValue('Status'),
+      excel_lib.TextCellValue('Approved By'),
     ]);
 
     int no = 1;
