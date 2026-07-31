@@ -14,6 +14,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   int _totalKaryawan = 0;
   int _totalLakiLaki = 0;
   int _totalPerempuan = 0;
+  int _totalTetap = 0;
+  int _totalKontrak = 0;
+  int _totalMagang = 0;
   int _totalHadirHariIni = 0;
   int _totalCutiHariIni = 0;
   int _totalPendingLembur = 0;
@@ -27,18 +30,22 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   Future<void> _fetchDashboardStats() async {
     setState(() => _isLoading = true);
     try {
-      // 1. Ambil data karyawan (untuk total & jenis kelamin)
+      // 1. Ambil data karyawan (untuk total, jenis kelamin, dan status kerja)
       final karyawanRes = await Supabase.instance.client
           .from('employees')
-          .select('id, gender'); // Pastikan kolom gender ada di tabel employees
+          .select('id, gender, employee_status');
 
       _totalKaryawan = karyawanRes.length;
 
       int l = 0;
       int p = 0;
+      int tetap = 0;
+      int kontrak = 0;
+      int magang = 0;
+
       for (var emp in karyawanRes) {
+        // Hitung Gender
         final gender = (emp['gender'] ?? '').toString().trim().toLowerCase();
-        // Menyesuaikan dengan isian gender di database (misal: 'l', 'laki-laki', 'male' / 'p', 'perempuan', 'female')
         if (gender == 'l' || gender == 'laki-laki' || gender == 'male') {
           l++;
         } else if (gender == 'p' ||
@@ -46,9 +53,24 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             gender == 'female') {
           p++;
         }
+
+        // Hitung Status Kerja (Tetap, Kontrak, Magang)
+        final empStatus =
+            (emp['employee_status'] ?? '').toString().trim().toLowerCase();
+        if (empStatus == 'tetap') {
+          tetap++;
+        } else if (empStatus == 'kontrak') {
+          kontrak++;
+        } else if (empStatus == 'magang') {
+          magang++;
+        }
       }
+
       _totalLakiLaki = l;
       _totalPerempuan = p;
+      _totalTetap = tetap;
+      _totalKontrak = kontrak;
+      _totalMagang = magang;
 
       // 2. Absen Hari Ini (Check-In)
       final todayStr = DateTime.now().toIso8601String().split('T')[0];
@@ -132,6 +154,30 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                           width,
                         ),
                         _buildStatCard(
+                          'Karyawan Tetap',
+                          _totalTetap.toString(),
+                          'Status: Tetap',
+                          Icons.verified_user_outlined,
+                          Colors.indigo,
+                          width,
+                        ),
+                        _buildStatCard(
+                          'Karyawan Kontrak',
+                          _totalKontrak.toString(),
+                          'Status: Kontrak',
+                          Icons.assignment_ind_outlined,
+                          Colors.teal,
+                          width,
+                        ),
+                        _buildStatCard(
+                          'Karyawan Magang',
+                          _totalMagang.toString(),
+                          'Status: Magang',
+                          Icons.school_outlined,
+                          Colors.brown,
+                          width,
+                        ),
+                        _buildStatCard(
                           'Hadir Hari Ini',
                           _totalHadirHariIni.toString(),
                           'Tercatat masuk sistem',
@@ -175,13 +221,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          /* Text(
-                            'Selamat Datang di HR Admin Panel',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ), */
                           IconButton(
                             icon: const Icon(Icons.refresh, size: 18),
                             onPressed: _fetchDashboardStats,
@@ -189,15 +228,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                           ),
                         ],
                       ),
-                      /* const SizedBox(height: 8),
-                      Text(
-                        'Gunakan menu navigasi di sebelah kiri untuk mengelola data karyawan, memantau absensi real-time, memproses cuti, lembur, serta melihat laporan berkala.',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          color: Colors.grey[700],
-                          height: 1.5,
-                        ),
-                      ), */
                     ],
                   ),
                 ),

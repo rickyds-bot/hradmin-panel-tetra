@@ -36,6 +36,8 @@ dependencies:
   image: ^4.1.7
   vibration: ^3.2.0
   web: ^1.1.1
+  file_picker: ^3.0.4
+  printing: ^5.11.0
 
 dev_dependencies:
   flutter_test:

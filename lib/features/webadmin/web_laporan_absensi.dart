@@ -38,6 +38,9 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
   Map<String, List<Map<String, dynamic>>> _groupedAttendanceData = {};
   List<Map<String, dynamic>> _flatAttendanceData = [];
 
+  // Map untuk menyimpan data cuti/izin yang sudah disetujui per karyawan
+  final Map<int, List<Map<String, DateTime>>> _approvedLeaves = {};
+
   @override
   void initState() {
     super.initState();
@@ -85,6 +88,26 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       DateTime endUtc =
           DateTime(_endDate.year, _endDate.month, _endDate.day, 23, 59, 59)
               .toUtc();
+
+      // Ambil data cuti/izin yang approved untuk pengecekan notes
+      final leaveResponse = await Supabase.instance.client
+          .from('leave_requests')
+          .select('employee_id, start_date, end_date')
+          .eq('status', 'approved');
+
+      _approvedLeaves.clear();
+      for (var l in leaveResponse) {
+        int? eId = int.tryParse(l['employee_id']?.toString() ?? '');
+        if (eId != null && l['start_date'] != null && l['end_date'] != null) {
+          try {
+            DateTime s = DateTime.parse(l['start_date']);
+            DateTime e = DateTime.parse(l['end_date']);
+            _approvedLeaves
+                .putIfAbsent(eId, () => [])
+                .add({'start': s, 'end': e});
+          } catch (_) {}
+        }
+      }
 
       var query = Supabase.instance.client.from('attendance').select('*');
 
@@ -171,7 +194,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     }
 
     for (var emp in targetEmployees) {
-      final empId = emp['id'].toString();
+      final empIdStr = emp['id'].toString();
+      final int? empIdInt = int.tryParse(empIdStr);
       final empName = emp['full_name'] ?? 'Karyawan';
       final empNik = emp['nik']?.toString() ?? '-';
       final empJabatan = emp['jabatan_name'] ?? '-';
@@ -186,7 +210,24 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         bool isWeekend = curr.weekday == DateTime.saturday ||
             curr.weekday == DateTime.sunday;
 
-        var punches = empDatePunches[empId]?[dateKey];
+        // Cek status Cuti/Izin pada tanggal ini
+        bool isLeave = false;
+        if (empIdInt != null && _approvedLeaves.containsKey(empIdInt)) {
+          DateTime dateOnly = DateTime(curr.year, curr.month, curr.day);
+          for (var range in _approvedLeaves[empIdInt]!) {
+            DateTime s = DateTime(range['start']!.year, range['start']!.month,
+                range['start']!.day);
+            DateTime e = DateTime(
+                range['end']!.year, range['end']!.month, range['end']!.day);
+            if ((dateOnly.isAtSameMomentAs(s) || dateOnly.isAfter(s)) &&
+                (dateOnly.isAtSameMomentAs(e) || dateOnly.isBefore(e))) {
+              isLeave = true;
+              break;
+            }
+          }
+        }
+
+        var punches = empDatePunches[empIdStr]?[dateKey];
 
         if (punches != null && punches.isNotEmpty) {
           punches.sort((a, b) => DateTime.parse(a['created_at'])
@@ -208,6 +249,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
               : '-';
 
           String lateStr = '-';
+          // Batas jam masuk normal 08:30 (atau sesuaikan, telat jika di atas 09:30 sesuai permintaan)
           DateTime limitTime = DateTime(
               checkInDt.year, checkInDt.month, checkInDt.day, 8, 30, 0);
           if (checkInDt.isAfter(limitTime)) {
@@ -221,8 +263,18 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             lateStr = '00:00:00';
           }
 
-          bool isComplete = (checkOutDt != null);
-          String status = isComplete ? 'Bekerja' : '-';
+          String aktifitas = 'Bekerja';
+          String notes = '-';
+
+          if (isLeave) {
+            notes = 'Cuti/Izin';
+          } else {
+            // Cek jika check-in di atas jam 09:30
+            if (checkInDt.hour > 9 ||
+                (checkInDt.hour == 9 && checkInDt.minute > 30)) {
+              notes = 'Terlambat';
+            }
+          }
 
           String coordinate =
               '${firstPunch['latitude'] ?? '-'}, ${firstPunch['longitude'] ?? '-'}';
@@ -231,7 +283,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
               firstPunch['latitude'], firstPunch['longitude']);
 
           var row = {
-            'employee_id': empId,
+            'employee_id': empIdStr,
             'employee_name': empName,
             'nik': empNik,
             'jabatan': empJabatan,
@@ -243,13 +295,19 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'coordinate': coordinate,
             'location': locationName,
             'late': lateStr,
-            'status': status,
+            'aktifitas': aktifitas,
+            'notes': notes,
           };
           empRows.add(row);
           flat.add(row);
         } else {
+          String notes = '-';
+          if (isLeave) {
+            notes = 'Cuti/Izin';
+          }
+
           var row = {
-            'employee_id': empId,
+            'employee_id': empIdStr,
             'employee_name': empName,
             'nik': empNik,
             'jabatan': empJabatan,
@@ -261,7 +319,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'coordinate': '-',
             'location': '-',
             'late': '-',
-            'status': isWeekend ? 'Libur' : 'Alpa',
+            'aktifitas': isWeekend ? 'Libur' : (isLeave ? 'Cuti/Izin' : 'Alpa'),
+            'notes': notes,
           };
           empRows.add(row);
           flat.add(row);
@@ -270,7 +329,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         curr = curr.add(const Duration(days: 1));
       }
 
-      grouped[empId] = empRows;
+      grouped[empIdStr] = empRows;
     }
 
     setState(() {
@@ -326,7 +385,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       'Kordinat',
       'Nama Lokasi',
       'Terlambat',
-      'Aktifitas'
+      'Aktifitas',
+      'Notes'
     ];
 
     _groupedAttendanceData.forEach((empId, rows) {
@@ -340,7 +400,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       int totalDetikTerlambat = 0;
 
       final pdfData = rows.map((row) {
-        if (row['status'] == 'Bekerja' ||
+        if (row['aktifitas'] == 'Bekerja' ||
             (row['check_in'] != '-' && row['check_in'] != null)) {
           totalHariKerja++;
         }
@@ -363,7 +423,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           row['coordinate'] ?? '-',
           row['location'] ?? '-',
           row['late'] ?? '-',
-          row['status'] ?? '-',
+          row['aktifitas'] ?? '-',
+          row['notes'] ?? '-',
         ];
       }).toList();
 
@@ -508,7 +569,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         'Kordinat',
         'Nama Lokasi',
         'Terlambat',
-        'Aktifitas'
+        'Aktifitas',
+        'Notes'
       ];
       sheetObject.appendRow(headers.map((e) => TextCellValue(e)).toList());
 
@@ -516,7 +578,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       int totalDetikTerlambat = 0;
 
       for (var row in rows) {
-        if (row['status'] == 'Bekerja' ||
+        if (row['aktifitas'] == 'Bekerja' ||
             (row['check_in'] != '-' && row['check_in'] != null)) {
           totalHariKerja++;
         }
@@ -540,7 +602,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           row['coordinate'] ?? '',
           row['location'] ?? '',
           row['late'] ?? '',
-          row['status'] ?? '',
+          row['aktifitas'] ?? '',
+          row['notes'] ?? '',
         ];
         sheetObject.appendRow(rowData.map((e) => TextCellValue(e)).toList());
       }
@@ -811,6 +874,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                                 DataColumn(label: Text('Nama Lokasi')),
                                 DataColumn(label: Text('Terlambat')),
                                 DataColumn(label: Text('Aktifitas')),
+                                DataColumn(label: Text('Notes')),
                               ],
                               rows: _flatAttendanceData.map((row) {
                                 return DataRow(
@@ -824,7 +888,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                                     DataCell(Text(row['coordinate'] ?? '-')),
                                     DataCell(Text(row['location'] ?? '-')),
                                     DataCell(Text(row['late'] ?? '-')),
-                                    DataCell(Text(row['status'] ?? '-')),
+                                    DataCell(Text(row['aktifitas'] ?? '-')),
+                                    DataCell(Text(row['notes'] ?? '-')),
                                   ],
                                 );
                               }).toList(),

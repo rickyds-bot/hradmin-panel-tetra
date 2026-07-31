@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:url_launcher/url_launcher.dart';
 
 // Package Export
 import 'package:excel/excel.dart';
@@ -44,7 +45,7 @@ class _WebLaporanKaryawanPageState extends State<WebLaporanKaryawanPage> {
     super.dispose();
   }
 
-  // --- FORMATTER TANGGAL (YYYY-MM-DD / DD-MM-YYYY ke DD-MM-YYYY) ---
+  // --- FORMATTER TANGGAL ---
   String _formatTanggal(String? tgl) {
     if (tgl == null || tgl.trim().isEmpty || tgl == '-' || tgl == 'null') {
       return '-';
@@ -68,7 +69,7 @@ class _WebLaporanKaryawanPageState extends State<WebLaporanKaryawanPage> {
     }
   }
 
-  // --- PARSER DATA ANAK YANG LEBIH TANGGUH ---
+  // --- PARSER DATA ANAK ---
   List<Map<String, String>> _parseChildrenData(dynamic rawChildren) {
     List<Map<String, String>> parsedList = [];
     if (rawChildren == null ||
@@ -178,203 +179,17 @@ class _WebLaporanKaryawanPageState extends State<WebLaporanKaryawanPage> {
     });
   }
 
-  // --- POPUP PREVIEW BIODATA FULL ---
+  // --- POPUP PREVIEW BIODATA FULL DENGAN RIWAYAT KONTRAK ---
   void _showBiodataDialog(Map<String, dynamic> karyawan) {
-    final childrenList = _parseChildrenData(
-        karyawan['children_data'] ?? karyawan['childern_data']);
-
-    String emergencyText = '-';
-    final eName = karyawan['emergency_name'] ?? '';
-    final ePhone = karyawan['emergency_phone'] ?? '';
-    if (eName.toString().isNotEmpty || ePhone.toString().isNotEmpty) {
-      emergencyText = '$eName ($ePhone)';
-    }
-
     showDialog(
       context: context,
       builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 650),
-            padding: const EdgeInsets.all(24),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Preview Biodata Karyawan',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue[900],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 18),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ],
-                  ),
-                  const Divider(),
-                  const SizedBox(height: 10),
-                  CircleAvatar(
-                    radius: 36,
-                    backgroundColor: Colors.blueGrey[50],
-                    backgroundImage: (karyawan['photo_url'] != null &&
-                            karyawan['photo_url'].toString().isNotEmpty)
-                        ? NetworkImage(karyawan['photo_url'])
-                        : null,
-                    child: (karyawan['photo_url'] == null ||
-                            karyawan['photo_url'].toString().isEmpty)
-                        ? const Icon(
-                            Icons.person,
-                            size: 36,
-                            color: Colors.blueGrey,
-                          )
-                        : null,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    karyawan['full_name'] ?? 'Nama Tidak Tersedia',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    '${karyawan['jabatan_name'] ?? '-'} | Status: ${(karyawan['employee_status'] ?? '-').toString().toUpperCase()}',
-                    style: GoogleFonts.plusJakartaSans(
-                      color: Colors.grey[700],
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Divider(),
-                  ),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          children: [
-                            _buildBiodataRow('NIK', karyawan['nik']),
-                            _buildBiodataRow('No. KTP', karyawan['ktp_number']),
-                            _buildBiodataRow(
-                                'No. NPWP', karyawan['npwp_number']),
-                            _buildBiodataRow(
-                              'Tempat, Tgl Lahir',
-                              '${karyawan['birth_place'] ?? '-'}, ${_formatTanggal(karyawan['birth_date'])}',
-                            ),
-                            _buildBiodataRow(
-                                'Jenis Kelamin', karyawan['gender']),
-                            _buildBiodataRow('Agama', karyawan['religion']),
-                            _buildBiodataRow(
-                                'Pendidikan', karyawan['education']),
-                            _buildBiodataRow('Tanggal Join',
-                                _formatTanggal(karyawan['join_date'])),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          children: [
-                            _buildBiodataRow('No. Telepon', karyawan['phone']),
-                            _buildBiodataRow(
-                                'Alamat KTP', karyawan['address_ktp']),
-                            _buildBiodataRow(
-                                'Alamat Domisili', karyawan['address_now']),
-                            _buildBiodataRow(
-                                'Status Menikah', karyawan['marital_status']),
-                            _buildBiodataRow(
-                                'Nama Pasangan', karyawan['spouse_name']),
-                            _buildBiodataRow(
-                                'Data Anak',
-                                childrenList.isEmpty
-                                    ? '-'
-                                    : childrenList
-                                        .asMap()
-                                        .entries
-                                        .map((e) =>
-                                            'Anak ke-${e.key + 1}: ${e.value['name']} (${e.value['birth_date']})')
-                                        .join('\n')),
-                            _buildBiodataRow('Kontak Darurat', emergencyText),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue[800],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: () {
-                        _exportSinglePdf(karyawan);
-                      },
-                      icon: const Icon(Icons.picture_as_pdf, size: 16),
-                      label: Text(
-                        'Download PDF Biodata Ini',
-                        style: GoogleFonts.plusJakartaSans(
-                            fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
+        return _DetailLaporanKaryawanDialog(karyawan: karyawan);
       },
     );
   }
 
-  Widget _buildBiodataRow(String label, String? value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 2,
-            child: Text(
-              label,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: Colors.black54,
-              ),
-            ),
-          ),
-          const Text(': '),
-          Expanded(
-            flex: 3,
-            child: Text(
-              value ?? '-',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- 3. EXPORT KE EXCEL (Modern package:web version) ---
+  // --- EXPORT KE EXCEL ---
   void _exportToExcel() {
     if (_filteredList.isEmpty) return;
 
@@ -426,7 +241,6 @@ class _WebLaporanKaryawanPageState extends State<WebLaporanKaryawanPage> {
 
     final fileBytes = excel.save();
     if (fileBytes != null) {
-      // Konversi List<int> menjadi Uint8List agar .toJS dikenali
       final uint8List = Uint8List.fromList(fileBytes);
       final blob = web.Blob(
         [uint8List.toJS].toJS,
@@ -447,7 +261,7 @@ class _WebLaporanKaryawanPageState extends State<WebLaporanKaryawanPage> {
     }
   }
 
-  // --- 4. EXPORT REKAP TABEL KE PDF (Modern package:web version) ---
+  // --- EXPORT REKAP TABEL KE PDF ---
   Future<void> _exportToPdf() async {
     if (_filteredList.isEmpty) return;
 
@@ -516,7 +330,6 @@ class _WebLaporanKaryawanPageState extends State<WebLaporanKaryawanPage> {
     );
 
     final bytes = await pdf.save();
-    // Konversi List<int> menjadi Uint8List
     final uint8List = Uint8List.fromList(bytes);
     final blob = web.Blob(
       [uint8List.toJS].toJS,
@@ -527,233 +340,6 @@ class _WebLaporanKaryawanPageState extends State<WebLaporanKaryawanPage> {
       ..href = url
       ..download =
           "Laporan_Rekap_Karyawan_${DateTime.now().millisecondsSinceEpoch}.pdf";
-
-    web.document.body?.append(anchor);
-    anchor.click();
-    anchor.remove();
-    web.URL.revokeObjectURL(url);
-  }
-
-  // --- EXPORT PDF PROFESIONAL (BIODATA SATU KARYAWAN) ---
-  Future<void> _exportSinglePdf(Map<String, dynamic> k) async {
-    final pdf = pw.Document();
-
-    pw.MemoryImage? netImage;
-    if (k['photo_url'] != null && k['photo_url'].toString().isNotEmpty) {
-      try {
-        final uri = Uri.parse(k['photo_url']);
-        final networkImageBytes = await NetworkAssetBundle(uri).load("");
-        netImage = pw.MemoryImage(networkImageBytes.buffer.asUint8List());
-      } catch (_) {
-        netImage = null;
-      }
-    }
-
-    final childrenList =
-        _parseChildrenData(k['children_data'] ?? k['childern_data']);
-
-    pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(36),
-        build: (context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text('PT TETRA',
-                          style: pw.TextStyle(
-                              fontSize: 16,
-                              fontWeight: pw.FontWeight.bold,
-                              color: PdfColors.blue900)),
-                      pw.Text('FORMULIR BIODATA KARYAWAN',
-                          style: const pw.TextStyle(
-                              fontSize: 10, color: PdfColors.grey700)),
-                    ],
-                  ),
-                  pw.Text(
-                      'Tanggal Cetak: ${DateFormat('dd-MM-yyyy').format(DateTime.now())}',
-                      style: const pw.TextStyle(
-                          fontSize: 9, color: PdfColors.grey700)),
-                ],
-              ),
-              pw.Divider(thickness: 1.5, color: PdfColors.blue900, height: 20),
-              pw.Row(
-                crossAxisAlignment: pw.CrossAxisAlignment.center,
-                children: [
-                  pw.Container(
-                    width: 70,
-                    height: 85,
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border.all(color: PdfColors.grey400),
-                      borderRadius:
-                          const pw.BorderRadius.all(pw.Radius.circular(4)),
-                    ),
-                    child: netImage != null
-                        ? pw.ClipRRect(
-                            horizontalRadius: 4,
-                            verticalRadius: 4,
-                            child: pw.Image(netImage, fit: pw.BoxFit.cover),
-                          )
-                        : pw.Center(
-                            child: pw.Text('FOTO',
-                                style: const pw.TextStyle(
-                                    fontSize: 8, color: PdfColors.grey))),
-                  ),
-                  pw.SizedBox(width: 15),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(k['full_name'] ?? '-',
-                          style: pw.TextStyle(
-                              fontSize: 14, fontWeight: pw.FontWeight.bold)),
-                      pw.SizedBox(height: 4),
-                      pw.Text('Jabatan: ${k['jabatan_name'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 11)),
-                      pw.Text(
-                          'Status Kerja: ${(k['employee_status'] ?? '-').toUpperCase()}',
-                          style: const pw.TextStyle(fontSize: 11)),
-                      pw.Text('Divisi/Role: ${k['role'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 11)),
-                    ],
-                  ),
-                ],
-              ),
-              pw.SizedBox(height: 15),
-              pw.Container(
-                width: double.infinity,
-                padding: const pw.EdgeInsets.all(5),
-                color: PdfColors.grey200,
-                child: pw.Text('I. INFORMASI PRIBADI',
-                    style: pw.TextStyle(
-                        fontSize: 10, fontWeight: pw.FontWeight.bold)),
-              ),
-              pw.SizedBox(height: 6),
-              pw.Row(
-                children: [
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'NIK: ${k['nik'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'No. KTP: ${k['ktp_number'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                ],
-              ),
-              pw.Row(
-                children: [
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'No. NPWP: ${k['npwp_number'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'Jenis Kelamin: ${k['gender'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                ],
-              ),
-              pw.Row(
-                children: [
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text:
-                              'Tempat, Tgl Lahir: ${k['birth_place'] ?? '-'}, ${_formatTanggal(k['birth_date'])}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'Agama: ${k['religion'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                ],
-              ),
-              pw.Row(
-                children: [
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'Pendidikan: ${k['education'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'No. HP: ${k['phone'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                ],
-              ),
-              pw.Paragraph(
-                  text: 'Tanggal Join: ${_formatTanggal(k['join_date'])}',
-                  style: const pw.TextStyle(fontSize: 10)),
-              pw.Paragraph(
-                  text: 'Alamat KTP: ${k['address_ktp'] ?? '-'}',
-                  style: const pw.TextStyle(fontSize: 10)),
-              pw.Paragraph(
-                  text: 'Alamat Domisili: ${k['address_now'] ?? '-'}',
-                  style: const pw.TextStyle(fontSize: 10)),
-              pw.SizedBox(height: 10),
-              pw.Container(
-                width: double.infinity,
-                padding: const pw.EdgeInsets.all(5),
-                color: PdfColors.grey200,
-                child: pw.Text('II. DATA KELUARGA & KONTAK DARURAT',
-                    style: pw.TextStyle(
-                        fontSize: 10, fontWeight: pw.FontWeight.bold)),
-              ),
-              pw.SizedBox(height: 6),
-              pw.Row(
-                children: [
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'Status Nikah: ${k['marital_status'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'Nama Pasangan: ${k['spouse_name'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                ],
-              ),
-              pw.Paragraph(
-                  text:
-                      'Kontak Darurat: ${k['emergency_name'] ?? '-'} (${k['emergency_phone'] ?? '-'})',
-                  style: const pw.TextStyle(fontSize: 10)),
-              pw.SizedBox(height: 4),
-              pw.Text('Data Anak:',
-                  style: pw.TextStyle(
-                      fontSize: 10, fontWeight: pw.FontWeight.bold)),
-              if (childrenList.isEmpty)
-                pw.Paragraph(
-                    text: '- Tidak ada data anak -',
-                    style: const pw.TextStyle(fontSize: 10))
-              else
-                ...childrenList.asMap().entries.map((entry) {
-                  int idx = entry.key;
-                  var child = entry.value;
-                  return pw.Padding(
-                    padding: const pw.EdgeInsets.only(left: 10, top: 2),
-                    child: pw.Text(
-                        '${idx + 1}. ${child['name']} (Tgl Lahir: ${child['birth_date']})',
-                        style: const pw.TextStyle(fontSize: 10)),
-                  );
-                }),
-            ],
-          );
-        },
-      ),
-    );
-
-    final bytes = await pdf.save();
-    // Konversi List<int> menjadi Uint8List
-    final uint8List = Uint8List.fromList(bytes);
-    final blob = web.Blob(
-      [uint8List.toJS].toJS,
-      web.BlobPropertyBag(type: 'application/pdf'),
-    );
-    final url = web.URL.createObjectURL(blob);
-    final anchor = web.HTMLAnchorElement()
-      ..href = url
-      ..download = "Biodata_${k['full_name'] ?? 'Karyawan'}.pdf";
 
     web.document.body?.append(anchor);
     anchor.click();
@@ -966,6 +552,651 @@ class _WebLaporanKaryawanPageState extends State<WebLaporanKaryawanPage> {
                           ),
                         ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// WIDGET DIALOG DETAIL / PREVIEW LAPORAN DENGAN RIWAYAT KONTRAK
+// ============================================================================
+
+class _DetailLaporanKaryawanDialog extends StatefulWidget {
+  final Map<String, dynamic> karyawan;
+  const _DetailLaporanKaryawanDialog({required this.karyawan});
+
+  @override
+  State<_DetailLaporanKaryawanDialog> createState() =>
+      _DetailLaporanKaryawanDialogState();
+}
+
+class _DetailLaporanKaryawanDialogState
+    extends State<_DetailLaporanKaryawanDialog> {
+  bool _isLoadingContracts = true;
+  List<dynamic> _contractHistory = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchContractHistory();
+  }
+
+  Future<void> _fetchContractHistory() async {
+    try {
+      final res = await Supabase.instance.client
+          .from('employee_contracts')
+          .select()
+          .eq('employee_id', widget.karyawan['id'])
+          .order('contract_start', ascending: false);
+
+      setState(() {
+        _contractHistory = res;
+        _isLoadingContracts = false;
+      });
+    } catch (_) {
+      setState(() => _isLoadingContracts = false);
+    }
+  }
+
+  Future<void> _downloadFile(String? fileUrl) async {
+    if (fileUrl != null && fileUrl.isNotEmpty) {
+      final uri = Uri.parse(fileUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    }
+  }
+
+  String _formatTanggal(String? tgl) {
+    if (tgl == null || tgl.trim().isEmpty || tgl == '-' || tgl == 'null') {
+      return '-';
+    }
+    try {
+      if (tgl.contains('-')) {
+        var parts = tgl.split('-');
+        if (parts.length == 3) {
+          if (parts[0].length == 2 && parts[2].length == 4) {
+            return tgl;
+          }
+          if (parts[0].length == 4) {
+            return '${parts[2]}-${parts[1]}-${parts[0]}';
+          }
+        }
+      }
+      DateTime dt = DateTime.parse(tgl.contains('T') ? tgl.split('T')[0] : tgl);
+      return DateFormat('dd-MM-yyyy').format(dt);
+    } catch (e) {
+      return tgl;
+    }
+  }
+
+  List<Map<String, String>> _parseChildrenData(dynamic rawChildren) {
+    List<Map<String, String>> parsedList = [];
+    if (rawChildren == null ||
+        rawChildren.toString() == 'null' ||
+        rawChildren.toString().isEmpty) {
+      return parsedList;
+    }
+
+    try {
+      dynamic decodedData = rawChildren;
+
+      if (rawChildren is String) {
+        try {
+          decodedData = jsonDecode(rawChildren);
+        } catch (_) {
+          parsedList.add({'name': rawChildren, 'birth_date': '-'});
+          return parsedList;
+        }
+      }
+
+      if (decodedData is List) {
+        for (var item in decodedData) {
+          if (item is Map) {
+            String name = item['name'] ??
+                item['NAME'] ??
+                item['nama'] ??
+                item['info'] ??
+                '-';
+            String rawDate = item['birth_date'] ??
+                item['BIRTH_DATE'] ??
+                item['tanggal_lahir'] ??
+                item['birthDate'] ??
+                '-';
+            String bDate = _formatTanggal(rawDate.toString());
+            parsedList.add({'name': name.toString(), 'birth_date': bDate});
+          } else if (item != null) {
+            parsedList.add({'name': item.toString(), 'birth_date': '-'});
+          }
+        }
+      } else if (decodedData is Map) {
+        String name = decodedData['name'] ??
+            decodedData['NAME'] ??
+            decodedData['nama'] ??
+            decodedData['info'] ??
+            '-';
+        String rawDate = decodedData['birth_date'] ??
+            decodedData['BIRTH_DATE'] ??
+            decodedData['tanggal_lahir'] ??
+            decodedData['birthDate'] ??
+            '-';
+        String bDate = _formatTanggal(rawDate.toString());
+        parsedList.add({'name': name.toString(), 'birth_date': bDate});
+      }
+    } catch (e) {
+      parsedList.add({'name': rawChildren.toString(), 'birth_date': '-'});
+    }
+
+    return parsedList;
+  }
+
+  Future<void> _exportSinglePdf() async {
+    final pdf = pw.Document();
+    final k = widget.karyawan;
+
+    pw.MemoryImage? netImage;
+    if (k['photo_url'] != null && k['photo_url'].toString().isNotEmpty) {
+      try {
+        final uri = Uri.parse(k['photo_url']);
+        final networkImageBytes = await NetworkAssetBundle(uri).load("");
+        netImage = pw.MemoryImage(networkImageBytes.buffer.asUint8List());
+      } catch (_) {
+        netImage = null;
+      }
+    }
+
+    final childrenList =
+        _parseChildrenData(k['children_data'] ?? k['childern_data']);
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(36),
+        build: (context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('PT TETRA',
+                          style: pw.TextStyle(
+                              fontSize: 16,
+                              fontWeight: pw.FontWeight.bold,
+                              color: PdfColors.blue900)),
+                      pw.Text('FORMULIR BIODATA KARYAWAN',
+                          style: const pw.TextStyle(
+                              fontSize: 10, color: PdfColors.grey700)),
+                    ],
+                  ),
+                  pw.Text(
+                      'Tanggal Cetak: ${DateFormat('dd-MM-yyyy').format(DateTime.now())}',
+                      style: const pw.TextStyle(
+                          fontSize: 9, color: PdfColors.grey700)),
+                ],
+              ),
+              pw.Divider(thickness: 1.5, color: PdfColors.blue900, height: 20),
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.Container(
+                    width: 70,
+                    height: 85,
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: PdfColors.grey400),
+                      borderRadius:
+                          const pw.BorderRadius.all(pw.Radius.circular(4)),
+                    ),
+                    child: netImage != null
+                        ? pw.ClipRRect(
+                            horizontalRadius: 4,
+                            verticalRadius: 4,
+                            child: pw.Image(netImage, fit: pw.BoxFit.cover),
+                          )
+                        : pw.Center(
+                            child: pw.Text('FOTO',
+                                style: const pw.TextStyle(
+                                    fontSize: 8, color: PdfColors.grey))),
+                  ),
+                  pw.SizedBox(width: 15),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(k['full_name'] ?? '-',
+                          style: pw.TextStyle(
+                              fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                      pw.SizedBox(height: 4),
+                      pw.Text('Jabatan: ${k['jabatan_name'] ?? '-'}',
+                          style: const pw.TextStyle(fontSize: 11)),
+                      pw.Text(
+                          'Status Kerja: ${(k['employee_status'] ?? '-').toUpperCase()}',
+                          style: const pw.TextStyle(fontSize: 11)),
+                      pw.Text('Divisi/Role: ${k['role'] ?? '-'}',
+                          style: const pw.TextStyle(fontSize: 11)),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 15),
+              pw.Container(
+                width: double.infinity,
+                padding: const pw.EdgeInsets.all(5),
+                color: PdfColors.grey200,
+                child: pw.Text('I. INFORMASI PRIBADI',
+                    style: pw.TextStyle(
+                        fontSize: 10, fontWeight: pw.FontWeight.bold)),
+              ),
+              pw.SizedBox(height: 6),
+              pw.Row(
+                children: [
+                  pw.Expanded(
+                      child: pw.Paragraph(
+                          text: 'NIK: ${k['nik'] ?? '-'}',
+                          style: const pw.TextStyle(fontSize: 10))),
+                  pw.Expanded(
+                      child: pw.Paragraph(
+                          text: 'No. KTP: ${k['ktp_number'] ?? '-'}',
+                          style: const pw.TextStyle(fontSize: 10))),
+                ],
+              ),
+              pw.Row(
+                children: [
+                  pw.Expanded(
+                      child: pw.Paragraph(
+                          text: 'No. NPWP: ${k['npwp_number'] ?? '-'}',
+                          style: const pw.TextStyle(fontSize: 10))),
+                  pw.Expanded(
+                      child: pw.Paragraph(
+                          text: 'Jenis Kelamin: ${k['gender'] ?? '-'}',
+                          style: const pw.TextStyle(fontSize: 10))),
+                ],
+              ),
+              pw.Row(
+                children: [
+                  pw.Expanded(
+                      child: pw.Paragraph(
+                          text:
+                              'Tempat, Tgl Lahir: ${k['birth_place'] ?? '-'}, ${_formatTanggal(k['birth_date'])}',
+                          style: const pw.TextStyle(fontSize: 10))),
+                  pw.Expanded(
+                      child: pw.Paragraph(
+                          text: 'Agama: ${k['religion'] ?? '-'}',
+                          style: const pw.TextStyle(fontSize: 10))),
+                ],
+              ),
+              pw.Row(
+                children: [
+                  pw.Expanded(
+                      child: pw.Paragraph(
+                          text: 'Pendidikan: ${k['education'] ?? '-'}',
+                          style: const pw.TextStyle(fontSize: 10))),
+                  pw.Expanded(
+                      child: pw.Paragraph(
+                          text: 'No. HP: ${k['phone'] ?? '-'}',
+                          style: const pw.TextStyle(fontSize: 10))),
+                ],
+              ),
+              pw.Paragraph(
+                  text: 'Tanggal Join: ${_formatTanggal(k['join_date'])}',
+                  style: const pw.TextStyle(fontSize: 10)),
+              pw.Paragraph(
+                  text: 'Alamat KTP: ${k['address_ktp'] ?? '-'}',
+                  style: const pw.TextStyle(fontSize: 10)),
+              pw.Paragraph(
+                  text: 'Alamat Domisili: ${k['address_now'] ?? '-'}',
+                  style: const pw.TextStyle(fontSize: 10)),
+              pw.SizedBox(height: 10),
+              pw.Container(
+                width: double.infinity,
+                padding: const pw.EdgeInsets.all(5),
+                color: PdfColors.grey200,
+                child: pw.Text('II. DATA KELUARGA & KONTAK DARURAT',
+                    style: pw.TextStyle(
+                        fontSize: 10, fontWeight: pw.FontWeight.bold)),
+              ),
+              pw.SizedBox(height: 6),
+              pw.Row(
+                children: [
+                  pw.Expanded(
+                      child: pw.Paragraph(
+                          text: 'Status Nikah: ${k['marital_status'] ?? '-'}',
+                          style: const pw.TextStyle(fontSize: 10))),
+                  pw.Expanded(
+                      child: pw.Paragraph(
+                          text: 'Nama Pasangan: ${k['spouse_name'] ?? '-'}',
+                          style: const pw.TextStyle(fontSize: 10))),
+                ],
+              ),
+              pw.Paragraph(
+                  text:
+                      'Kontak Darurat: ${k['emergency_name'] ?? '-'} (${k['emergency_phone'] ?? '-'})',
+                  style: const pw.TextStyle(fontSize: 10)),
+              pw.SizedBox(height: 4),
+              pw.Text('Data Anak:',
+                  style: pw.TextStyle(
+                      fontSize: 10, fontWeight: pw.FontWeight.bold)),
+              if (childrenList.isEmpty)
+                pw.Paragraph(
+                    text: '- Tidak ada data anak -',
+                    style: const pw.TextStyle(fontSize: 10))
+              else
+                ...childrenList.asMap().entries.map((entry) {
+                  int idx = entry.key;
+                  var child = entry.value;
+                  return pw.Padding(
+                    padding: const pw.EdgeInsets.only(left: 10, top: 2),
+                    child: pw.Text(
+                        '${idx + 1}. ${child['name']} (Tgl Lahir: ${child['birth_date']})',
+                        style: const pw.TextStyle(fontSize: 10)),
+                  );
+                }),
+            ],
+          );
+        },
+      ),
+    );
+
+    final bytes = await pdf.save();
+    final uint8List = Uint8List.fromList(bytes);
+    final blob = web.Blob(
+      [uint8List.toJS].toJS,
+      web.BlobPropertyBag(type: 'application/pdf'),
+    );
+    final url = web.URL.createObjectURL(blob);
+    final anchor = web.HTMLAnchorElement()
+      ..href = url
+      ..download = "Biodata_${k['full_name'] ?? 'Karyawan'}.pdf";
+
+    web.document.body?.append(anchor);
+    anchor.click();
+    anchor.remove();
+    web.URL.revokeObjectURL(url);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String childrenStr = '-';
+    if (widget.karyawan['children_data'] != null) {
+      if (widget.karyawan['children_data'] is String) {
+        childrenStr = widget.karyawan['children_data'];
+      } else {
+        childrenStr = jsonEncode(widget.karyawan['children_data']);
+      }
+    }
+
+    final photoUrl = widget.karyawan['photo_url'] ?? widget.karyawan['photo'];
+
+    String rawEmpStatus =
+        widget.karyawan['employee_status']?.toString().toLowerCase() ?? 'tetap';
+    String displayStatus = 'Tetap';
+    if (rawEmpStatus == 'kontrak') {
+      displayStatus = 'Kontrak';
+    } else if (rawEmpStatus == 'magang') {
+      displayStatus = 'Magang';
+    }
+
+    String emergencyText = '-';
+    final eName = widget.karyawan['emergency_name'] ?? '';
+    final ePhone = widget.karyawan['emergency_phone'] ?? '';
+    if (eName.toString().isNotEmpty || ePhone.toString().isNotEmpty) {
+      emergencyText = '$eName ($ePhone)';
+    }
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 650, maxHeight: 700),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Preview Biodata Karyawan & Riwayat',
+                  style: GoogleFonts.plusJakartaSans(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue[900]),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Column(
+                        children: [
+                          CircleAvatar(
+                            radius: 40,
+                            backgroundColor: Colors.blue[100],
+                            backgroundImage: (photoUrl != null &&
+                                    photoUrl.toString().isNotEmpty)
+                                ? NetworkImage(photoUrl.toString())
+                                : null,
+                            child: (photoUrl == null ||
+                                    photoUrl.toString().isEmpty)
+                                ? const Icon(Icons.person,
+                                    size: 40, color: Colors.blue)
+                                : null,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            widget.karyawan['full_name'] ?? '-',
+                            style: GoogleFonts.plusJakartaSans(
+                                fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            '${widget.karyawan['jabatan_name'] ?? '-'} | Status: ${displayStatus.toUpperCase()}',
+                            style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                color: Colors.grey[700],
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildSectionTitle('Informasi Akun & Pekerjaan'),
+                    _buildInfoRow('NIK', widget.karyawan['nik']),
+                    _buildInfoRow('Email', widget.karyawan['email']),
+                    _buildInfoRow('No. Telepon', widget.karyawan['phone']),
+                    _buildInfoRow('Jabatan', widget.karyawan['jabatan_name']),
+                    _buildInfoRow('Status Karyawan Saat Ini', displayStatus),
+                    _buildInfoRow(
+                        'Status Akun',
+                        (widget.karyawan['is_active'] ?? true)
+                            ? 'Aktif'
+                            : 'Non-Aktif'),
+                    if (displayStatus.toLowerCase() == 'kontrak' ||
+                        displayStatus.toLowerCase() == 'magang') ...[
+                      _buildInfoRow(
+                          'No. Kontrak', widget.karyawan['contract_number']),
+                      _buildInfoRow('Mulai Periode',
+                          _formatTanggal(widget.karyawan['contract_start'])),
+                      _buildInfoRow('Selesai Periode',
+                          _formatTanggal(widget.karyawan['contract_end'])),
+                    ],
+                    if (displayStatus.toLowerCase() == 'kontrak' &&
+                        widget.karyawan['contract_file'] != null &&
+                        widget.karyawan['contract_file'].toString().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4.0),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 160,
+                              child: Text('Surat Kontrak',
+                                  style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 12,
+                                      color: Colors.grey[700],
+                                      fontWeight: FontWeight.w500)),
+                            ),
+                            const Text(': '),
+                            ElevatedButton.icon(
+                              onPressed: () => _downloadFile(
+                                  widget.karyawan['contract_file']),
+                              icon: const Icon(Icons.download, size: 14),
+                              label: Text('Download Dokumen PDF',
+                                  style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 12)),
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.teal,
+                                  foregroundColor: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+                    _buildSectionTitle('Informasi Pribadi & Identitas'),
+                    _buildInfoRow('Jenis Kelamin', widget.karyawan['gender']),
+                    _buildInfoRow('Agama', widget.karyawan['religion']),
+                    _buildInfoRow('Tempat, Tanggal Lahir',
+                        '${widget.karyawan['birth_place'] ?? '-'}, ${_formatTanggal(widget.karyawan['birth_date'])}'),
+                    _buildInfoRow('Nomor KTP', widget.karyawan['ktp_number']),
+                    _buildInfoRow('Nomor NPWP', widget.karyawan['npwp_number']),
+                    _buildInfoRow('Pendidikan', widget.karyawan['education']),
+                    _buildInfoRow('Tanggal Join',
+                        _formatTanggal(widget.karyawan['join_date'])),
+                    const SizedBox(height: 16),
+                    _buildSectionTitle('Alamat & Keluarga (Termasuk Anak)'),
+                    _buildInfoRow('Alamat KTP', widget.karyawan['address_ktp']),
+                    _buildInfoRow(
+                        'Alamat Domisili', widget.karyawan['address_now']),
+                    _buildInfoRow(
+                        'Status Pernikahan', widget.karyawan['marital_status']),
+                    _buildInfoRow(
+                        'Nama Pasangan', widget.karyawan['spouse_name']),
+                    _buildInfoRow('Tgl Lahir Pasangan',
+                        _formatTanggal(widget.karyawan['spouse_birth_date'])),
+                    _buildInfoRow('Data Anak', childrenStr),
+                    _buildInfoRow('Kontak Darurat', emergencyText),
+                    const SizedBox(height: 16),
+                    _buildSectionTitle('Riwayat Kontrak / Perubahan Status'),
+                    _isLoadingContracts
+                        ? const Center(child: CircularProgressIndicator())
+                        : _contractHistory.isEmpty
+                            ? Text(
+                                displayStatus == 'Tetap'
+                                    ? 'Karyawan langsung berstatus Tetap (Tidak ada riwayat kontrak sebelumnya).'
+                                    : 'Belum ada riwayat kontrak.',
+                                style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 12, color: Colors.grey[600]),
+                              )
+                            : ListView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: _contractHistory.length,
+                                itemBuilder: (context, index) {
+                                  final c = _contractHistory[index];
+                                  return Card(
+                                    margin:
+                                        const EdgeInsets.symmetric(vertical: 4),
+                                    child: ListTile(
+                                      title: Text(
+                                          'Periode: ${_formatTanggal(c['contract_start'])} s/d ${_formatTanggal(c['contract_end'])}',
+                                          style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold)),
+                                      trailing: c['contract_file'] != null &&
+                                              c['contract_file']
+                                                  .toString()
+                                                  .isNotEmpty
+                                          ? IconButton(
+                                              icon: const Icon(Icons.download,
+                                                  color: Colors.teal),
+                                              onPressed: () => _downloadFile(
+                                                  c['contract_file']),
+                                            )
+                                          : Text('Tanpa Dokumen / Magang',
+                                              style:
+                                                  GoogleFonts.plusJakartaSans(
+                                                      fontSize: 10,
+                                                      color: Colors.grey)),
+                                    ),
+                                  );
+                                },
+                              ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[800],
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 12, horizontal: 16),
+                  ),
+                  onPressed: _exportSinglePdf,
+                  icon: const Icon(Icons.picture_as_pdf, size: 16),
+                  label: Text(
+                    'Download PDF Biodata Ini',
+                    style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('Tutup',
+                      style: GoogleFonts.plusJakartaSans(fontSize: 12)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0, top: 8.0),
+      child: Text(
+        title,
+        style: GoogleFonts.plusJakartaSans(
+            fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue[800]),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, dynamic value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 160,
+            child: Text(label,
+                style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    color: Colors.grey[700],
+                    fontWeight: FontWeight.w500)),
+          ),
+          const Text(': '),
+          Expanded(
+            child: Text(
+                value?.toString().isNotEmpty == true ? value.toString() : '-',
+                style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12, color: Colors.black87)),
           ),
         ],
       ),

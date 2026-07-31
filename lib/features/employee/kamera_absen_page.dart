@@ -8,13 +8,6 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:flutter/services.dart' show DeviceOrientation;
 import 'face_net_service.dart';
 
-enum _LivenessStep {
-  lookStraight,
-  blink,
-  turnLeft,
-  turnRight,
-}
-
 class KameraAbsenPage extends StatefulWidget {
   final CameraDescription camera;
   final List<double> registeredEmbedding;
@@ -43,11 +36,9 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
   bool _isDetecting = false;
   bool _isVerifying = false;
   bool _isMatched = false;
-  bool _hasBlinkedClosed = false;
 
   DateTime? _lastProcessedAt;
 
-  _LivenessStep _step = _LivenessStep.lookStraight;
   String _statusText = 'Posisikan wajah Anda di dalam bingkai';
   Color _statusColor = Colors.blue;
 
@@ -57,7 +48,8 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
 
     _faceDetector = FaceDetector(
       options: FaceDetectorOptions(
-        enableClassification: true,
+        enableClassification:
+            false, // Dimatikan karena tidak perlu cek kedip mata
         enableTracking: true,
         performanceMode: FaceDetectorMode.accurate,
       ),
@@ -147,7 +139,7 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
         return;
       }
 
-      await _checkLiveness(
+      await _verifyFace(
         image: image,
         face: face,
         rotationDegrees: frameInput.rotationDegrees,
@@ -155,74 +147,6 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
     } catch (e) {
       debugPrint('Gagal memproses frame: $e');
       _updateStatus('Gagal memproses wajah. Coba lagi.', Colors.red);
-    }
-  }
-
-  Future<void> _checkLiveness({
-    required CameraImage image,
-    required Face face,
-    required int rotationDegrees,
-  }) async {
-    final eulerY = face.headEulerAngleY;
-    final leftEye = face.leftEyeOpenProbability;
-    final rightEye = face.rightEyeOpenProbability;
-
-    switch (_step) {
-      case _LivenessStep.lookStraight:
-        if (eulerY != null && eulerY > -10 && eulerY < 10) {
-          _setStep(
-            _LivenessStep.blink,
-            'Bagus. Sekarang silakan berkedip',
-          );
-        } else {
-          _updateStatus('Mohon lihat lurus ke depan', Colors.blue);
-        }
-        break;
-
-      case _LivenessStep.blink:
-        if (leftEye == null || rightEye == null) {
-          _updateStatus(
-            'Pastikan wajah terlihat jelas dan cukup terang',
-            Colors.orange,
-          );
-          return;
-        }
-
-        if (leftEye < 0.25 && rightEye < 0.25) {
-          _hasBlinkedClosed = true;
-          _updateStatus('Bagus, sekarang buka mata kembali', Colors.blue);
-        } else if (_hasBlinkedClosed && leftEye > 0.75 && rightEye > 0.75) {
-          _setStep(
-            _LivenessStep.turnLeft,
-            'Bagus. Sekarang toleh perlahan ke kiri',
-          );
-        } else {
-          _updateStatus('Silakan berkedip satu kali', Colors.blue);
-        }
-        break;
-
-      case _LivenessStep.turnLeft:
-        if (eulerY != null && eulerY < -20) {
-          _setStep(
-            _LivenessStep.turnRight,
-            'Bagus. Sekarang toleh perlahan ke kanan',
-          );
-        } else {
-          _updateStatus('Toleh perlahan ke kiri', Colors.blue);
-        }
-        break;
-
-      case _LivenessStep.turnRight:
-        if (eulerY != null && eulerY > 20) {
-          await _verifyFace(
-            image: image,
-            face: face,
-            rotationDegrees: rotationDegrees,
-          );
-        } else {
-          _updateStatus('Toleh perlahan ke kanan', Colors.blue);
-        }
-        break;
     }
   }
 
@@ -252,7 +176,7 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
       );
 
       if (!isMatch) {
-        _resetLiveness('Wajah tidak cocok. Silakan ulangi verifikasi.');
+        _resetState('Wajah tidak cocok. Silakan paskan posisi Anda.');
         return;
       }
 
@@ -276,7 +200,7 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
     } catch (e) {
       debugPrint('Gagal verifikasi wajah: $e');
 
-      _resetLiveness('Verifikasi gagal. Coba lagi.');
+      _resetState('Verifikasi gagal. Coba lagi.');
 
       try {
         await _startLiveRecognition();
@@ -290,22 +214,10 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
     }
   }
 
-  void _setStep(_LivenessStep step, String message) {
+  void _resetState(String message) {
     if (!mounted) return;
 
     setState(() {
-      _step = step;
-      _statusText = message;
-      _statusColor = Colors.blue;
-    });
-  }
-
-  void _resetLiveness(String message) {
-    if (!mounted) return;
-
-    setState(() {
-      _step = _LivenessStep.lookStraight;
-      _hasBlinkedClosed = false;
       _statusText = message;
       _statusColor = Colors.red;
     });

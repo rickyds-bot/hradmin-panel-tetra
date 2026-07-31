@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -21,22 +22,49 @@ class _WebLogPageState extends State<WebLogPage> {
   int _rowsPerPage = 50;
   final List<int> _pageOptions = [50, 100, 200];
 
+  // Scroll controllers untuk tabel
+  final ScrollController _horizontalScroll = ScrollController();
+  final ScrollController _verticalScroll = ScrollController();
+
+  RealtimeChannel? _logSubscription;
+
   @override
   void initState() {
     super.initState();
     _fetchLogData();
+    _setupRealtimeSubscription();
   }
 
   @override
   void dispose() {
     _searchNameCtrl.dispose();
+    _horizontalScroll.dispose();
+    _verticalScroll.dispose();
+    if (_logSubscription != null) {
+      Supabase.instance.client.removeChannel(_logSubscription!);
+    }
     super.dispose();
   }
 
+  // --- SETUP REALTIME STREAM ---
+  void _setupRealtimeSubscription() {
+    _logSubscription = Supabase.instance.client
+        .channel('public:activity_logs')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'activity_logs',
+          callback: (payload) {
+            // Ketika ada data log baru masuk, refresh data secara otomatis
+            _fetchLogData();
+          },
+        )
+        .subscribe();
+  }
+
   Future<void> _fetchLogData() async {
-    setState(() => _isLoading = true);
     try {
-      // Ambil data log aktivitas dari tabel (ganti 'activity_logs' sesuai nama tabel log di database Anda jika berbeda)
+      // Ambil data log aktivitas terbaru
       final logResponse = await Supabase.instance.client
           .from('activity_logs')
           .select()
@@ -64,10 +92,16 @@ class _WebLogPageState extends State<WebLogPage> {
         };
       }).toList();
 
-      _logList = mergedData;
-      _applyLocalFilter();
+      if (mounted) {
+        setState(() {
+          _logList = mergedData;
+          _isLoading = false;
+        });
+        _applyLocalFilter();
+      }
     } catch (e) {
       if (mounted) {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -78,25 +112,25 @@ class _WebLogPageState extends State<WebLogPage> {
           ),
         );
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   void _applyLocalFilter() {
     List<dynamic> temp = List.from(_logList);
 
-    // Filter berdasarkan nama karyawan
+    // Filter berdasarkan nama karyawan atau aktivitas
     if (_searchNameCtrl.text.trim().isNotEmpty) {
       final search = _searchNameCtrl.text.trim().toLowerCase();
       temp = temp.where((item) {
-        final empName = (item['employees']?['full_name'] ?? '')
-            .toString()
-            .toLowerCase();
+        final empName =
+            (item['employees']?['full_name'] ?? '').toString().toLowerCase();
         final activityText = (item['activity'] ?? item['description'] ?? '')
             .toString()
             .toLowerCase();
-        return empName.contains(search) || activityText.contains(search);
+        final moduleText = (item['module'] ?? '').toString().toLowerCase();
+        return empName.contains(search) ||
+            activityText.contains(search) ||
+            moduleText.contains(search);
       }).toList();
     }
 
@@ -161,13 +195,43 @@ class _WebLogPageState extends State<WebLogPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Log Aktivitas Karyawan',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF1E293B),
-                ),
+              Row(
+                children: [
+                  Text(
+                    'Log Aktivitas Karyawan',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF1E293B),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Indikator Realtime Aktif
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.green[200]!),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.circle, size: 8, color: Colors.green),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Realtime Live',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green[800],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
@@ -200,7 +264,7 @@ class _WebLogPageState extends State<WebLogPage> {
                     controller: _searchNameCtrl,
                     style: GoogleFonts.plusJakartaSans(fontSize: 12),
                     decoration: InputDecoration(
-                      hintText: 'Cari nama karyawan atau aktivitas...',
+                      hintText: 'Cari nama karyawan, modul, atau aktivitas...',
                       hintStyle: GoogleFonts.plusJakartaSans(fontSize: 12),
                       prefixIcon: const Icon(Icons.search, size: 18),
                       filled: true,
@@ -312,8 +376,9 @@ class _WebLogPageState extends State<WebLogPage> {
                           );
                         }).toList(),
                         onChanged: (int? newValue) {
-                          if (newValue != null)
+                          if (newValue != null) {
                             setState(() => _rowsPerPage = newValue);
+                          }
                         },
                       ),
                     ],
@@ -335,113 +400,162 @@ class _WebLogPageState extends State<WebLogPage> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _filteredList.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.receipt_long,
-                            size: 42,
-                            color: Colors.grey[400],
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.receipt_long,
+                                size: 42,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                'Belum ada data log aktivitas.',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 10),
-                          Text(
-                            'Belum ada data log aktivitas.',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.vertical,
-                        child: DataTable(
-                          showCheckboxColumn: false,
-                          headingRowColor: WidgetStateProperty.all(
-                            Colors.grey[50],
-                          ),
-                          dataRowMaxHeight: 48,
-                          headingTextStyle: GoogleFonts.plusJakartaSans(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                          dataTextStyle: GoogleFonts.plusJakartaSans(
-                            fontSize: 12,
-                            color: Colors.black87,
-                          ),
-                          columns: const [
-                            DataColumn(label: Text('No')),
-                            DataColumn(label: Text('Waktu Aktivitas')),
-                            DataColumn(label: Text('Nama Karyawan')),
-                            DataColumn(label: Text('Aktivitas / Keterangan')),
-                            DataColumn(label: Text('Modul / Menu')),
-                          ],
-                          rows: List<DataRow>.generate(
-                            _filteredList.length > _rowsPerPage
-                                ? _rowsPerPage
-                                : _filteredList.length,
-                            (index) {
-                              final item = _filteredList[index];
-                              final String empName =
-                                  item['employees']?['full_name'] ?? 'Sistem';
+                        )
+                      : LayoutBuilder(
+                          builder: (context, constraints) {
+                            return ScrollConfiguration(
+                              behavior:
+                                  ScrollConfiguration.of(context).copyWith(
+                                dragDevices: {
+                                  PointerDeviceKind.touch,
+                                  PointerDeviceKind.mouse,
+                                  PointerDeviceKind.trackpad,
+                                },
+                              ),
+                              child: Scrollbar(
+                                controller: _horizontalScroll,
+                                thumbVisibility: true,
+                                trackVisibility: true,
+                                child: SingleChildScrollView(
+                                  controller: _horizontalScroll,
+                                  scrollDirection: Axis.horizontal,
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      minWidth: constraints.maxWidth,
+                                    ),
+                                    child: Scrollbar(
+                                      controller: _verticalScroll,
+                                      thumbVisibility: true,
+                                      child: SingleChildScrollView(
+                                        controller: _verticalScroll,
+                                        scrollDirection: Axis.vertical,
+                                        child: DataTable(
+                                          showCheckboxColumn: false,
+                                          headingRowColor:
+                                              WidgetStateProperty.all(
+                                            Colors.grey[50],
+                                          ),
+                                          dataRowMaxHeight: 48,
+                                          headingTextStyle:
+                                              GoogleFonts.plusJakartaSans(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.black87,
+                                          ),
+                                          dataTextStyle:
+                                              GoogleFonts.plusJakartaSans(
+                                            fontSize: 12,
+                                            color: Colors.black87,
+                                          ),
+                                          columns: const [
+                                            DataColumn(label: Text('No')),
+                                            DataColumn(
+                                                label: Text('Waktu Aktivitas')),
+                                            DataColumn(
+                                                label: Text('Nama Karyawan')),
+                                            DataColumn(
+                                                label: Text(
+                                                    'Aktivitas / Keterangan')),
+                                            DataColumn(
+                                                label: Text('Modul / Menu')),
+                                          ],
+                                          rows: List<DataRow>.generate(
+                                            _filteredList.length > _rowsPerPage
+                                                ? _rowsPerPage
+                                                : _filteredList.length,
+                                            (index) {
+                                              final item = _filteredList[index];
+                                              final String empName =
+                                                  item['employees']
+                                                          ?['full_name'] ??
+                                                      'Sistem';
 
-                              return DataRow(
-                                cells: [
-                                  DataCell(Text('${index + 1}')),
-                                  DataCell(
-                                    Text(
-                                      _formatTanggalWaktu(item['created_at']),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Text(
-                                      empName,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Text(
-                                      item['activity'] ??
-                                          item['description'] ??
-                                          '-',
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.blue.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        item['module'] ??
-                                            item['action_type'] ??
-                                            'Umum',
-                                        style: const TextStyle(
-                                          color: Colors.blue,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
+                                              return DataRow(
+                                                cells: [
+                                                  DataCell(
+                                                      Text('${index + 1}')),
+                                                  DataCell(
+                                                    Text(
+                                                      _formatTanggalWaktu(
+                                                          item['created_at']),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Text(
+                                                      empName,
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Text(
+                                                      item['activity'] ??
+                                                          item['description'] ??
+                                                          '-',
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Container(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 2,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.blue
+                                                            .withOpacity(0.1),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(4),
+                                                      ),
+                                                      child: Text(
+                                                        item['module'] ??
+                                                            item[
+                                                                'action_type'] ??
+                                                            'Umum',
+                                                        style: const TextStyle(
+                                                          color: Colors.blue,
+                                                          fontSize: 10,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ],
-                              );
-                            },
-                          ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                      ),
-                    ),
             ),
           ),
         ],

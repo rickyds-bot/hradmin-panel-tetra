@@ -24,7 +24,6 @@ class _WebCutiPageState extends State<WebCutiPage> {
   int _rowsPerPage = 50;
   final List<int> _pageOptions = [50, 100, 200];
 
-  // Tambahan ScrollController eksplisit untuk memperbaiki deteksi scroll Web
   final ScrollController _horizontalScroll = ScrollController();
   final ScrollController _verticalScroll = ScrollController();
 
@@ -54,19 +53,32 @@ class _WebCutiPageState extends State<WebCutiPage> {
           .from('employees')
           .select('id, full_name');
 
-      final Map<dynamic, String> employeeMap = {};
+      // Mengubah mapping ke bentuk Integer (angka) agar sesuai dengan struktur DB
+      final Map<int, String> employeeMap = {};
       for (var emp in employeesResponse) {
-        employeeMap[emp['id']] = emp['full_name'] ?? '-';
+        if (emp['id'] != null) {
+          int? parsedId = int.tryParse(emp['id'].toString());
+          if (parsedId != null) {
+            employeeMap[parsedId] = emp['full_name'] ?? '-';
+          }
+        }
       }
 
       List<dynamic> processedData = [];
 
       for (var item in cutiResponse) {
         var mutableItem = Map<String, dynamic>.from(item);
-        final empId = mutableItem['employee_id'];
+
+        // Parsing aman ID ke integer
+        int? empId = int.tryParse(mutableItem['employee_id']?.toString() ?? '');
+        int? approverId =
+            int.tryParse(mutableItem['approved_by']?.toString() ?? '');
+
         mutableItem['employees'] = {
           'full_name': employeeMap[empId] ?? 'Karyawan Tidak Ditemukan',
         };
+        // Menyimpan nama Admin/Approver
+        mutableItem['approver_name'] = employeeMap[approverId] ?? '-';
 
         processedData.add(mutableItem);
       }
@@ -95,10 +107,8 @@ class _WebCutiPageState extends State<WebCutiPage> {
 
     if (_selectedStatusFilter != 'all') {
       temp = temp.where((item) {
-        final status = (item['status'] ?? 'pending')
-            .toString()
-            .trim()
-            .toLowerCase();
+        final status =
+            (item['status'] ?? 'pending').toString().trim().toLowerCase();
         return status == _selectedStatusFilter;
       }).toList();
     }
@@ -106,9 +116,8 @@ class _WebCutiPageState extends State<WebCutiPage> {
     if (_searchNameCtrl.text.trim().isNotEmpty) {
       final search = _searchNameCtrl.text.trim().toLowerCase();
       temp = temp.where((item) {
-        final empName = (item['employees']?['full_name'] ?? '')
-            .toString()
-            .toLowerCase();
+        final empName =
+            (item['employees']?['full_name'] ?? '').toString().toLowerCase();
         return empName.contains(search);
       }).toList();
     }
@@ -263,7 +272,9 @@ class _WebCutiPageState extends State<WebCutiPage> {
   }
 
   Future<void> _showLeaveBalanceDialog(Map<String, dynamic> item) async {
-    final empId = item['employee_id'];
+    final empIdRaw = item['employee_id'];
+    final int? empId =
+        empIdRaw != null ? int.tryParse(empIdRaw.toString()) : null;
     final userUuid = item['user_id'];
     final empName = item['employees']?['full_name'] ?? 'Karyawan';
 
@@ -292,9 +303,8 @@ class _WebCutiPageState extends State<WebCutiPage> {
       }
 
       if (balanceData == null) {
-        final allBalances = await Supabase.instance.client
-            .from('leave_balance')
-            .select();
+        final allBalances =
+            await Supabase.instance.client.from('leave_balance').select();
         for (var bal in allBalances) {
           if ((bal['employee_id'] != null &&
                   bal['employee_id'].toString() == empId?.toString()) ||
@@ -368,11 +378,11 @@ class _WebCutiPageState extends State<WebCutiPage> {
                             fit: BoxFit.contain,
                             errorBuilder: (context, error, stackTrace) =>
                                 const Center(
-                                  child: Text(
-                                    'Gagal memuat pratinjau gambar.',
-                                    style: TextStyle(fontSize: 12),
-                                  ),
-                                ),
+                              child: Text(
+                                'Gagal memuat pratinjau gambar.',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                            ),
                           ),
                         ),
                       )
@@ -427,16 +437,33 @@ class _WebCutiPageState extends State<WebCutiPage> {
   Future<void> _updateStatusCutiAdmin(
     int id,
     String newStatus,
-    dynamic empId,
+    dynamic empIdRaw,
     dynamic userUuid,
     String startDate,
     String endDate,
   ) async {
     try {
-      await Supabase.instance.client
-          .from('leave_requests')
-          .update({'status': newStatus})
-          .eq('id', id);
+      // 1. Ambil UUID dan Email Admin yang sedang login
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) throw 'Sesi admin tidak ditemukan';
+
+      // 2. Cari ID Integer Admin dari tabel employees berdasarkan email
+      final adminData = await Supabase.instance.client
+          .from('employees')
+          .select('id')
+          .eq('email', currentUser.email!)
+          .maybeSingle();
+
+      final int? adminEmpId = adminData?['id']; // Ini adalah BigInt / Integer
+
+      final int? empId =
+          empIdRaw != null ? int.tryParse(empIdRaw.toString()) : null;
+
+      // 3. Simpan adminEmpId (integer) ke approved_by
+      await Supabase.instance.client.from('leave_requests').update({
+        'status': newStatus,
+        if (newStatus != 'pending') 'approved_by': adminEmpId
+      }).eq('id', id);
 
       if (newStatus == 'approved') {
         DateTime start = DateTime.parse(startDate);
@@ -480,7 +507,7 @@ class _WebCutiPageState extends State<WebCutiPage> {
             await query.eq('id', balanceData['id']);
           } else if (userUuid != null) {
             await query.eq('user_id', userUuid);
-          } else {
+          } else if (empId != null) {
             await query.eq('employee_id', empId);
           }
         }
@@ -543,7 +570,6 @@ class _WebCutiPageState extends State<WebCutiPage> {
             ],
           ),
           const SizedBox(height: 16),
-
           Row(
             children: [
               Container(
@@ -717,7 +743,6 @@ class _WebCutiPageState extends State<WebCutiPage> {
             ],
           ),
           const SizedBox(height: 16),
-
           Expanded(
             child: Card(
               elevation: 0,
@@ -729,358 +754,404 @@ class _WebCutiPageState extends State<WebCutiPage> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _filteredList.isEmpty
-                  ? Center(
-                      child: Text(
-                        'Data cuti atau izin tidak ditemukan.',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    )
-                  : LayoutBuilder(
-                      builder: (context, constraints) {
-                        return ScrollConfiguration(
-                          behavior: ScrollConfiguration.of(context).copyWith(
-                            dragDevices: {
-                              PointerDeviceKind.touch,
-                              PointerDeviceKind.mouse,
-                              PointerDeviceKind.trackpad,
-                            },
+                      ? Center(
+                          child: Text(
+                            'Data cuti atau izin tidak ditemukan.',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
                           ),
-                          // PENGGUNAAN CONTROLLER EKSPLISIT UNTUK HORIZONTAL SCROLLBAR
-                          child: Scrollbar(
-                            controller: _horizontalScroll,
-                            thumbVisibility: true,
-                            trackVisibility: true,
-                            child: SingleChildScrollView(
-                              controller: _horizontalScroll,
-                              scrollDirection: Axis.horizontal,
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  minWidth: constraints.maxWidth,
-                                ),
-                                child: Scrollbar(
-                                  controller: _verticalScroll,
-                                  thumbVisibility: true,
-                                  child: SingleChildScrollView(
-                                    controller: _verticalScroll,
-                                    scrollDirection: Axis.vertical,
-                                    child: DataTable(
-                                      showCheckboxColumn: false,
-                                      headingRowColor: WidgetStateProperty.all(
-                                        Colors.grey[50],
-                                      ),
-                                      dataRowMaxHeight: 65,
-                                      headingTextStyle:
-                                          GoogleFonts.plusJakartaSans(
+                        )
+                      : LayoutBuilder(
+                          builder: (context, constraints) {
+                            return ScrollConfiguration(
+                              behavior:
+                                  ScrollConfiguration.of(context).copyWith(
+                                dragDevices: {
+                                  PointerDeviceKind.touch,
+                                  PointerDeviceKind.mouse,
+                                  PointerDeviceKind.trackpad,
+                                },
+                              ),
+                              child: Scrollbar(
+                                controller: _horizontalScroll,
+                                thumbVisibility: true,
+                                trackVisibility: true,
+                                child: SingleChildScrollView(
+                                  controller: _horizontalScroll,
+                                  scrollDirection: Axis.horizontal,
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      minWidth: constraints.maxWidth,
+                                    ),
+                                    child: Scrollbar(
+                                      controller: _verticalScroll,
+                                      thumbVisibility: true,
+                                      child: SingleChildScrollView(
+                                        controller: _verticalScroll,
+                                        scrollDirection: Axis.vertical,
+                                        child: DataTable(
+                                          showCheckboxColumn: false,
+                                          headingRowColor:
+                                              WidgetStateProperty.all(
+                                            Colors.grey[50],
+                                          ),
+                                          dataRowMaxHeight: 65,
+                                          headingTextStyle:
+                                              GoogleFonts.plusJakartaSans(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w600,
                                             color: Colors.black87,
                                           ),
-                                      dataTextStyle:
-                                          GoogleFonts.plusJakartaSans(
+                                          dataTextStyle:
+                                              GoogleFonts.plusJakartaSans(
                                             fontSize: 12,
                                             color: Colors.black87,
                                           ),
-                                      columns: const [
-                                        DataColumn(label: Text('No')),
-                                        DataColumn(label: Text('Karyawan')),
-                                        DataColumn(label: Text('Jenis')),
-                                        DataColumn(
-                                          label: Text('Rentang Tanggal'),
-                                        ),
-                                        DataColumn(label: Text('Alasan')),
-                                        DataColumn(label: Text('Lampiran')),
-                                        DataColumn(label: Text('Status')),
-                                        DataColumn(label: Text('Action')),
-                                      ],
-                                      rows: List<DataRow>.generate(
-                                        _filteredList.length > _rowsPerPage
-                                            ? _rowsPerPage
-                                            : _filteredList.length,
-                                        (index) {
-                                          final item = _filteredList[index];
-                                          final String empName =
-                                              item['employees']?['full_name'] ??
-                                              'Karyawan';
-                                          final String rawStatus =
-                                              (item['status'] ?? 'pending')
-                                                  .toString()
-                                                  .trim()
-                                                  .toLowerCase();
-                                          final statusColor = _getStatusColor(
-                                            rawStatus,
-                                          );
+                                          columns: const [
+                                            DataColumn(label: Text('No')),
+                                            DataColumn(label: Text('Karyawan')),
+                                            DataColumn(label: Text('Jenis')),
+                                            DataColumn(
+                                              label: Text('Rentang Tanggal'),
+                                            ),
+                                            DataColumn(label: Text('Alasan')),
+                                            DataColumn(label: Text('Lampiran')),
+                                            DataColumn(label: Text('Status')),
+                                            DataColumn(
+                                                label: Text('Approved By')),
+                                            DataColumn(label: Text('Action')),
+                                          ],
+                                          rows: List<DataRow>.generate(
+                                            _filteredList.length > _rowsPerPage
+                                                ? _rowsPerPage
+                                                : _filteredList.length,
+                                            (index) {
+                                              final item = _filteredList[index];
+                                              final String empName =
+                                                  item['employees']
+                                                          ?['full_name'] ??
+                                                      'Karyawan';
+                                              final String rawStatus =
+                                                  (item['status'] ?? 'pending')
+                                                      .toString()
+                                                      .trim()
+                                                      .toLowerCase();
+                                              final statusColor =
+                                                  _getStatusColor(
+                                                rawStatus,
+                                              );
 
-                                          return DataRow(
-                                            onSelectChanged: (selected) {
-                                              _showLeaveBalanceDialog(item);
-                                            },
-                                            cells: [
-                                              DataCell(Text('${index + 1}')),
-                                              DataCell(
-                                                Text(
-                                                  empName,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
+                                              return DataRow(
+                                                onSelectChanged: (selected) {
+                                                  _showLeaveBalanceDialog(item);
+                                                },
+                                                cells: [
+                                                  DataCell(
+                                                      Text('${index + 1}')),
+                                                  DataCell(
+                                                    Text(
+                                                      empName,
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
                                                   ),
-                                                ),
-                                              ),
-                                              DataCell(
-                                                Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
+                                                  DataCell(
+                                                    Container(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
                                                         horizontal: 6,
                                                         vertical: 2,
                                                       ),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.blue
-                                                        .withOpacity(0.1),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.blue
+                                                            .withOpacity(0.1),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(
                                                           4,
                                                         ),
-                                                  ),
-                                                  child: Text(
-                                                    item['leave_type'] ??
-                                                        'Cuti',
-                                                    style: const TextStyle(
-                                                      color: Colors.blue,
-                                                      fontSize: 11,
-                                                      fontWeight:
-                                                          FontWeight.bold,
+                                                      ),
+                                                      child: Text(
+                                                        item['leave_type'] ??
+                                                            'Cuti',
+                                                        style: const TextStyle(
+                                                          color: Colors.blue,
+                                                          fontSize: 11,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
                                                     ),
                                                   ),
-                                                ),
-                                              ),
-                                              DataCell(
-                                                Text(
-                                                  '${_formatTanggal(item['start_date'])} s/d ${_formatTanggal(item['end_date'])}',
-                                                ),
-                                              ),
-                                              DataCell(
-                                                SizedBox(
-                                                  width: 160,
-                                                  child: Text(
-                                                    item['reason'] ?? '-',
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    maxLines: 2,
+                                                  DataCell(
+                                                    Text(
+                                                      '${_formatTanggal(item['start_date'])} s/d ${_formatTanggal(item['end_date'])}',
+                                                    ),
                                                   ),
-                                                ),
-                                              ),
-                                              DataCell(
-                                                item['attachment_url'] != null
-                                                    ? ElevatedButton.icon(
-                                                        icon: const Icon(
-                                                          Icons.attach_file,
-                                                          size: 12,
-                                                        ),
-                                                        label: const Text(
-                                                          'Lihat',
-                                                          style: TextStyle(
-                                                            fontSize: 11,
-                                                          ),
-                                                        ),
-                                                        style: ElevatedButton.styleFrom(
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
+                                                  DataCell(
+                                                    SizedBox(
+                                                      width: 160,
+                                                      child: Text(
+                                                        item['reason'] ?? '-',
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        maxLines: 2,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    item['attachment_url'] !=
+                                                            null
+                                                        ? ElevatedButton.icon(
+                                                            icon: const Icon(
+                                                              Icons.attach_file,
+                                                              size: 12,
+                                                            ),
+                                                            label: const Text(
+                                                              'Lihat',
+                                                              style: TextStyle(
+                                                                fontSize: 11,
+                                                              ),
+                                                            ),
+                                                            style:
+                                                                ElevatedButton
+                                                                    .styleFrom(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .symmetric(
                                                                 horizontal: 8,
                                                                 vertical: 2,
                                                               ),
-                                                          backgroundColor:
-                                                              Colors.teal[50],
-                                                          foregroundColor:
-                                                              Colors.teal[800],
-                                                          elevation: 0,
-                                                        ),
-                                                        onPressed: () =>
-                                                            _showAttachmentDialog(
-                                                              item['attachment_url'],
+                                                              backgroundColor:
+                                                                  Colors
+                                                                      .teal[50],
+                                                              foregroundColor:
+                                                                  Colors.teal[
+                                                                      800],
+                                                              elevation: 0,
+                                                            ),
+                                                            onPressed: () =>
+                                                                _showAttachmentDialog(
+                                                              item[
+                                                                  'attachment_url'],
                                                               empName,
                                                             ),
-                                                      )
-                                                    : const Text(
-                                                        '-',
-                                                        style: TextStyle(
-                                                          color: Colors.grey,
-                                                        ),
-                                                      ),
-                                              ),
-                                              DataCell(
-                                                Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
+                                                          )
+                                                        : const Text(
+                                                            '-',
+                                                            style: TextStyle(
+                                                              color:
+                                                                  Colors.grey,
+                                                            ),
+                                                          ),
+                                                  ),
+                                                  DataCell(
+                                                    Container(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
                                                         horizontal: 8,
                                                         vertical: 2,
                                                       ),
-                                                  decoration: BoxDecoration(
-                                                    color: statusColor
-                                                        .withOpacity(0.1),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
+                                                      decoration: BoxDecoration(
+                                                        color: statusColor
+                                                            .withOpacity(0.1),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(
                                                           4,
                                                         ),
-                                                    border: Border.all(
-                                                      color: statusColor,
-                                                      width: 0.5,
+                                                        border: Border.all(
+                                                          color: statusColor,
+                                                          width: 0.5,
+                                                        ),
+                                                      ),
+                                                      child: Text(
+                                                        rawStatus.toUpperCase(),
+                                                        style: TextStyle(
+                                                          color: statusColor,
+                                                          fontSize: 10,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
                                                     ),
                                                   ),
-                                                  child: Text(
-                                                    rawStatus.toUpperCase(),
-                                                    style: TextStyle(
-                                                      color: statusColor,
-                                                      fontSize: 10,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              DataCell(
-                                                Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  children: [
-                                                    if (rawStatus ==
-                                                        'pending') ...[
-                                                      ElevatedButton(
-                                                        style: ElevatedButton.styleFrom(
-                                                          backgroundColor:
-                                                              Colors.green,
-                                                          foregroundColor:
-                                                              Colors.white,
-                                                          minimumSize:
-                                                              const Size(
+                                                  DataCell(Text(
+                                                      item['approver_name'] ??
+                                                          '-',
+                                                      style: TextStyle(
+                                                          color:
+                                                              Colors.grey[700],
+                                                          fontStyle: FontStyle
+                                                              .italic))),
+                                                  DataCell(
+                                                    Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        if (rawStatus ==
+                                                            'pending') ...[
+                                                          ElevatedButton(
+                                                            style:
+                                                                ElevatedButton
+                                                                    .styleFrom(
+                                                              backgroundColor:
+                                                                  Colors.green,
+                                                              foregroundColor:
+                                                                  Colors.white,
+                                                              minimumSize:
+                                                                  const Size(
                                                                 60,
                                                                 30,
                                                               ),
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .symmetric(
                                                                 horizontal: 10,
                                                               ),
-                                                          shape: RoundedRectangleBorder(
-                                                            borderRadius:
-                                                                BorderRadius.circular(
+                                                              shape:
+                                                                  RoundedRectangleBorder(
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
                                                                   6,
                                                                 ),
-                                                          ),
-                                                        ),
-                                                        onPressed: () =>
-                                                            _updateStatusCutiAdmin(
+                                                              ),
+                                                            ),
+                                                            onPressed: () =>
+                                                                _updateStatusCutiAdmin(
                                                               item['id'],
                                                               'approved',
-                                                              item['employee_id'],
+                                                              item[
+                                                                  'employee_id'],
                                                               item['user_id'],
-                                                              item['start_date'],
+                                                              item[
+                                                                  'start_date'],
                                                               item['end_date'],
                                                             ),
-                                                        child: const Text(
-                                                          'Setujui',
-                                                          style: TextStyle(
-                                                            fontSize: 11,
+                                                            child: const Text(
+                                                              'Setujui',
+                                                              style: TextStyle(
+                                                                fontSize: 11,
+                                                              ),
+                                                            ),
                                                           ),
-                                                        ),
-                                                      ),
-                                                      const SizedBox(width: 8),
-                                                      OutlinedButton(
-                                                        style: OutlinedButton.styleFrom(
-                                                          foregroundColor:
-                                                              Colors.red,
-                                                          side:
-                                                              const BorderSide(
+                                                          const SizedBox(
+                                                              width: 8),
+                                                          OutlinedButton(
+                                                            style:
+                                                                OutlinedButton
+                                                                    .styleFrom(
+                                                              foregroundColor:
+                                                                  Colors.red,
+                                                              side:
+                                                                  const BorderSide(
                                                                 color:
                                                                     Colors.red,
                                                               ),
-                                                          minimumSize:
-                                                              const Size(
+                                                              minimumSize:
+                                                                  const Size(
                                                                 50,
                                                                 30,
                                                               ),
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .symmetric(
                                                                 horizontal: 10,
                                                               ),
-                                                          shape: RoundedRectangleBorder(
-                                                            borderRadius:
-                                                                BorderRadius.circular(
+                                                              shape:
+                                                                  RoundedRectangleBorder(
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
                                                                   6,
                                                                 ),
-                                                          ),
-                                                        ),
-                                                        onPressed: () =>
-                                                            _updateStatusCutiAdmin(
+                                                              ),
+                                                            ),
+                                                            onPressed: () =>
+                                                                _updateStatusCutiAdmin(
                                                               item['id'],
                                                               'rejected',
-                                                              item['employee_id'],
+                                                              item[
+                                                                  'employee_id'],
                                                               item['user_id'],
-                                                              item['start_date'],
+                                                              item[
+                                                                  'start_date'],
                                                               item['end_date'],
                                                             ),
-                                                        child: const Text(
-                                                          'Tolak',
-                                                          style: TextStyle(
-                                                            fontSize: 11,
+                                                            child: const Text(
+                                                              'Tolak',
+                                                              style: TextStyle(
+                                                                fontSize: 11,
+                                                              ),
+                                                            ),
                                                           ),
-                                                        ),
-                                                      ),
-                                                      const SizedBox(width: 8),
-                                                    ],
-                                                    IconButton(
-                                                      icon: const Icon(
-                                                        Icons.edit_note,
-                                                        color: Colors.blue,
-                                                        size: 20,
-                                                      ),
-                                                      tooltip: 'Ubah Status',
-                                                      padding: EdgeInsets.zero,
-                                                      constraints:
-                                                          const BoxConstraints(),
-                                                      onPressed: () {
-                                                        showDialog(
-                                                          context: context,
-                                                          barrierDismissible:
-                                                              false,
-                                                          builder: (context) =>
-                                                              EditStatusCutiDialog(
+                                                          const SizedBox(
+                                                              width: 8),
+                                                        ],
+                                                        IconButton(
+                                                          icon: const Icon(
+                                                            Icons.edit_note,
+                                                            color: Colors.blue,
+                                                            size: 20,
+                                                          ),
+                                                          tooltip:
+                                                              'Ubah Status',
+                                                          padding:
+                                                              EdgeInsets.zero,
+                                                          constraints:
+                                                              const BoxConstraints(),
+                                                          onPressed: () {
+                                                            showDialog(
+                                                              context: context,
+                                                              barrierDismissible:
+                                                                  false,
+                                                              builder: (context) =>
+                                                                  EditStatusCutiDialog(
                                                                 cutiData: item,
                                                                 onSuccess:
                                                                     _fetchCutiData,
                                                               ),
-                                                        );
-                                                      },
+                                                            );
+                                                          },
+                                                        ),
+                                                        const SizedBox(
+                                                            width: 8),
+                                                        IconButton(
+                                                          icon: const Icon(
+                                                            Icons
+                                                                .delete_outline,
+                                                            color: Colors.red,
+                                                            size: 20,
+                                                          ),
+                                                          tooltip: 'Hapus Data',
+                                                          padding:
+                                                              EdgeInsets.zero,
+                                                          constraints:
+                                                              const BoxConstraints(),
+                                                          onPressed: () =>
+                                                              _deleteCuti(item),
+                                                        ),
+                                                      ],
                                                     ),
-                                                    const SizedBox(width: 8),
-                                                    IconButton(
-                                                      icon: const Icon(
-                                                        Icons.delete_outline,
-                                                        color: Colors.red,
-                                                        size: 20,
-                                                      ),
-                                                      tooltip: 'Hapus Data',
-                                                      padding: EdgeInsets.zero,
-                                                      constraints:
-                                                          const BoxConstraints(),
-                                                      onPressed: () =>
-                                                          _deleteCuti(item),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          );
-                                        },
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                            );
+                          },
+                        ),
             ),
           ),
         ],
@@ -1171,10 +1242,12 @@ class _LeaveBalanceDetailDialogState extends State<LeaveBalanceDetailDialog> {
       final total = int.tryParse(_totalCtrl.text) ?? 12;
       final used = int.tryParse(_usedCtrl.text) ?? 0;
       final remaining = int.tryParse(_remainingCtrl.text) ?? (total - used);
+      final int? parsedEmpId =
+          widget.empId != null ? int.tryParse(widget.empId.toString()) : null;
 
       final payload = {
         if (widget.userUuid != null) 'user_id': widget.userUuid,
-        if (widget.empId != null) 'employee_id': widget.empId,
+        if (parsedEmpId != null) 'employee_id': parsedEmpId,
         'total_leave': total,
         'used_leave': used,
         'remaining_leave': remaining,
@@ -1393,7 +1466,7 @@ class _LeaveBalanceDetailDialogState extends State<LeaveBalanceDetailDialog> {
               ),
               const SizedBox(height: 6),
               Text(
-                '• Jenis: ${item['leave_type'] ?? 'Cuti'}\n• Tanggal: ${_formatTgl(item['start_date'])} s/d ${_formatTgl(item['end_date'])}\n• Alasan: ${item['reason'] ?? '-'}\n• Status: ${(item['status'] ?? 'pending').toString().toUpperCase()}',
+                '• Jenis: ${item['leave_type'] ?? 'Cuti'}\n• Tanggal: ${_formatTgl(item['start_date'])} s/d ${_formatTgl(item['end_date'])}\n• Alasan: ${item['reason'] ?? '-'}\n• Status: ${(item['status'] ?? 'pending').toString().toUpperCase()}\n• Disetujui Oleh: ${item['approver_name'] ?? '-'}',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 12,
                   color: Colors.grey[700],
@@ -1504,10 +1577,23 @@ class _EditStatusCutiDialogState extends State<EditStatusCutiDialog> {
   Future<void> _updateStatus() async {
     setState(() => _isSaving = true);
     try {
-      await Supabase.instance.client
-          .from('leave_requests')
-          .update({'status': _selectedStatus})
-          .eq('id', widget.cutiData['id']);
+      final currentUser = Supabase.instance.client.auth.currentUser;
+
+      // Ambil ID Integer dari Admin yang sedang login
+      final adminData = await Supabase.instance.client
+          .from('employees')
+          .select('id')
+          .eq('email', currentUser!.email!)
+          .maybeSingle();
+
+      final int? adminEmpId = adminData?['id'];
+
+      // Gunakan ID Integer untuk update field approved_by
+      await Supabase.instance.client.from('leave_requests').update({
+        'status': _selectedStatus,
+        if (_selectedStatus != 'pending') 'approved_by': adminEmpId,
+      }).eq('id', widget.cutiData['id']);
+
       if (mounted) {
         Navigator.pop(context);
         widget.onSuccess();

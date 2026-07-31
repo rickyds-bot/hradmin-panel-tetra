@@ -1,15 +1,14 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest_all.dart'
+    as tzData; // <-- Alias dibedakan agar tidak bentrok
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:flutter_app_badger/flutter_app_badger.dart';
-//import 'package:flutter_timezone/flutter_timezone.dart';
 
 class NotificationService {
-  // --- Singleton Pattern ---
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal();
@@ -17,29 +16,18 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  // =======================================================
-  // 1. INITIALIZE (DIPANGGIL DI main.dart ATAU AWAL APLIKASI)
-  // =======================================================
   Future<void> initialize() async {
     try {
-      // Inisialisasi Timezone secara lengkap
-      tz.initializeTimeZones();
+      tzData.initializeTimeZones(); // Menggunakan alias yang benar
       try {
         tz.setLocalLocation(tz.getLocation('Asia/Jakarta'));
       } catch (_) {
-        // Fallback jika Asia/Jakarta gagal ter-set
         tz.setLocalLocation(tz.getLocation('UTC'));
       }
 
-      // Request Izin Notifikasi Biasa
       var status = await Permission.notification.status;
       if (!status.isGranted) {
         await Permission.notification.request();
-      }
-
-      // Request Izin Exact Alarm untuk Android 12+ (Penting!)
-      if (await Permission.scheduleExactAlarm.isDenied) {
-        await Permission.scheduleExactAlarm.request();
       }
 
       const AndroidInitializationSettings initializationSettingsAndroid =
@@ -59,32 +47,27 @@ class NotificationService {
           flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
 
+      // Plugin sudah mengurus izin exact alarm secara native, tidak perlu via permission_handler lagi
       await androidPlugin?.requestNotificationsPermission();
       await androidPlugin?.requestExactAlarmsPermission();
 
-      // Buat Channel Notifikasi Khusus Absensi di Android OS
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
-        'absensi_channel', // id
-        'Absensi Reminder', // name
+        'absensi_channel',
+        'Absensi Reminder',
         description: 'Notifikasi pengingat check-in dan check-out absensi',
         importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
       );
 
-      await flutterLocalNotificationsPlugin
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(channel);
+      await androidPlugin?.createNotificationChannel(channel);
 
-      // Jalankan listener FCM
       _listenToForegroundNotifications();
     } catch (e) {
       debugPrint("Gagal initialize NotificationService: $e");
     }
   }
 
-  // =======================================================
-  // 2. SETUP FCM TOKEN (DIPANGGIL SETELAH LOGIN/DAPAT DATA)
-  // =======================================================
   Future<void> setupFCMToken(int employeeId) async {
     try {
       NotificationSettings settings =
@@ -92,14 +75,11 @@ class NotificationService {
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized) {
         String? fcmToken = await FirebaseMessaging.instance.getToken();
-
         if (fcmToken != null) {
           await Supabase.instance.client
               .from('employees')
               .update({'fcm_token': fcmToken}).eq('id', employeeId);
-          debugPrint("FCM Token berhasil disimpan: $fcmToken");
         }
-
         FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
           await Supabase.instance.client
               .from('employees')
@@ -125,6 +105,7 @@ class NotificationService {
               importance: Importance.max,
               priority: Priority.high,
               channelShowBadge: true,
+              icon: '@mipmap/ic_launcher',
             ),
           ),
         );
@@ -133,9 +114,6 @@ class NotificationService {
     });
   }
 
-  // =======================================================
-  // 3. LOGIKA MENCARI HARI & WAKTU (LOCAL NOTIFICATION)
-  // =======================================================
   tz.TZDateTime _nextInstanceOfDayAndTime(
     int weekday,
     int hour,
@@ -161,7 +139,6 @@ class NotificationService {
     while (scheduledDate.weekday != weekday || scheduledDate.isBefore(now)) {
       scheduledDate = scheduledDate.add(const Duration(days: 1));
     }
-
     return scheduledDate;
   }
 
@@ -191,29 +168,32 @@ class NotificationService {
           android: AndroidNotificationDetails(
             'absensi_channel',
             'Absensi Reminder',
+            channelDescription: 'Pengingat otomatis waktu absen',
             importance: Importance.max,
             priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+            enableVibration: true,
+            playSound: true,
           ),
         ),
-        // Gunakan inexactAllowWhileIdle agar ramah aturan baterai Android 12+ & anti-crash
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
       );
-      debugPrint(
-        "Berhasil dijadwalkan notifikasi ID $id untuk tanggal $scheduledDate",
-      );
+
+      debugPrint("Alarm $id sukses dijadwalkan pada: $scheduledDate");
     } catch (e) {
       debugPrint("Gagal menjadwalkan notifikasi ID $id: $e");
     }
   }
 
-  // =======================================================
-  // 4. JADWALKAN SEMUA ABSENSI
-  // =======================================================
-  Future<void> setupAbsensiNotifications() async {
+  // LOGIKA BARU: Menerima status apakah hari ini sudah absen
+  Future<void> setupAbsensiNotifications(
+      {bool skipMorning = false, bool skipEvening = false}) async {
     for (int i = 1; i <= 5; i++) {
+      bool isToday = DateTime.now().weekday == i;
+
       await _scheduleWeekly(
         100 + i,
         i,
@@ -221,6 +201,7 @@ class NotificationService {
         15,
         "Siap-siap Check-in!",
         "15 Menit lagi waktu check-in dimulai. Yuk bersiap!",
+        skipToday: skipMorning && isToday,
       );
       await _scheduleWeekly(
         200 + i,
@@ -229,6 +210,7 @@ class NotificationService {
         30,
         "Waktunya Check-in!",
         "Sudah jam 08:30, jangan lupa absen pagi sekarang!",
+        skipToday: skipMorning && isToday,
       );
       await _scheduleWeekly(
         300 + i,
@@ -237,6 +219,7 @@ class NotificationService {
         15,
         "Siap-siap Check-out!",
         "15 Menit lagi waktu check-out. Rapikan pekerjaanmu!",
+        skipToday: skipEvening && isToday,
       );
       await _scheduleWeekly(
         400 + i,
@@ -245,13 +228,11 @@ class NotificationService {
         30,
         "Waktunya Check-out!",
         "Kerjaan selesai? Yuk absen pulang!",
+        skipToday: skipEvening && isToday,
       );
     }
   }
 
-  // =======================================================
-  // 5. BATALKAN NOTIF (ON CHECK-IN & ON CHECK-OUT)
-  // =======================================================
   Future<void> onCheckIn() async {
     int hariIni = DateTime.now().weekday;
     if (hariIni >= 1 && hariIni <= 5) {

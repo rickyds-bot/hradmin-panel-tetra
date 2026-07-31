@@ -37,15 +37,30 @@ class _KaryawanPageState extends State<KaryawanPage> {
   }
 
   Future<void> _initProcess() async {
-    // 1. Ambil Data Karyawan Dulu
     await _fetchUserData();
 
-    // 2. Setup Semua Notifikasi (Aman & Tidak Bikin Crash)
     if (userData != null && userData!['id'] != null) {
       try {
         final notifService = NotificationService();
         await notifService.initialize();
-        await notifService.setupAbsensiNotifications();
+
+        final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        final absensiToday = await Supabase.instance.client
+            .from('attendance')
+            .select('status')
+            .eq('employee_id', userData!['id'])
+            .gte('created_at', '${todayStr}T00:00:00')
+            .lte('created_at', '${todayStr}T23:59:59');
+
+        bool hasCheckIn = absensiToday
+            .any((e) => e['status'].toString().toLowerCase() == 'check-in');
+        bool hasCheckOut = absensiToday
+            .any((e) => e['status'].toString().toLowerCase() == 'check-out');
+
+        await notifService.setupAbsensiNotifications(
+          skipMorning: hasCheckIn,
+          skipEvening: hasCheckOut,
+        );
         await notifService.setupFCMToken(userData!['id']);
       } catch (e) {
         debugPrint("Peringatan: Gagal setup Notifikasi: $e");
@@ -143,9 +158,6 @@ class _KaryawanPageState extends State<KaryawanPage> {
       );
     }
 
-    // ===================================================================
-    // --- LOGIKA ROLE BARU MENGGUNAKAN TEKS ---
-    // ===================================================================
     final String userRole =
         (userData!['pos_name'] ?? '').toString().toLowerCase();
     final bool isApprover = (userRole.contains('supervisor') ||
@@ -156,7 +168,6 @@ class _KaryawanPageState extends State<KaryawanPage> {
     final List<BottomNavigationBarItem> activeNavItems = [];
     final List<String> activeTitles = [];
 
-    // --- TAB 1: BERANDA ---
     activePages.add(AbsensiKaryawanTab(userData: userData!));
     activeNavItems.add(
       const BottomNavigationBarItem(
@@ -166,7 +177,6 @@ class _KaryawanPageState extends State<KaryawanPage> {
     );
     activeTitles.add("HRIS Tetra");
 
-    // --- TAB 2: CUTI/IZIN ---
     activePages.add(CutiKaryawanTab(userData: userData!));
     activeNavItems.add(
       const BottomNavigationBarItem(
@@ -176,12 +186,12 @@ class _KaryawanPageState extends State<KaryawanPage> {
     );
     activeTitles.add("Pengajuan Cuti/Izin");
 
-    // --- TAB 3: DINAMIS (APPROVAL ATAU LEMBUR) ---
     if (isApprover) {
       activePages.add(
         ManagerApprovalTab(
           managerId: userData!['id'],
           departmentId: userData!['department_id'],
+          managerRole: userRole,
         ),
       );
       activeNavItems.add(
@@ -202,7 +212,6 @@ class _KaryawanPageState extends State<KaryawanPage> {
       activeTitles.add("Pengajuan Lembur");
     }
 
-    // --- TAB 4: PROFIL ---
     activePages.add(
       ProfilKaryawanTab(
         userData: userData!,
@@ -219,13 +228,11 @@ class _KaryawanPageState extends State<KaryawanPage> {
 
     int safeIndex = _currentMenuIndex;
     if (safeIndex >= activePages.length) {
-      safeIndex =
-          activePages.length - 1; // Mencegah crash jika jumlah tab berubah
+      safeIndex = activePages.length - 1;
     }
 
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
-      // --- UBAH BAGIAN APPBAR INI ---
       appBar: safeIndex == 0
           ? null
           : AppBar(
@@ -241,7 +248,6 @@ class _KaryawanPageState extends State<KaryawanPage> {
               backgroundColor: Colors.blue.shade900,
               foregroundColor: Colors.white,
             ),
-      // ------------------------------
       body: activePages[safeIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: safeIndex,
@@ -283,19 +289,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
 
   @override
   void initState() {
-    String _dapatkanSapaan() {
-      final int jam = DateTime.now().hour;
-      if (jam >= 4 && jam < 11) {
-        return "Selamat Pagi,"; // 04:00 - 10:59
-      } else if (jam >= 11 && jam < 15) {
-        return "Selamat Siang,"; // 11:00 - 14:59
-      } else if (jam >= 15 && jam < 18) {
-        return "Selamat Sore,"; // 15:00 - 17:59
-      } else {
-        return "Selamat Malam,"; // 18:00 - 03:59
-      }
-    }
-
     super.initState();
     userUuid = Supabase.instance.client.auth.currentUser?.id;
     _timeString = DateFormat('HH:mm:ss').format(DateTime.now());
@@ -305,7 +298,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
     );
     _getCurrentLocation();
     _checkNewAnnouncements();
-    //_showAnnouncements();
     _refreshHistory();
   }
 
@@ -317,7 +309,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         .order('created_at', ascending: false)
         .limit(20);
 
-    // Perbarui UI secara aman
     if (mounted) setState(() {});
   }
 
@@ -338,8 +329,7 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
           .limit(1);
 
       if (mounted && data.isNotEmpty) {
-        int latestId = data[0]['id']; // ID pengumuman terbaru dari database
-
+        int latestId = data[0]['id'];
         SharedPreferences prefs = await SharedPreferences.getInstance();
         int? lastSeenId = prefs.getInt('last_seen_announcement_id');
 
@@ -390,17 +380,14 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
   Future<void> _absen(BuildContext context, String tipe) async {
     setState(() => _isLoading = true);
     try {
-      // 1. Cek Permission Kamera & Lokasi
       var cameraStatus = await Permission.camera.request();
       if (!cameraStatus.isGranted)
         throw 'Izin kamera diperlukan untuk absensi.';
 
-      // 2. Ambil Lokasi
       Position currentPos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // --- AMBIL DATA KARYAWAN TERBARU (Termasuk Wajah) ---
       final empData = await Supabase.instance.client
           .from('employees')
           .select('location_id, face_embedding, is_face_registered')
@@ -410,13 +397,11 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
       final locId = empData['location_id'];
       if (locId == null) throw 'Lokasi kerja belum diatur.';
 
-      // --- VALIDASI WAJAH SUDAH DAFTAR ATAU BELUM ---
       if (empData['is_face_registered'] != true ||
           empData['face_embedding'] == null) {
         throw 'Anda belum mendaftarkan wajah. Silakan ke menu Profil untuk mendaftar.';
       }
 
-      // Parse data vektor wajah dari database (JSON string ke List<double>)
       List<double> registeredFace;
       try {
         final decoded = jsonDecode(empData['face_embedding'].toString());
@@ -424,7 +409,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
       } catch (e) {
         throw 'Data wajah korup. Silakan update data wajah di menu Profil.';
       }
-      // ---------------------------------------------------
 
       final locData = await Supabase.instance.client
           .from('locations')
@@ -443,14 +427,12 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         throw 'Anda di luar radius (${distance.toStringAsFixed(0)}m).';
       }
 
-      // 3. Buka Kamera Depan
       final cameras = await availableCameras();
       final frontCamera = cameras.firstWhere(
         (cam) => cam.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
       );
 
-      // Buka Halaman Auto-Capture & Face Verification
       final String? photoPath = await Navigator.push(
         context,
         MaterialPageRoute(
@@ -461,10 +443,8 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         ),
       );
 
-      // Jika user membatalkan (menekan tombol silang / kembali)
       if (photoPath == null) return;
 
-      // 4. Upload Foto Bukti & Insert Absen ke Database
       final file = File(photoPath);
       final bytes = await file.readAsBytes();
       final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -493,7 +473,7 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
           'longitude': currentPos.longitude,
         });
 
-        await file.delete(); // Hapus file lokal
+        await file.delete();
         _refreshHistory();
 
         try {
@@ -556,8 +536,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
     }
   }
 
-  // --- POSISI BUILD HEADER  ---
-
   bool _hasNewInfo = false;
 
   Widget _buildHeader() => Container(
@@ -574,7 +552,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         ),
         child: Row(
           children: [
-            // 1. Foto Profil
             CircleAvatar(
               key: ValueKey(widget.userData['photo_url']),
               radius: 32,
@@ -587,8 +564,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
                   : null,
             ),
             const SizedBox(width: 15),
-
-            // 2. Kolom Sapaan & Nama
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -607,9 +582,7 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
                 ),
               ],
             ),
-
-            // 3. Ikon Lonceng (Diletakkan di sini agar sejajar di kanan)
-            const Spacer(), // Mendorong ikon ke paling kanan
+            const Spacer(),
             Stack(
               alignment: Alignment.center,
               children: [
@@ -620,10 +593,7 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
                     size: 28,
                   ),
                   onPressed: () async {
-                    // <--- KATA 'async' DITAMBAHKAN DI SINI
                     setState(() => _hasNewInfo = false);
-
-                    // --- SIMPAN STATUS BACA KE MEMORI HP ---
                     try {
                       final data = await Supabase.instance.client
                           .from('announcements')
@@ -643,11 +613,9 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
                     } catch (e) {
                       debugPrint("Gagal simpan status baca: $e");
                     }
-                    // ---------------------------------------
 
                     if (!mounted) return;
 
-                    // Animasi Pindah Halaman Geser dari Kanan
                     Navigator.push(
                       context,
                       PageRouteBuilder(
@@ -655,16 +623,11 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
                             const PengumumanPage(),
                         transitionsBuilder:
                             (context, animation, secondaryAnimation, child) {
-                          const begin = Offset(
-                            1.0,
-                            0.0,
-                          ); // 1.0 berarti bergeser dari kanan
+                          const begin = Offset(1.0, 0.0);
                           const end = Offset.zero;
                           const curve = Curves.easeInOut;
-                          var tween = Tween(
-                            begin: begin,
-                            end: end,
-                          ).chain(CurveTween(curve: curve));
+                          var tween = Tween(begin: begin, end: end)
+                              .chain(CurveTween(curve: curve));
                           return SlideTransition(
                             position: animation.drive(tween),
                             child: child,
@@ -672,7 +635,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
                         },
                       ),
                     ).then((_) {
-                      // Refresh cek titik merah saat user kembali dari halaman pengumuman
                       _checkNewAnnouncements();
                     });
                   },
@@ -757,7 +719,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // --- Instruksi Manual ---
             const Padding(
               padding: EdgeInsets.only(bottom: 10),
               child: Text(
@@ -765,7 +726,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
                 style: TextStyle(
                   fontSize: 11,
                   color: Colors.black,
-                  //fontStyle: FontStyle.italic,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -807,7 +767,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
     if (userUuid == null)
       return const Expanded(child: Center(child: CircularProgressIndicator()));
     return Expanded(
-      // 5. Diubah ke FutureBuilder agar diam tidak berkedip
       child: FutureBuilder<List<Map<String, dynamic>>>(
         future: _historyFuture,
         builder: (context, snapshot) {
@@ -827,7 +786,7 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
               final row = snapshot.data![i];
               final localTime = DateTime.parse(row['created_at']).toLocal();
               final formattedTime = DateFormat(
-                'EEEE, dd MMM yyyy, HH:mm',
+                'EEEE, dd-MM-yyyy, HH:mm',
                 'id_ID',
               ).format(localTime);
               final isCheckIn =
@@ -894,7 +853,7 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
   DateTimeRange? _dateRange;
   DateTime? _nextResetDate;
 
-  String _mode = 'Cuti'; // 'Cuti' atau 'Izin'
+  String _mode = 'Cuti';
   String? _selectedLeaveType;
   XFile? _lampiran;
 
@@ -906,11 +865,9 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
 
   Future<void> _fetchRemainingLeave() async {
     try {
-      // --- WAJIB TAMBAHKAN 2 BARIS INI AGAR userUuid DIKENALI ---
       final userUuid = Supabase.instance.client.auth.currentUser?.id;
       if (userUuid == null) return;
-      // ---------------------------------------------------------
-      // 1. Ambil data lengkap (select '*') agar kolom next_reset_date ikut terbaca
+
       final data = await Supabase.instance.client
           .from('leave_balance')
           .select('*')
@@ -919,28 +876,20 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
 
       if (mounted && data != null) {
         final now = DateTime.now();
-        final today = DateTime(
-          now.year,
-          now.month,
-          now.day,
-        ); // Menghilangkan data jam/menit agar akurat
+        final today = DateTime(now.year, now.month, now.day);
 
-        // 2. Cek apakah Admin sudah menentukan tanggal reset di Web Dashboard
         if (data['next_reset_date'] != null) {
           final DateTime nextReset = DateTime.parse(
             data['next_reset_date'].toString(),
           );
 
-          // 3. Eksekusi OTOMATIS jika hari ini sudah masuk atau melewati tanggal reset dari Admin
           if (today.isAfter(nextReset) || today.isAtSameMomentAs(nextReset)) {
-            // Hitung tanggal reset berikutnya untuk tahun depan (+1 tahun dari tanggal acuan saat ini)
             final DateTime newResetDate = DateTime(
               nextReset.year + 1,
               nextReset.month,
               nextReset.day,
             );
 
-            // Update database Supabase secara otomatis
             await Supabase.instance.client.from('leave_balance').update({
               'total_leave': 12,
               'used_leave': 0,
@@ -950,7 +899,6 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
               ).format(newResetDate),
             }).eq('user_id', userUuid);
 
-            // Perbarui UI ke angka jatah penuh
             setState(() {
               _remainingLeave = 12;
               _nextResetDate = newResetDate;
@@ -959,7 +907,6 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
           }
         }
 
-        // 4. Jika belum waktunya reset, tampilkan saldo aktual sesuai sisa terakhir
         setState(() {
           _remainingLeave = data['remaining_leave'] ?? 0;
           if (data['next_reset_date'] != null) {
@@ -975,11 +922,57 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
   }
 
   Future<void> _pickLampiran() async {
-    final XFile? file = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 70,
+    // Memunculkan pilihan Kamera atau Galeri dari bawah layar
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext bc) {
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text(
+                  'Pilih Sumber Foto',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera, color: Colors.blue),
+                title: const Text('Ambil dari Kamera'),
+                onTap: () async {
+                  Navigator.of(context).pop(); // Tutup bottom sheet
+                  final XFile? file = await ImagePicker().pickImage(
+                    source: ImageSource.camera, // Gunakan Kamera
+                    imageQuality: 70,
+                  );
+                  if (file != null) {
+                    setState(() => _lampiran = file);
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.blue),
+                title: const Text('Ambil dari Galeri'),
+                onTap: () async {
+                  Navigator.of(context).pop(); // Tutup bottom sheet
+                  final XFile? file = await ImagePicker().pickImage(
+                    source: ImageSource.gallery, // Gunakan Galeri
+                    imageQuality: 70,
+                  );
+                  if (file != null) {
+                    setState(() => _lampiran = file);
+                  }
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
     );
-    setState(() => _lampiran = file);
   }
 
   Future<void> _ajukanCuti(BuildContext context) async {
@@ -994,7 +987,6 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
       return;
     }
 
-    // 1. Validasi Wajib Lampiran Surat Dokter
     if (_selectedLeaveType == 'Izin Sakit' && _lampiran == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1005,7 +997,6 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
       return;
     }
 
-    // 2. Validasi Batas Minimal 7 Hari (HANYA UNTUK CUTI)
     if (_mode == 'Cuti') {
       DateTime now = DateTime.now();
       DateTime today = DateTime(now.year, now.month, now.day);
@@ -1031,7 +1022,6 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
     final int duration =
         _dateRange!.end.difference(_dateRange!.start).inDays + 1;
 
-    // 3. Validasi Saldo (HANYA jika memilih Cuti Tahunan)
     if (_selectedLeaveType == 'Cuti Tahunan' && duration > _remainingLeave) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1046,7 +1036,6 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
     try {
       String? attachmentUrl;
 
-      // Upload lampiran jika ada
       if (_lampiran != null) {
         final bytes = await _lampiran!.readAsBytes();
         final fileExt = _lampiran!.name.split('.').last;
@@ -1055,13 +1044,12 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
 
         final compressedBytes = await FlutterImageCompress.compressWithFile(
           _lampiran!.path,
-          minWidth: 800, // Lebar standar yang masih jelas terbaca
+          minWidth: 800,
           minHeight: 800,
-          quality: 50, // Kualitas diturunkan ke 50% untuk menghemat ukuran
+          quality: 50,
         );
 
         if (compressedBytes != null) {
-          // Upload menggunakan file yang sudah dikompres (compressedBytes)
           await Supabase.instance.client.storage
               .from('medical_document')
               .uploadBinary(fileName, compressedBytes);
@@ -1069,22 +1057,20 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
           attachmentUrl = Supabase.instance.client.storage
               .from('medical_document')
               .getPublicUrl(fileName);
+        } else {
+          await Supabase.instance.client.storage
+              .from('medical_document')
+              .uploadBinary(fileName, bytes);
+
+          attachmentUrl = Supabase.instance.client.storage
+              .from('medical_document')
+              .getPublicUrl(fileName);
         }
-        // --- AKHIR PENAMBAHAN KOMPRESI ---
-
-        await Supabase.instance.client.storage
-            .from('medical_document')
-            .uploadBinary(fileName, bytes);
-
-        attachmentUrl = Supabase.instance.client.storage
-            .from('medical_document')
-            .getPublicUrl(fileName);
       }
 
       await Supabase.instance.client.from('leave_requests').insert({
-        'user_id':
-            Supabase.instance.client.auth.currentUser!.id, // WAJIB TETAP UUID
-        'employee_id': widget.userData['id'], // KITA TAMBAHKAN INI (ID Angka)
+        'user_id': Supabase.instance.client.auth.currentUser!.id,
+        'employee_id': widget.userData['id'],
         'leave_type': _selectedLeaveType,
         'start_date': DateFormat('yyyy-MM-dd').format(_dateRange!.start),
         'end_date': DateFormat('yyyy-MM-dd').format(_dateRange!.end),
@@ -1100,7 +1086,7 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
         _lampiran = null;
         _selectedLeaveType = null;
       });
-      _fetchRemainingLeave(); // Refresh saldo
+      _fetchRemainingLeave();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1135,7 +1121,6 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
 
     return Column(
       children: [
-        // --- 1. INFO SISA CUTI ---
         Padding(
           padding: const EdgeInsets.all(16.0),
           child: Card(
@@ -1159,27 +1144,23 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                     ),
                   ),
                 ),
-                // --- BARIS INFORMASI RESET ---
                 if (_nextResetDate != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                     child: Text(
-                      "Sisa cuti akan reset pada: ${DateFormat('dd MMMM yyyy', 'id_ID').format(_nextResetDate!)}",
+                      "Sisa cuti akan reset pada: ${DateFormat('dd-MM-yyyy').format(_nextResetDate!)}",
                       style: const TextStyle(
                         fontSize: 11,
                         color: Colors.teal,
-                        //fontStyle: FontStyle.italic,
                         fontWeight: FontWeight.bold,
                       ),
-                      textAlign: TextAlign.center, // Posisi tengah
+                      textAlign: TextAlign.center,
                     ),
                   ),
               ],
             ),
           ),
         ),
-
-        // --- 2. FORM PENGAJUAN ---
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Card(
@@ -1197,8 +1178,6 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const SizedBox(height: 10),
-
-                  // Radio Mode
                   Row(
                     children: [
                       Expanded(
@@ -1215,8 +1194,7 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                               _mode = val!;
                               _selectedLeaveType = null;
                               _lampiran = null;
-                              _dateRange =
-                                  null; // Reset tanggal jika mode berubah
+                              _dateRange = null;
                             });
                           },
                         ),
@@ -1234,8 +1212,7 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                             setState(() {
                               _mode = val!;
                               _selectedLeaveType = null;
-                              _dateRange =
-                                  null; // Reset tanggal jika mode berubah
+                              _dateRange = null;
                             });
                           },
                         ),
@@ -1243,8 +1220,6 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                     ],
                   ),
                   const SizedBox(height: 5),
-
-                  // Dropdown Kategori
                   DropdownButtonFormField<String>(
                     value: _selectedLeaveType,
                     decoration: InputDecoration(
@@ -1266,8 +1241,6 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                         setState(() => _selectedLeaveType = val),
                   ),
                   const SizedBox(height: 15),
-
-                  // Tombol Upload Lampiran
                   if (_selectedLeaveType == 'Izin Sakit') ...[
                     OutlinedButton.icon(
                       onPressed: _pickLampiran,
@@ -1291,11 +1264,8 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                     ),
                     const SizedBox(height: 15),
                   ],
-
-                  // Tombol Tanggal (Dengan Batasan UX)
                   ElevatedButton.icon(
                     onPressed: () async {
-                      // Jika Cuti: minimal H+7. Jika Izin: bisa mundur s/d 14 hari yang lalu
                       DateTime firstAllowedDate = _mode == 'Cuti'
                           ? DateTime.now().add(const Duration(days: 7))
                           : DateTime.now().subtract(const Duration(days: 14));
@@ -1311,14 +1281,13 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                     label: Text(
                       _dateRange == null
                           ? "Pilih Rentang Tanggal"
-                          : "${DateFormat('yyyy MMM dd', 'id_ID').format(_dateRange!.start)} - ${DateFormat('yyyy MMM dd', 'id_ID').format(_dateRange!.end)}",
+                          : "${DateFormat('dd-MM-yyyy').format(_dateRange!.start)} s/d ${DateFormat('dd-MM-yyyy').format(_dateRange!.end)}",
                     ),
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size(double.infinity, 45),
                     ),
                   ),
-
-                  if (_mode == 'Cuti') // Pesan bantuan kecil
+                  if (_mode == 'Cuti')
                     const Padding(
                       padding: EdgeInsets.only(top: 4),
                       child: Center(
@@ -1328,15 +1297,12 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                           style: TextStyle(
                             fontSize: 11,
                             color: Colors.red,
-                            //fontStyle: FontStyle.italic,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                     ),
                   const SizedBox(height: 15),
-
-                  // Keterangan / Alasan
                   TextField(
                     controller: _reasonCtrl,
                     decoration: const InputDecoration(
@@ -1350,8 +1316,6 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                     maxLines: 1,
                   ),
                   const SizedBox(height: 15),
-
-                  // Tombol Kirim
                   SizedBox(
                     width: double.infinity,
                     child: _isSubmitting
@@ -1375,11 +1339,9 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
           ),
         ),
         const SizedBox(height: 10),
-
-        // --- 3. LIST RIWAYAT ---
         Expanded(
-          // <--- BUNGKUS KEMBALI DENGAN EXPANDED
           child: RiwayatCutiList(
+            key: _riwayatKey,
             userId: Supabase.instance.client.auth.currentUser!.id,
           ),
         ),
@@ -1389,7 +1351,7 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
 }
 
 // ============================================================================
-// --- KOMPONEN RIWAYAT CUTI (Dibatasi 10 Data Terakhir) ---
+// --- KOMPONEN RIWAYAT CUTI DENGAN NAMA APPROVER ---
 // ============================================================================
 class RiwayatCutiList extends StatefulWidget {
   final String userId;
@@ -1401,6 +1363,7 @@ class RiwayatCutiList extends StatefulWidget {
 
 class _RiwayatCutiListState extends State<RiwayatCutiList> {
   List<Map<String, dynamic>> _riwayatList = [];
+  Map<int, String> _approverNames = {}; // MENGGUNAKAN INT (ANGKA)
   bool _isLoading = true;
 
   @override
@@ -1415,7 +1378,7 @@ class _RiwayatCutiListState extends State<RiwayatCutiList> {
       String datePart =
           tgl.contains('T') ? tgl.split('T')[0] : tgl.split(' ')[0];
       DateTime dt = DateTime.parse(datePart);
-      return DateFormat('dd-MM-yyyy', 'id_ID').format(dt);
+      return DateFormat('dd-MM-yyyy').format(dt);
     } catch (e) {
       return tgl;
     }
@@ -1431,13 +1394,39 @@ class _RiwayatCutiListState extends State<RiwayatCutiList> {
           .order('created_at', ascending: false)
           .limit(10);
 
+      // 1. Kumpulkan ID Angka dari kolom approved_by
+      Set<int> approverIds = {};
+      for (var row in data) {
+        if (row['approved_by'] != null) {
+          int? parsedId = int.tryParse(row['approved_by'].toString());
+          if (parsedId != null) approverIds.add(parsedId);
+        }
+      }
+
+      // 2. Cari nama di tabel employees berdasarkan ID Angka
+      Map<int, String> tempNames = {};
+      if (approverIds.isNotEmpty) {
+        final approvers = await Supabase.instance.client
+            .from('employees')
+            .select('id, full_name');
+
+        for (var a in approvers) {
+          int empId = int.parse(a['id'].toString());
+          if (approverIds.contains(empId)) {
+            tempNames[empId] = a['full_name'].toString();
+          }
+        }
+      }
+
       if (mounted) {
         setState(() {
           _riwayatList = List<Map<String, dynamic>>.from(data);
+          _approverNames = tempNames;
           _isLoading = false;
         });
       }
     } catch (e) {
+      debugPrint("Error load riwayat: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -1449,7 +1438,6 @@ class _RiwayatCutiListState extends State<RiwayatCutiList> {
       return const Center(child: Text("Belum ada riwayat cuti"));
 
     return ListView.builder(
-      // SCROLL DIAKTIFKAN KEMBALI: shrinkWrap dan physics dihapus!
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: _riwayatList.length,
       itemBuilder: (context, index) {
@@ -1461,6 +1449,13 @@ class _RiwayatCutiListState extends State<RiwayatCutiList> {
           statusColor = Colors.green;
         if (status == 'REJECTED' || status == 'DITOLAK')
           statusColor = Colors.red;
+
+        // Tarik nama atasan dari Map
+        String approver = '';
+        if (row['approved_by'] != null) {
+          int? appId = int.tryParse(row['approved_by'].toString());
+          if (appId != null) approver = _approverNames[appId] ?? '';
+        }
 
         return Card(
           margin: const EdgeInsets.only(bottom: 9),
@@ -1477,36 +1472,35 @@ class _RiwayatCutiListState extends State<RiwayatCutiList> {
                 Text(
                   "${_formatTanggalCantik(row['start_date'])} s/d ${_formatTanggalCantik(row['end_date'])}",
                   style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
+                      fontSize: 11, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 2),
-                // INFO ALASAN DIPASTIKAN MUNCUL
-                Text(
-                  "Alasan: ${row['reason'] ?? '-'}",
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
+                Text("Alasan: ${row['reason'] ?? '-'}",
+                    style: const TextStyle(
+                        fontSize: 11, fontStyle: FontStyle.italic)),
+
+                // Menampilkan Oleh / Approved By
+                if (status != 'PENDING' && approver.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text("Approved By: $approver",
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.blue.shade800,
+                          fontWeight: FontWeight.bold)),
+                ],
               ],
             ),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: statusColor),
-              ),
-              child: Text(
-                status,
-                style: TextStyle(
-                  fontSize: 9,
-                  color: statusColor,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: statusColor)),
+              child: Text(status,
+                  style: TextStyle(
+                      fontSize: 9,
+                      color: statusColor,
+                      fontWeight: FontWeight.bold)),
             ),
           ),
         );
@@ -1582,7 +1576,6 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
 
     setState(() => _isSubmitting = true);
     try {
-      // 1. Gabungkan Tanggal dan Jam menjadi DateTime utuh
       DateTime startDateTime = DateTime(
         _selectedDate!.year,
         _selectedDate!.month,
@@ -1599,25 +1592,22 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
         _endTime!.minute,
       );
 
-      // 2. Logika Lembur Lintas Hari (Misal: 22:00 s/d 02:00)
       if (endDateTime.isBefore(startDateTime)) {
         endDateTime = endDateTime.add(const Duration(days: 1));
       }
 
-      // 3. Hitung Durasi (dalam format desimal/jam)
       int durationInMinutes = endDateTime.difference(startDateTime).inMinutes;
       double durationInHours = durationInMinutes / 60.0;
 
-      // 4. Insert ke tabel overtime_request yang sesuai dengan skema Anda
       await Supabase.instance.client.from('overtime_requests').insert({
         'user_id': Supabase.instance.client.auth.currentUser!.id,
-        'employee_id': widget.userData['id'], // TAMBAHKAN INI JUGA
-        'start_time': startDateTime.toIso8601String(), // Format timestamptz
-        'end_time': endDateTime.toIso8601String(), // Format timestamptz
+        'employee_id': widget.userData['id'],
+        'start_time': startDateTime.toIso8601String(),
+        'end_time': endDateTime.toIso8601String(),
         'duration_hours': durationInHours,
         'reason': _reasonCtrl.text,
         'status': 'pending',
-        'notes': null, // Opsional, dikosongkan saat pengajuan
+        'notes': null,
       });
 
       _reasonCtrl.clear();
@@ -1651,7 +1641,6 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // --- FORM PENGAJUAN LEMBUR ---
         Padding(
           padding: const EdgeInsets.all(16.0),
           child: Card(
@@ -1675,10 +1664,7 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
                     label: Text(
                       _selectedDate == null
                           ? "Pilih Tanggal Mulai Lembur"
-                          : DateFormat(
-                              'dd MMMM yyyy',
-                              'id_ID',
-                            ).format(_selectedDate!),
+                          : DateFormat('dd-MM-yyyy').format(_selectedDate!),
                     ),
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size(double.infinity, 45),
@@ -1761,21 +1747,10 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
             ),
           ),
         ),
-
-        // --- RIWAYAT LEMBUR ---
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.0),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            // child: Text(
-            //   "Riwayat Lembur Anda",
-            //   style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
-            // ),
-          ),
-        ),
         const SizedBox(height: 5),
         Expanded(
           child: RiwayatLemburList(
+            key: _riwayatKey,
             userId: Supabase.instance.client.auth.currentUser!.id,
           ),
         ),
@@ -1785,7 +1760,7 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
 }
 
 // ============================================================================
-// --- KOMPONEN RIWAYAT LEMBUR (FIX SCROLL + DURASI JAM) ---
+// --- KOMPONEN RIWAYAT LEMBUR DENGAN NAMA APPROVER ---
 // ============================================================================
 class RiwayatLemburList extends StatefulWidget {
   final String userId;
@@ -1797,6 +1772,7 @@ class RiwayatLemburList extends StatefulWidget {
 
 class _RiwayatLemburListState extends State<RiwayatLemburList> {
   List<Map<String, dynamic>> _riwayatList = [];
+  Map<int, String> _approverNames = {}; // MENGGUNAKAN INT (ANGKA)
   bool _isLoading = true;
 
   @override
@@ -1811,7 +1787,7 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
       String datePart =
           tgl.contains('T') ? tgl.split('T')[0] : tgl.split(' ')[0];
       DateTime dt = DateTime.parse(datePart);
-      return DateFormat('dd-MM-yyyy', 'id_ID').format(dt);
+      return DateFormat('dd-MM-yyyy').format(dt);
     } catch (e) {
       return tgl;
     }
@@ -1840,16 +1816,13 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
       DateTime dtEnd = (end.contains('T') || end.contains('-'))
           ? DateTime.parse(end)
           : DateTime.parse('1970-01-01 $end');
-
       Duration diff = dtEnd.difference(dtStart);
       if (diff.isNegative) {
         dtEnd = dtEnd.add(const Duration(days: 1));
         diff = dtEnd.difference(dtStart);
       }
-
       int hours = diff.inHours;
       int minutes = diff.inMinutes.remainder(60);
-
       if (hours > 0 && minutes > 0) return "($hours Jam $minutes Menit)";
       if (hours > 0) return "($hours Jam)";
       if (minutes > 0) return "($minutes Menit)";
@@ -1869,13 +1842,37 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
           .order('created_at', ascending: false)
           .limit(10);
 
+      Set<int> approverIds = {};
+      for (var row in data) {
+        if (row['approved_by'] != null) {
+          int? parsedId = int.tryParse(row['approved_by'].toString());
+          if (parsedId != null) approverIds.add(parsedId);
+        }
+      }
+
+      Map<int, String> tempNames = {};
+      if (approverIds.isNotEmpty) {
+        final approvers = await Supabase.instance.client
+            .from('employees')
+            .select('id, full_name');
+
+        for (var a in approvers) {
+          int empId = int.parse(a['id'].toString());
+          if (approverIds.contains(empId)) {
+            tempNames[empId] = a['full_name'].toString();
+          }
+        }
+      }
+
       if (mounted) {
         setState(() {
           _riwayatList = List<Map<String, dynamic>>.from(data);
+          _approverNames = tempNames;
           _isLoading = false;
         });
       }
     } catch (e) {
+      debugPrint("Error load riwayat: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -1887,7 +1884,6 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
       return const Center(child: Text("Belum ada riwayat lembur"));
 
     return ListView.builder(
-      // SCROLL DIAKTIFKAN KEMBALI
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: _riwayatList.length,
       itemBuilder: (context, index) {
@@ -1900,57 +1896,58 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
         if (status == 'REJECTED' || status == 'DITOLAK')
           statusColor = Colors.red;
 
+        String approver = '';
+        if (row['approved_by'] != null) {
+          int? appId = int.tryParse(row['approved_by'].toString());
+          if (appId != null) approver = _approverNames[appId] ?? '';
+        }
+
         String jamMulai = _formatJam(row['start_time']?.toString());
         String jamSelesai = _formatJam(row['end_time']?.toString());
         String durasi = _hitungDurasi(
-          row['start_time']?.toString(),
-          row['end_time']?.toString(),
-        );
+            row['start_time']?.toString(), row['end_time']?.toString());
 
         return Card(
           margin: const EdgeInsets.only(bottom: 9),
           child: ListTile(
             dense: true,
-            title: const Text(
-              "Lembur",
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-            ),
+            title: const Text("Lembur",
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 4),
                 Text(
-                  "${_formatTanggalCantik(row['overtime_date'] ?? row['start_time'])} \n$jamMulai - $jamSelesai WIB $durasi",
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                    "${_formatTanggalCantik(row['overtime_date'] ?? row['start_time'])} \n$jamMulai - $jamSelesai WIB $durasi",
+                    style: const TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 2),
-                Text(
-                  "Pekerjaan: ${row['reason'] ?? row['description'] ?? '-'}",
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
+                Text("Pekerjaan: ${row['reason'] ?? row['description'] ?? '-'}",
+                    style: const TextStyle(
+                        fontSize: 11, fontStyle: FontStyle.italic)),
+
+                // Menampilkan Oleh / Approved By
+                if (status != 'PENDING' && approver.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text("Approved by: $approver",
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.blue.shade800,
+                          fontWeight: FontWeight.bold)),
+                ],
               ],
             ),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: statusColor),
-              ),
-              child: Text(
-                status,
-                style: TextStyle(
-                  fontSize: 9,
-                  color: statusColor,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: statusColor)),
+              child: Text(status,
+                  style: TextStyle(
+                      fontSize: 9,
+                      color: statusColor,
+                      fontWeight: FontWeight.bold)),
             ),
           ),
         );
@@ -1960,16 +1957,18 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
 }
 
 // ============================================================================
-// --- TAB MANAGER APPROVAL (FILTER BY DEPARTMENT) ---
+// --- TAB MANAGER APPROVAL (DENGAN ROLE FILTERING) ---
 // ============================================================================
 class ManagerApprovalTab extends StatefulWidget {
   final int managerId;
   final int departmentId;
+  final String managerRole;
 
   const ManagerApprovalTab({
     Key? key,
     required this.managerId,
     required this.departmentId,
+    required this.managerRole,
   }) : super(key: key);
 
   @override
@@ -1977,16 +1976,13 @@ class ManagerApprovalTab extends StatefulWidget {
 }
 
 class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
-  // ==========================================================
-  // FUNGSI PEMBANTU FORMAT TANGGAL & JAM (Sama dengan Riwayat Staf)
-  // ==========================================================
   String _formatTanggalCantik(String? tgl) {
     if (tgl == null || tgl == '-' || tgl == 'null') return '-';
     try {
       String datePart =
           tgl.contains('T') ? tgl.split('T')[0] : tgl.split(' ')[0];
       DateTime dt = DateTime.parse(datePart);
-      return DateFormat('dd-MM-yyyy', 'id_ID').format(dt);
+      return DateFormat('dd-MM-yyyy').format(dt);
     } catch (e) {
       return tgl;
     }
@@ -2031,18 +2027,38 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
     }
   }
 
-  // ==========================================================
-  // LOGIKA PENGAMBILAN & PENYARINGAN DATA SESUAI DEPARTEMEN
-  // ==========================================================
   Future<List<Map<String, dynamic>>> _fetchDataCuti() async {
     final empData = await Supabase.instance.client
         .from('employees')
-        .select('id, full_name')
+        .select('id, full_name, position_id')
         .eq('department_id', widget.departmentId);
+    final posData =
+        await Supabase.instance.client.from('positions').select('id, name');
 
-    Map<String, String> empMap = {};
+    Map<int, String> posMap = {};
+    for (var p in posData) posMap[p['id']] = p['name'].toString().toLowerCase();
+
+    String myRole = widget.managerRole.toLowerCase();
+    Map<String, String> validEmpMap = {};
+
     for (var e in empData) {
-      empMap[e['id'].toString()] = e['full_name'].toString();
+      String empIdStr = e['id'].toString();
+      if (empIdStr == widget.managerId.toString()) continue;
+
+      String targetRole = posMap[e['position_id']] ?? '';
+      bool isTargetAdmin = targetRole.contains('admin');
+      bool isTargetManager = targetRole.contains('manager');
+      bool isTargetSupervisor = targetRole.contains('supervisor');
+
+      if (myRole.contains('admin')) {
+        validEmpMap[empIdStr] = e['full_name'].toString();
+      } else if (myRole.contains('manager')) {
+        if (!isTargetAdmin && !isTargetManager)
+          validEmpMap[empIdStr] = e['full_name'].toString();
+      } else if (myRole.contains('supervisor')) {
+        if (!isTargetAdmin && !isTargetManager && !isTargetSupervisor)
+          validEmpMap[empIdStr] = e['full_name'].toString();
+      }
     }
 
     final reqData = await Supabase.instance.client
@@ -2053,9 +2069,9 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
     List<Map<String, dynamic>> finalData = [];
     for (var req in reqData) {
       String empId = req['employee_id'].toString();
-      if (empMap.containsKey(empId)) {
+      if (validEmpMap.containsKey(empId)) {
         var row = Map<String, dynamic>.from(req);
-        row['full_name'] = empMap[empId];
+        row['full_name'] = validEmpMap[empId];
         finalData.add(row);
       }
     }
@@ -2065,12 +2081,35 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
   Future<List<Map<String, dynamic>>> _fetchDataLembur() async {
     final empData = await Supabase.instance.client
         .from('employees')
-        .select('id, full_name')
+        .select('id, full_name, position_id')
         .eq('department_id', widget.departmentId);
+    final posData =
+        await Supabase.instance.client.from('positions').select('id, name');
 
-    Map<String, String> empMap = {};
+    Map<int, String> posMap = {};
+    for (var p in posData) posMap[p['id']] = p['name'].toString().toLowerCase();
+
+    String myRole = widget.managerRole.toLowerCase();
+    Map<String, String> validEmpMap = {};
+
     for (var e in empData) {
-      empMap[e['id'].toString()] = e['full_name'].toString();
+      String empIdStr = e['id'].toString();
+      if (empIdStr == widget.managerId.toString()) continue;
+
+      String targetRole = posMap[e['position_id']] ?? '';
+      bool isTargetAdmin = targetRole.contains('admin');
+      bool isTargetManager = targetRole.contains('manager');
+      bool isTargetSupervisor = targetRole.contains('supervisor');
+
+      if (myRole.contains('admin')) {
+        validEmpMap[empIdStr] = e['full_name'].toString();
+      } else if (myRole.contains('manager')) {
+        if (!isTargetAdmin && !isTargetManager)
+          validEmpMap[empIdStr] = e['full_name'].toString();
+      } else if (myRole.contains('supervisor')) {
+        if (!isTargetAdmin && !isTargetManager && !isTargetSupervisor)
+          validEmpMap[empIdStr] = e['full_name'].toString();
+      }
     }
 
     final reqData = await Supabase.instance.client
@@ -2081,30 +2120,21 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
     List<Map<String, dynamic>> finalData = [];
     for (var req in reqData) {
       String empId = req['employee_id'].toString();
-      if (empMap.containsKey(empId)) {
+      if (validEmpMap.containsKey(empId)) {
         var row = Map<String, dynamic>.from(req);
-        row['full_name'] = empMap[empId];
+        row['full_name'] = validEmpMap[empId];
         finalData.add(row);
       }
     }
     return finalData;
   }
 
-  // ==========================================================
-  // FUNGSI UPDATE DATABASE
-  // ==========================================================
-  Future<void> _updateStatusCuti(
-    int id,
-    String newStatus,
-    String leaveType,
-    String? userId,
-    String startDate,
-    String endDate,
-  ) async {
+  Future<void> _updateStatusCuti(int id, String newStatus, String leaveType,
+      String? userId, String startDate, String endDate) async {
     try {
-      await Supabase.instance.client
-          .from('leave_requests')
-          .update({'status': newStatus}).eq('id', id);
+      // SIMPAN ID ANGKA ATASAN
+      await Supabase.instance.client.from('leave_requests').update(
+          {'status': newStatus, 'approved_by': widget.managerId}).eq('id', id);
 
       if (newStatus == 'approved' && userId != null) {
         DateTime start = DateTime.parse(startDate);
@@ -2121,35 +2151,30 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
           await Supabase.instance.client.from('leave_balance').insert({
             'user_id': userId,
             'used_leave': durasi,
-            'remaining_leave': 12 - durasi,
+            'remaining_leave': 12 - durasi
           });
         } else {
           int currentUsed = balanceData['used_leave'] ?? 0;
           int currentRemaining = balanceData['remaining_leave'] ?? 0;
           await Supabase.instance.client.from('leave_balance').update({
             'used_leave': currentUsed + durasi,
-            'remaining_leave': currentRemaining - durasi,
+            'remaining_leave': currentRemaining - durasi
           }).eq('user_id', userId);
         }
       }
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Berhasil memproses pengajuan!")),
-      );
+          const SnackBar(content: Text("Berhasil memproses pengajuan!")));
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
 
   Future<void> _updateStatusLembur(
-    int id,
-    String newStatus,
-    dynamic employeeId,
-    double durasi,
-  ) async {
+      int id, String newStatus, dynamic employeeId, double durasi) async {
     try {
+      // SIMPAN ID ANGKA ATASAN
       await Supabase.instance.client.from('overtime_requests').update(
           {'status': newStatus, 'approved_by': widget.managerId}).eq('id', id);
 
@@ -2159,9 +2184,8 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
             .select('total_overtime_hours')
             .eq('id', employeeId)
             .single();
-        double currentTotal = double.parse(
-          (empData['total_overtime_hours'] ?? 0).toString(),
-        );
+        double currentTotal =
+            double.parse((empData['total_overtime_hours'] ?? 0).toString());
         await Supabase.instance.client
             .from('employees')
             .update({'total_overtime_hours': currentTotal + durasi}).eq(
@@ -2169,32 +2193,23 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
       }
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Lembur berhasil diproses!")),
-      );
+          const SnackBar(content: Text("Lembur berhasil diproses!")));
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error: ${e.toString()}")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Error: ${e.toString()}")));
     }
   }
 
-  // ==========================================================
-  // WIDGET UI (TAMPILAN)
-  // ==========================================================
   Widget _buildDaftarPersetujuanCuti() {
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _fetchDataCuti(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting)
           return const Center(child: CircularProgressIndicator());
-        }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty)
           return const Center(child: Text("Tidak ada pengajuan cuti."));
-        }
 
-        // Terapkan Limit Maksimal 15 Data
         final list = snapshot.data!.take(15).toList();
-
         return ListView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           itemCount: list.length,
@@ -2215,134 +2230,95 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
             }
 
             return Card(
-              color: Colors.grey.shade50, // Latar mirip di gambar
+              color: Colors.grey.shade50,
               elevation: 0,
               margin: const EdgeInsets.only(bottom: 10),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-                side: BorderSide(
-                  color: Colors.grey.shade300,
-                  width: 1,
-                ), // Garis luar
-              ),
+                  borderRadius: BorderRadius.circular(15),
+                  side: BorderSide(color: Colors.grey.shade300, width: 1)),
               child: ListTile(
                 dense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                title: Text(
-                  "$empName • ${row['leave_type'] ?? 'Cuti'}",
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                title: Text("$empName • ${row['leave_type'] ?? 'Cuti'}",
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.bold)),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 6),
                     Text(
-                      "${_formatTanggalCantik(row['start_date'])} s/d ${_formatTanggalCantik(row['end_date'])}",
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black87,
-                      ),
-                    ),
+                        "${_formatTanggalCantik(row['start_date'])} s/d ${_formatTanggalCantik(row['end_date'])}",
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87)),
                     const SizedBox(height: 2),
-                    Text(
-                      "Alasan: ${row['reason'] ?? '-'}",
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                        color: Colors.black54,
-                      ),
-                    ),
-
-                    // --- MUNCULKAN TOMBOL HANYA JIKA STATUS MASIH PENDING ---
+                    Text("Alasan: ${row['reason'] ?? '-'}",
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                            color: Colors.black54)),
                     if (rawStatus == 'pending') ...[
                       const SizedBox(height: 12),
                       Row(
                         children: [
                           Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => _updateStatusCuti(
-                                row['id'],
-                                'rejected',
-                                row['leave_type'],
-                                row['user_id']?.toString(),
-                                row['start_date'],
-                                row['end_date'],
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                                side: const BorderSide(color: Colors.red),
-                                minimumSize: const Size(0, 32),
-                                padding: EdgeInsets.zero,
-                              ),
-                              child: const Text(
-                                "Tolak",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
+                              child: OutlinedButton(
+                                  onPressed: () => _updateStatusCuti(
+                                      row['id'],
+                                      'rejected',
+                                      row['leave_type'],
+                                      row['user_id']?.toString(),
+                                      row['start_date'],
+                                      row['end_date']),
+                                  style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                      side: const BorderSide(color: Colors.red),
+                                      minimumSize: const Size(0, 32),
+                                      padding: EdgeInsets.zero),
+                                  child: const Text("Tolak",
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold)))),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: ElevatedButton(
-                              onPressed: () => _updateStatusCuti(
-                                row['id'],
-                                'approved',
-                                row['leave_type'],
-                                row['user_id']?.toString(),
-                                row['start_date'],
-                                row['end_date'],
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                foregroundColor: Colors.white,
-                                minimumSize: const Size(0, 32),
-                                padding: EdgeInsets.zero,
-                              ),
-                              child: const Text(
-                                "Setujui",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
+                              child: ElevatedButton(
+                                  onPressed: () => _updateStatusCuti(
+                                      row['id'],
+                                      'approved',
+                                      row['leave_type'],
+                                      row['user_id']?.toString(),
+                                      row['start_date'],
+                                      row['end_date']),
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.green,
+                                      foregroundColor: Colors.white,
+                                      minimumSize: const Size(0, 32),
+                                      padding: EdgeInsets.zero),
+                                  child: const Text("Setujui",
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold)))),
                         ],
                       ),
                     ],
                   ],
                 ),
-                // --- MUNCULKAN BADGE (SEPERTI GAMBAR) JIKA SUDAH APPROVED/REJECTED ---
                 trailing: rawStatus == 'pending'
                     ? null
                     : Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
+                            horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: statusColor, width: 1.2),
-                        ),
-                        child: Text(
-                          statusText,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: statusColor,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
+                            color: statusColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: statusColor, width: 1.2)),
+                        child: Text(statusText,
+                            style: TextStyle(
+                                fontSize: 10,
+                                color: statusColor,
+                                fontWeight: FontWeight.bold))),
               ),
             );
           },
@@ -2355,16 +2331,12 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _fetchDataLembur(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting)
           return const Center(child: CircularProgressIndicator());
-        }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty)
           return const Center(child: Text("Tidak ada pengajuan lembur."));
-        }
 
-        // Terapkan Limit Maksimal 15 Data
         final listLembur = snapshot.data!.take(15).toList();
-
         return ListView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           itemCount: listLembur.length,
@@ -2387,152 +2359,101 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
             String jamMulai = _formatJam(row['start_time']?.toString());
             String jamSelesai = _formatJam(row['end_time']?.toString());
             String durasi = _hitungDurasi(
-              row['start_time']?.toString(),
-              row['end_time']?.toString(),
-            );
+                row['start_time']?.toString(), row['end_time']?.toString());
 
             return Card(
-              color: Colors.grey.shade50, // Latar mirip di gambar
+              color: Colors.grey.shade50,
               elevation: 0,
               margin: const EdgeInsets.only(bottom: 10),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-                side: BorderSide(
-                  color: Colors.grey.shade300,
-                  width: 1,
-                ), // Garis luar
-              ),
+                  borderRadius: BorderRadius.circular(15),
+                  side: BorderSide(color: Colors.grey.shade300, width: 1)),
               child: ListTile(
                 dense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                title: Text(
-                  "$empName • Lembur",
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                title: Text("$empName • Lembur",
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.bold)),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 6),
                     Text(
-                      _formatTanggalCantik(
-                        row['overtime_date'] ?? row['start_time'],
-                      ),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black87,
-                      ),
-                    ),
+                        "${_formatTanggalCantik(row['overtime_date'] ?? row['start_time'])} \n$jamMulai - $jamSelesai WIB $durasi",
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87)),
                     const SizedBox(height: 2),
                     Text(
-                      "$jamMulai - $jamSelesai WIB $durasi",
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      "Pekerjaan: ${row['reason'] ?? row['description'] ?? '-'}",
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                        color: Colors.black54,
-                      ),
-                    ),
-
-                    // --- MUNCULKAN TOMBOL HANYA JIKA STATUS MASIH PENDING ---
+                        "Pekerjaan: ${row['reason'] ?? row['description'] ?? '-'}",
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                            color: Colors.black54)),
                     if (rawStatus == 'pending') ...[
                       const SizedBox(height: 12),
                       Row(
                         children: [
                           Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => _updateStatusLembur(
-                                row['id'],
-                                'rejected',
-                                row['employee_id'],
-                                double.tryParse(
-                                      row['duration_hours']?.toString() ?? '0',
-                                    ) ??
-                                    0.0,
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                                side: const BorderSide(color: Colors.red),
-                                minimumSize: const Size(0, 32),
-                                padding: EdgeInsets.zero,
-                              ),
-                              child: const Text(
-                                "Tolak",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
+                              child: OutlinedButton(
+                                  onPressed: () => _updateStatusLembur(
+                                      row['id'],
+                                      'rejected',
+                                      row['employee_id'],
+                                      double.tryParse(row['duration_hours']
+                                                  ?.toString() ??
+                                              '0') ??
+                                          0.0),
+                                  style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                      side: const BorderSide(color: Colors.red),
+                                      minimumSize: const Size(0, 32),
+                                      padding: EdgeInsets.zero),
+                                  child: const Text("Tolak",
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold)))),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: ElevatedButton(
-                              onPressed: () => _updateStatusLembur(
-                                row['id'],
-                                'approved',
-                                row['employee_id'],
-                                double.tryParse(
-                                      row['duration_hours']?.toString() ?? '0',
-                                    ) ??
-                                    0.0,
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                foregroundColor: Colors.white,
-                                minimumSize: const Size(0, 32),
-                                padding: EdgeInsets.zero,
-                              ),
-                              child: const Text(
-                                "Setujui",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
+                              child: ElevatedButton(
+                                  onPressed: () => _updateStatusLembur(
+                                      row['id'],
+                                      'approved',
+                                      row['employee_id'],
+                                      double.tryParse(row['duration_hours']
+                                                  ?.toString() ??
+                                              '0') ??
+                                          0.0),
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.green,
+                                      foregroundColor: Colors.white,
+                                      minimumSize: const Size(0, 32),
+                                      padding: EdgeInsets.zero),
+                                  child: const Text("Setujui",
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold)))),
                         ],
                       ),
                     ],
                   ],
                 ),
-                // --- MUNCULKAN BADGE (SEPERTI GAMBAR) JIKA SUDAH APPROVED/REJECTED ---
                 trailing: rawStatus == 'pending'
                     ? null
                     : Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
+                            horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: statusColor, width: 1.2),
-                        ),
-                        child: Text(
-                          statusText,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: statusColor,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
+                            color: statusColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: statusColor, width: 1.2)),
+                        child: Text(statusText,
+                            style: TextStyle(
+                                fontSize: 10,
+                                color: statusColor,
+                                fontWeight: FontWeight.bold))),
               ),
             );
           },
@@ -2548,22 +2469,15 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
       child: Column(
         children: [
           const TabBar(
-            labelColor: Colors.blue,
-            unselectedLabelColor: Colors.grey,
-            indicatorColor: Colors.blue,
-            tabs: [
-              Tab(text: "Approval Cuti"),
-              Tab(text: "Approval Lembur"),
-            ],
-          ),
+              labelColor: Colors.blue,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: Colors.blue,
+              tabs: [Tab(text: "Approval Cuti"), Tab(text: "Approval Lembur")]),
           Expanded(
-            child: TabBarView(
-              children: [
-                _buildDaftarPersetujuanCuti(),
-                _buildDaftarPersetujuanLembur(),
-              ],
-            ),
-          ),
+              child: TabBarView(children: [
+            _buildDaftarPersetujuanCuti(),
+            _buildDaftarPersetujuanLembur()
+          ])),
         ],
       ),
     );
@@ -2571,7 +2485,7 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
 }
 
 // ============================================================================
-// --- TAB 3: PROFIL KARYAWAN (FULL UPDATE DENGAN VIEW/EDIT & DROPDOWN) ---
+// --- TAB 3: PROFIL KARYAWAN ---
 // ============================================================================
 class ProfilKaryawanTab extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -2593,9 +2507,7 @@ class ChildInputData {
 }
 
 class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
-  // --- VARIABEL KONTROL MODE EDIT ---
   bool _isEditing = false;
-  // ----------------------------------
 
   DateTime? _birthDate;
   DateTime? _spouseBirthDate;
@@ -2613,7 +2525,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
 
   List<ChildInputData> _childrenInputs = [];
   String? _selectedReligion;
-  String? _selectedEducation; // Variabel untuk Dropdown Pendidikan
+  String? _selectedEducation;
   String _selectedStatus = 'Single';
   bool _isSaving = false;
 
@@ -2621,7 +2533,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
   bool _isUploadingPhoto = false;
 
   @override
-  // --- MESIN PENERJEMAH TANGGAL AMAN ---
   DateTime? _parseDateAman(String? dateStr) {
     if (dateStr == null || dateStr.trim().isEmpty || dateStr == 'null')
       return null;
@@ -2629,16 +2540,13 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
       if (dateStr.contains('-')) {
         var parts = dateStr.split('-');
         if (parts.length == 3) {
-          // Jika formatnya dd-MM-yyyy (contoh: 14-07-2026)
           if (parts[2].length == 4) {
             return DateTime(
               int.parse(parts[2]),
               int.parse(parts[1]),
               int.parse(parts[0]),
             );
-          }
-          // Jika formatnya yyyy-MM-dd (contoh: 2026-07-14)
-          else if (parts[0].length == 4) {
+          } else if (parts[0].length == 4) {
             return DateTime(
               int.parse(parts[0]),
               int.parse(parts[1]),
@@ -2662,7 +2570,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
   @override
   void didUpdateWidget(ProfilKaryawanTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Jika data dari database berubah (refresh), paksa form untuk update
     if (widget.userData != oldWidget.userData) {
       _loadDataToForm();
     }
@@ -2673,7 +2580,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
     _birthPlaceCtrl.text = widget.userData['birth_place'] ?? '';
     _religionCtrl_init();
 
-    // Inisialisasi Data Pendidikan (Khusus SMA/SMK ke Atas)
     final edu = widget.userData['education'];
     if (['SMA/SMK', 'D3', 'S1', 'S2', 'S3'].contains(edu)) {
       _selectedEducation = edu;
@@ -2694,13 +2600,11 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
 
     _profileImageUrl = widget.userData['photo_url'];
 
-    // Gunakan parser aman untuk tanggal karyawan & pasangan
     _birthDate = _parseDateAman(widget.userData['birth_date']?.toString());
     _spouseBirthDate = _parseDateAman(
       widget.userData['spouse_birth_date']?.toString(),
     );
 
-    // --- FIX BACA DATA ANAK ---
     _childrenInputs.clear();
     final rawChildren = widget.userData['children_data'];
 
@@ -2717,7 +2621,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
           if (child is Map) {
             final ci = ChildInputData();
             ci.nameCtrl.text = child['name']?.toString() ?? '';
-            // Gunakan parser aman untuk tanggal lahir anak dari JSONB
             ci.birthDate = _parseDateAman(child['birth_date']?.toString());
 
             _childrenInputs.add(ci);
@@ -2728,7 +2631,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
       }
     }
 
-    // Update setelah data masuk
     if (mounted) setState(() {});
   }
 
@@ -2826,7 +2728,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
           .map(
             (c) => {
               'name': c.nameCtrl.text,
-              // Simpan dengan format yang sama dengan yang di-load
               'birth_date': c.birthDate != null
                   ? DateFormat('dd-MM-yyyy').format(c.birthDate!)
                   : null,
@@ -2847,8 +2748,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
         'address_ktp': _addrKtpCtrl.text,
         'address_now': _addrNowCtrl.text,
         'phone': _phoneCtrl.text,
-        'education':
-            _selectedEducation, // Menyimpan pilihan Dropdown Pendidikan
+        'education': _selectedEducation,
         'spouse_name': _spouseCtrl.text,
         'spouse_birth_date': _spouseBirthCtrl.text,
         'children_data': childrenJson,
@@ -2856,7 +2756,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
         'emergency_phone': _emerPhoneCtrl.text,
       }).eq('id', widget.userData['id']);
 
-      // Kunci kembali form setelah berhasil disimpan
       setState(() {
         _isEditing = false;
       });
@@ -2880,7 +2779,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
     }
   }
 
-  // --- FUNGSI POPUP UBAH PASSWORD ---
   void _showChangePasswordDialog() {
     final newPassCtrl = TextEditingController();
     final confirmPassCtrl = TextEditingController();
@@ -3113,17 +3011,14 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                             ),
                           ),
                         const Divider(height: 30, thickness: 1),
-                        // --- PASTE KODE BARU DI SINI (MENGGANTIKAN ROW YANG LAMA) ---
                         Builder(
                           builder: (context) {
-                            // 1. Ambil Data
                             String divisi =
                                 widget.userData['dept_name']?.toString() ?? '-';
                             String jabatan =
                                 widget.userData['jabatan_name']?.toString() ??
                                     '-';
 
-                            // 2. Format Join Date
                             String rawJoinDate =
                                 widget.userData['join_date']?.toString() ?? '';
                             String joinDateFormatted = "-";
@@ -3136,15 +3031,13 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                     : rawJoinDate.split(' ')[0];
                                 DateTime dt = DateTime.parse(datePart);
                                 joinDateFormatted = DateFormat(
-                                  'dd MMM yyyy',
-                                  'id_ID',
+                                  'dd-MM-yyyy',
                                 ).format(dt);
                               } catch (e) {
                                 joinDateFormatted = rawJoinDate;
                               }
                             }
 
-                            // Sejajar 3 Kolom
                             return Padding(
                               padding: const EdgeInsets.symmetric(
                                 vertical: 8.0,
@@ -3153,7 +3046,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceEvenly,
                                 children: [
-                                  // --- BLOK 1: DIVISI ---
                                   Expanded(
                                     child: Column(
                                       children: [
@@ -3178,15 +3070,11 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                       ],
                                     ),
                                   ),
-
-                                  // --- GARIS PEMISAH ---
                                   Container(
                                     height: 25,
                                     width: 1,
                                     color: Colors.grey.shade300,
                                   ),
-
-                                  // --- BLOK 2: JABATAN ---
                                   Expanded(
                                     child: Column(
                                       children: [
@@ -3211,15 +3099,11 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                       ],
                                     ),
                                   ),
-
-                                  // --- GARIS PEMISAH ---
                                   Container(
                                     height: 25,
                                     width: 1,
                                     color: Colors.grey.shade300,
                                   ),
-
-                                  // --- BLOK 3: JOIN DATE ---
                                   Expanded(
                                     child: Column(
                                       children: [
@@ -3262,7 +3146,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                   child: Column(
                     children: [
                       ExpansionTile(
-                        //initiallyExpanded: true,
                         leading: const Icon(
                           Icons.person_outline,
                           color: Colors.blue,
@@ -3270,7 +3153,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                         title: const Text(
                           "Data Diri",
                           style: TextStyle(
-                            fontSize: 13, // <-- Di sinilah tempat yang benar
+                            fontSize: 13,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -3278,8 +3161,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                         childrenPadding: const EdgeInsets.all(16),
                         children: [
                           _buildField("Nama Lengkap", _nameCtrl),
-
-                          // --- DROPDOWN PENDIDIKAN ---
                           _buildField("Tempat Lahir", _birthPlaceCtrl),
                           _buildDatePickerField(
                             "Tanggal Lahir",
@@ -3299,6 +3180,8 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                               'Kristen Katolik',
                               'Hindu',
                               'Budha',
+                              'Konghucu',
+                              'Lainnya',
                             ],
                             (val) => setState(() => _selectedReligion = val),
                           ),
@@ -3332,7 +3215,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                         title: const Text(
                           "Data Keluarga",
                           style: TextStyle(
-                            fontSize: 13, // <-- Di sinilah tempat yang benar
+                            fontSize: 13,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -3349,7 +3232,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                             _buildField("Nama Suami/Istri", _spouseCtrl),
                             _buildDatePickerField(
                               "Tanggal Lahir Suami/Istri",
-                              _spouseBirthDate, // Gunakan variabel khusus istri
+                              _spouseBirthDate,
                               () async {
                                 final picked = await _pickDate(
                                   _spouseBirthDate,
@@ -3365,8 +3248,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                             child: Text(
                               "Data Anak",
                               style: TextStyle(
-                                fontSize:
-                                    13, // <-- Di sinilah tempat yang benar
+                                fontSize: 13,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -3454,7 +3336,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                             ),
                         ],
                       ),
-                      //const Divider(),
                       ExpansionTile(
                         leading: const Icon(
                           Icons.contact_emergency_outlined,
@@ -3463,7 +3344,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                         title: const Text(
                           "Kontak Darurat",
                           style: TextStyle(
-                            fontSize: 13, // <-- Di sinilah tempat yang benar
+                            fontSize: 13,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -3473,7 +3354,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                           _buildField("Nomor HP", _emerPhoneCtrl),
                         ],
                       ),
-                      // 2. Tombol Simpan/Update diletakkan di luar (agar selalu terlihat)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: _buildActionButtons(),
@@ -3482,10 +3362,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                   ),
                 ),
                 const SizedBox(height: 20),
-
-                // ==========================================================
-                // --- TAMBAHAN BARU: MENU DAFTARKAN WAJAH ---
-                // ==========================================================
                 if (!_isEditing)
                   Builder(builder: (context) {
                     bool isFaceRegistered =
@@ -3527,7 +3403,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                         trailing:
                             const Icon(Icons.chevron_right, color: Colors.grey),
                         onTap: () async {
-                          // 1. Cek Permission Kamera
                           var cameraStatus = await Permission.camera.request();
                           if (!cameraStatus.isGranted) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -3536,7 +3411,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                             return;
                           }
 
-                          // 2. Buka Kamera Depan
                           final cameras = await availableCameras();
                           final frontCamera = cameras.firstWhere(
                             (cam) =>
@@ -3544,7 +3418,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                             orElse: () => cameras.first,
                           );
 
-                          // 3. Buka Halaman RegisterFacePage menggunakan Navigator.push
                           final bool? isRegistered = await Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -3553,20 +3426,15 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                             ),
                           );
 
-                          // 4. Jika sukses daftar, refresh data profil
                           if (isRegistered == true) {
-                            setState(() {}); // Refresh UI state lokal
-                            widget
-                                .onProfileUpdated(); // Memanggil fungsi update bawaan widget
+                            setState(() {});
+                            widget.onProfileUpdated();
                           }
                         },
                       ),
                     );
                   }),
-
                 if (!_isEditing) const SizedBox(height: 10),
-
-                // --- BAGIAN UBAH PASSWORD (Hanya Tampil Saat Read-Only) ---
                 if (!_isEditing)
                   Card(
                     elevation: 1,
@@ -3581,7 +3449,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                       title: const Text(
                         "Ubah Password",
                         style: TextStyle(
-                          fontSize: 13, // <-- Di sinilah tempat yang benar
+                          fontSize: 13,
                           fontWeight: FontWeight.bold,
                           color: Colors.red,
                         ),
@@ -3595,10 +3463,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                       },
                     ),
                   ),
-
                 if (!_isEditing) const SizedBox(height: 10),
-
-                // --- BAGIAN LOGOUT (Hanya Tampil Saat Read-Only) ---
                 if (!_isEditing)
                   Card(
                     elevation: 1,
@@ -3610,7 +3475,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                       title: const Text(
                         "Logout",
                         style: TextStyle(
-                          fontSize: 13, // <-- Di sinilah tempat yang benar
+                          fontSize: 13,
                           fontWeight: FontWeight.bold,
                           color: Colors.red,
                         ),
@@ -3682,7 +3547,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                       },
                     ),
                   ),
-
                 const SizedBox(height: 30),
               ],
             ),
@@ -3692,7 +3556,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
     );
   }
 
-  // --- FUNGSI PEMBANTU WIDGETS (AUTO SWITCH VIEW/EDIT MODE) ---
   Widget _buildField(
     String label,
     TextEditingController controller, {
@@ -3797,8 +3660,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
     DateTime? date,
     VoidCallback onTap,
   ) {
-    String dateStr =
-        date != null ? DateFormat('dd MMM yyyy').format(date) : "-";
+    String dateStr = date != null ? DateFormat('dd-MM-yyyy').format(date) : "-";
     if (!_isEditing) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
@@ -3851,7 +3713,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
     );
   }
 
-  // --- AREA TOMBOL DINAMIS (UPDATE vs SIMPAN/BATAL) ---
   Widget _buildActionButtons() {
     return Padding(
       padding: const EdgeInsets.only(top: 15, bottom: 20),
@@ -3906,7 +3767,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                 label: const Text(
                   "Update Data Profil",
                   style: TextStyle(
-                    fontSize: 13, // <-- Di sinilah tempat yang benar
+                    fontSize: 13,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -3935,7 +3796,6 @@ class PengumumanPage extends StatefulWidget {
 }
 
 class _PengumumanPageState extends State<PengumumanPage> {
-  // --- Fungsi Hapus Pengumuman ---
   Future<void> _deleteAnnouncement(int id) async {
     try {
       await Supabase.instance.client
@@ -3943,8 +3803,8 @@ class _PengumumanPageState extends State<PengumumanPage> {
           .delete()
           .eq('id', id);
 
-      Navigator.pop(context); // Tutup Bottom Sheet
-      setState(() {}); // Refresh list pengumuman di layar
+      Navigator.pop(context);
+      setState(() {});
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -3962,7 +3822,6 @@ class _PengumumanPageState extends State<PengumumanPage> {
     }
   }
 
-  // --- Fungsi Menampilkan Bottom Sheet ---
   void _showDetailBottomSheet(Map<String, dynamic> item) {
     showModalBottomSheet(
       context: context,
@@ -4007,8 +3866,7 @@ class _PengumumanPageState extends State<PengumumanPage> {
                 Text(
                   item['created_at'] != null
                       ? DateFormat(
-                          'dd MMM yyyy, HH:mm',
-                          'id_ID',
+                          'dd-MM-yyyy, HH:mm',
                         ).format(DateTime.parse(item['created_at']).toLocal())
                       : '',
                   style: const TextStyle(color: Colors.grey, fontSize: 12),
@@ -4023,7 +3881,6 @@ class _PengumumanPageState extends State<PengumumanPage> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                // Tombol Delete
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -4108,8 +3965,7 @@ class _PengumumanPageState extends State<PengumumanPage> {
                 subtitle: Text(
                   item['content'] ?? '',
                   maxLines: 2,
-                  overflow:
-                      TextOverflow.ellipsis, // Terpotong jika terlalu panjang
+                  overflow: TextOverflow.ellipsis,
                 ),
                 onTap: () => _showDetailBottomSheet(item),
               );

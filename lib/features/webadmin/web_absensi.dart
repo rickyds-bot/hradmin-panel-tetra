@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart'; // Ditambahkan untuk widget Google Map interaktif
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class WebAbsensiPage extends StatefulWidget {
   const WebAbsensiPage({super.key});
@@ -16,11 +17,18 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
   List<dynamic> _filteredList = [];
   bool _isLoading = true;
 
+  // Map untuk menyimpan data cuti/izin karyawan yang di-approve
+  final Map<int, List<Map<String, DateTime>>> _approvedLeaves = {};
+
   final TextEditingController _searchNameCtrl = TextEditingController();
   DateTime? _selectedDateFilter;
 
   int _rowsPerPage = 50;
   final List<int> _pageOptions = [50, 100, 200];
+
+  // Scroll controllers
+  final ScrollController _horizontalScroll = ScrollController();
+  final ScrollController _verticalScroll = ScrollController();
 
   @override
   void initState() {
@@ -31,17 +39,21 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
   @override
   void dispose() {
     _searchNameCtrl.dispose();
+    _horizontalScroll.dispose();
+    _verticalScroll.dispose();
     super.dispose();
   }
 
   Future<void> _fetchAbsensiData() async {
     setState(() => _isLoading = true);
     try {
+      // 1. Ambil data absen
       final absensiResponse = await Supabase.instance.client
           .from('attendance')
           .select()
           .order('created_at', ascending: false);
 
+      // 2. Ambil data karyawan
       final employeesResponse = await Supabase.instance.client
           .from('employees')
           .select('id, full_name');
@@ -51,6 +63,27 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
         employeeMap[emp['id']] = emp['full_name'] ?? '-';
       }
 
+      // 3. Ambil data cuti/izin (hanya yang berstatus approved)
+      final leaveResponse = await Supabase.instance.client
+          .from('leave_requests')
+          .select('employee_id, start_date, end_date')
+          .eq('status', 'approved');
+
+      _approvedLeaves.clear();
+      for (var l in leaveResponse) {
+        int? eId = int.tryParse(l['employee_id']?.toString() ?? '');
+        if (eId != null && l['start_date'] != null && l['end_date'] != null) {
+          try {
+            DateTime s = DateTime.parse(l['start_date']);
+            DateTime e = DateTime.parse(l['end_date']);
+            _approvedLeaves
+                .putIfAbsent(eId, () => [])
+                .add({'start': s, 'end': e});
+          } catch (_) {}
+        }
+      }
+
+      // 4. Merge data
       final List<dynamic> mergedData = absensiResponse.map((item) {
         final empId = item['employee_id'];
         return {
@@ -86,9 +119,8 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
     if (_searchNameCtrl.text.trim().isNotEmpty) {
       final search = _searchNameCtrl.text.trim().toLowerCase();
       temp = temp.where((item) {
-        final empName = (item['employees']?['full_name'] ?? '')
-            .toString()
-            .toLowerCase();
+        final empName =
+            (item['employees']?['full_name'] ?? '').toString().toLowerCase();
         return empName.contains(search);
       }).toList();
     }
@@ -215,39 +247,11 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
     return Colors.orange;
   }
 
-  String _getKeteranganAbsen(
-    String? dateStr,
-    String? originalNotes,
-    String? status,
-  ) {
-    if (originalNotes != null && originalNotes.trim().isNotEmpty) {
-      return originalNotes;
-    }
-    if (dateStr == null || dateStr.isEmpty) return '-';
-
-    try {
-      final dt = DateTime.parse(dateStr).toLocal();
-      final s = (status ?? '').toLowerCase();
-      bool isCheckIn = s.contains('in') || s.contains('masuk');
-
-      if (isCheckIn && dt.hour >= 10) {
-        return 'Alpa';
-      } else {
-        return 'Hadir';
-      }
-    } catch (_) {
-      return '-';
-    }
-  }
-
-  // --- DIALOG POPUP MENGGUNAKAN GOOGLE MAPS INTERAKTIF SEPERTI DI WEB LOKASI ---
   void _showMapPopup(dynamic lat, dynamic lng, String empName) {
-    final double parsedLat = lat != null
-        ? double.parse(lat.toString())
-        : -6.200000;
-    final double parsedLng = lng != null
-        ? double.parse(lng.toString())
-        : 106.816666;
+    final double parsedLat =
+        lat != null ? double.parse(lat.toString()) : -6.200000;
+    final double parsedLng =
+        lng != null ? double.parse(lng.toString()) : 106.816666;
 
     showDialog(
       context: context,
@@ -266,7 +270,6 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Kotak Informasi Koordinat Lat & Lng
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
@@ -320,7 +323,6 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                 ),
               ),
               const SizedBox(height: 6),
-              // Widget GoogleMap Interaktif Asli
               Container(
                 height: 300,
                 width: double.infinity,
@@ -493,9 +495,8 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                     label: Text(
                       _selectedDateFilter == null
                           ? 'Pilih Tanggal'
-                          : DateFormat(
-                              'dd-MM-yyyy',
-                            ).format(_selectedDateFilter!),
+                          : DateFormat('dd-MM-yyyy')
+                              .format(_selectedDateFilter!),
                       style: GoogleFonts.plusJakartaSans(fontSize: 12),
                     ),
                     style: OutlinedButton.styleFrom(
@@ -535,6 +536,52 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                 ),
               ),
               const Spacer(),
+              SizedBox(
+                height: 42,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.grey[300]!),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Tampilkan:',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          color: Colors.black54,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      DropdownButton<int>(
+                        value: _rowsPerPage,
+                        underline: const SizedBox(),
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          color: Colors.black87,
+                        ),
+                        items: _pageOptions.map((int value) {
+                          return DropdownMenuItem<int>(
+                            value: value,
+                            child: Text(
+                              '$value',
+                              style: GoogleFonts.plusJakartaSans(fontSize: 12),
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (int? newValue) {
+                          if (newValue != null) {
+                            setState(() => _rowsPerPage = newValue);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -549,184 +596,337 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _filteredList.isEmpty
-                  ? Center(
-                      child: Text(
-                        'Data absensi tidak ditemukan.',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    )
-                  : SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minWidth: MediaQuery.of(context).size.width - 320,
-                        ),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.vertical,
-                          child: DataTable(
-                            showCheckboxColumn: false,
-                            headingRowColor: WidgetStateProperty.all(
-                              Colors.grey[50],
-                            ),
-                            dataRowMaxHeight: 48,
-                            headingTextStyle: GoogleFonts.plusJakartaSans(
+                      ? Center(
+                          child: Text(
+                            'Data absensi tidak ditemukan.',
+                            style: GoogleFonts.plusJakartaSans(
                               fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                            dataTextStyle: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
-                              color: Colors.black87,
-                            ),
-                            columns: const [
-                              DataColumn(label: Text('No')),
-                              DataColumn(label: Text('Waktu Absen')),
-                              DataColumn(label: Text('Nama Karyawan')),
-                              DataColumn(label: Text('Status')),
-                              DataColumn(label: Text('Bukti Foto')),
-                              DataColumn(label: Text('Lokasi')),
-                              DataColumn(label: Text('Keterangan')),
-                              DataColumn(label: Text('Action')),
-                            ],
-                            rows: List<DataRow>.generate(
-                              _filteredList.length > _rowsPerPage
-                                  ? _rowsPerPage
-                                  : _filteredList.length,
-                              (index) {
-                                final item = _filteredList[index];
-                                final String empName =
-                                    item['employees']?['full_name'] ??
-                                    'ID: ${item['employee_id']}';
-                                final String rawStatus =
-                                    (item['status'] ?? 'Hadir').toString();
-                                final statusColor = _getStatusColor(rawStatus);
-                                final lat = item['latitude'];
-                                final lng = item['longitude'];
-
-                                final keterangan = _getKeteranganAbsen(
-                                  item['created_at'],
-                                  item['notes'],
-                                  item['status'],
-                                );
-
-                                return DataRow(
-                                  cells: [
-                                    DataCell(Text('${index + 1}')),
-                                    DataCell(
-                                      Text(
-                                        _formatTanggalWaktu(item['created_at']),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        empName,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: statusColor.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(
-                                            4,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          rawStatus.toUpperCase(),
-                                          style: TextStyle(
-                                            color: statusColor,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      item['photo_url'] != null &&
-                                              item['photo_url']
-                                                  .toString()
-                                                  .isNotEmpty
-                                          ? ElevatedButton.icon(
-                                              icon: const Icon(
-                                                Icons.image,
-                                                size: 12,
-                                              ),
-                                              label: const Text(
-                                                'Foto',
-                                                style: TextStyle(fontSize: 11),
-                                              ),
-                                              style: ElevatedButton.styleFrom(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 8,
-                                                      vertical: 2,
-                                                    ),
-                                              ),
-                                              onPressed: () => _showImageDialog(
-                                                item['photo_url'],
-                                                empName,
-                                              ),
-                                            )
-                                          : const Text('-'),
-                                    ),
-                                    DataCell(
-                                      (lat != null && lng != null)
-                                          ? IconButton(
-                                              icon: const Icon(
-                                                Icons.map_outlined,
-                                                color: Colors.blueAccent,
-                                                size: 20,
-                                              ),
-                                              tooltip: 'Lihat Peta Lokasi',
-                                              padding: EdgeInsets.zero,
-                                              constraints:
-                                                  const BoxConstraints(),
-                                              onPressed: () => _showMapPopup(
-                                                lat,
-                                                lng,
-                                                empName,
-                                              ),
-                                            )
-                                          : const Text('-'),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        keterangan,
-                                        style: TextStyle(
-                                          color: keterangan == 'Alpa'
-                                              ? Colors.red
-                                              : Colors.green[700],
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          color: Colors.red,
-                                          size: 18,
-                                        ),
-                                        onPressed: () => _deleteAbsensi(item),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
+                              color: Colors.grey[600],
                             ),
                           ),
+                        )
+                      : LayoutBuilder(
+                          builder: (context, constraints) {
+                            return ScrollConfiguration(
+                              behavior:
+                                  ScrollConfiguration.of(context).copyWith(
+                                dragDevices: {
+                                  PointerDeviceKind.touch,
+                                  PointerDeviceKind.mouse,
+                                  PointerDeviceKind.trackpad,
+                                },
+                              ),
+                              child: Scrollbar(
+                                controller: _horizontalScroll,
+                                thumbVisibility: true,
+                                trackVisibility: true,
+                                child: SingleChildScrollView(
+                                  controller: _horizontalScroll,
+                                  scrollDirection: Axis.horizontal,
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      minWidth: constraints.maxWidth,
+                                    ),
+                                    child: Scrollbar(
+                                      controller: _verticalScroll,
+                                      thumbVisibility: true,
+                                      child: SingleChildScrollView(
+                                        controller: _verticalScroll,
+                                        scrollDirection: Axis.vertical,
+                                        child: DataTable(
+                                          showCheckboxColumn: false,
+                                          headingRowColor:
+                                              WidgetStateProperty.all(
+                                            Colors.grey[50],
+                                          ),
+                                          dataRowMaxHeight: 48,
+                                          headingTextStyle:
+                                              GoogleFonts.plusJakartaSans(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.black87,
+                                          ),
+                                          dataTextStyle:
+                                              GoogleFonts.plusJakartaSans(
+                                            fontSize: 12,
+                                            color: Colors.black87,
+                                          ),
+                                          columns: const [
+                                            DataColumn(label: Text('No')),
+                                            DataColumn(
+                                                label: Text('Waktu Absen')),
+                                            DataColumn(
+                                                label: Text('Nama Karyawan')),
+                                            DataColumn(label: Text('Status')),
+                                            DataColumn(
+                                                label: Text('Bukti Foto')),
+                                            DataColumn(label: Text('Lokasi')),
+                                            DataColumn(
+                                                label: Text(
+                                                    'Aktifitas')), // Kolom Baru
+                                            DataColumn(
+                                                label: Text(
+                                                    'Notes')), // Kolom Baru
+                                            DataColumn(label: Text('Action')),
+                                          ],
+                                          rows: List<DataRow>.generate(
+                                            _filteredList.length > _rowsPerPage
+                                                ? _rowsPerPage
+                                                : _filteredList.length,
+                                            (index) {
+                                              final item = _filteredList[index];
+
+                                              // 1. Parsing Variabel Dasar
+                                              final int? empId = int.tryParse(
+                                                  item['employee_id']
+                                                          ?.toString() ??
+                                                      '');
+                                              final String empName =
+                                                  item['employees']
+                                                          ?['full_name'] ??
+                                                      'ID: $empId';
+                                              final String rawStatus =
+                                                  (item['status'] ?? 'Hadir')
+                                                      .toString();
+                                              final statusColor =
+                                                  _getStatusColor(rawStatus);
+
+                                              final lat = item['latitude'];
+                                              final lng = item['longitude'];
+
+                                              DateTime? attDate;
+                                              if (item['created_at'] != null) {
+                                                attDate = DateTime.tryParse(
+                                                        item['created_at'])
+                                                    ?.toLocal();
+                                              }
+
+                                              // 2. Logika Aktifitas & Notes
+                                              String aktifitas = 'Bekerja';
+                                              String notes =
+                                                  (item['notes'] ?? '')
+                                                      .toString();
+
+                                              if (attDate != null) {
+                                                bool isLeave = false;
+
+                                                // Cek apakah tanggal absen masuk dalam rentang cuti yang di-approve
+                                                if (empId != null &&
+                                                    _approvedLeaves
+                                                        .containsKey(empId)) {
+                                                  DateTime dateOnly = DateTime(
+                                                      attDate.year,
+                                                      attDate.month,
+                                                      attDate.day);
+                                                  for (var range
+                                                      in _approvedLeaves[
+                                                          empId]!) {
+                                                    DateTime s = DateTime(
+                                                        range['start']!.year,
+                                                        range['start']!.month,
+                                                        range['start']!.day);
+                                                    DateTime e = DateTime(
+                                                        range['end']!.year,
+                                                        range['end']!.month,
+                                                        range['end']!.day);
+
+                                                    if ((dateOnly
+                                                                .isAtSameMomentAs(
+                                                                    s) ||
+                                                            dateOnly
+                                                                .isAfter(s)) &&
+                                                        (dateOnly
+                                                                .isAtSameMomentAs(
+                                                                    e) ||
+                                                            dateOnly
+                                                                .isBefore(e))) {
+                                                      isLeave = true;
+                                                      break;
+                                                    }
+                                                  }
+                                                }
+
+                                                if (isLeave) {
+                                                  notes = 'Cuti/Izin';
+                                                } else {
+                                                  bool isCheckIn = rawStatus
+                                                          .toLowerCase()
+                                                          .contains('in') ||
+                                                      rawStatus
+                                                          .toLowerCase()
+                                                          .contains('masuk');
+                                                  // Cek Keterlambatan: Jika Absen Masuk > 09:30
+                                                  if (isCheckIn) {
+                                                    if (attDate.hour > 9 ||
+                                                        (attDate.hour == 9 &&
+                                                            attDate.minute >
+                                                                30)) {
+                                                      notes = 'Terlambat';
+                                                    }
+                                                  }
+                                                }
+                                              }
+
+                                              if (notes.isEmpty ||
+                                                  notes == 'null') notes = '-';
+
+                                              // Styling warna teks Notes
+                                              Color noteColor = Colors.black87;
+                                              if (notes.toLowerCase() ==
+                                                  'terlambat')
+                                                noteColor = Colors.red;
+                                              if (notes.toLowerCase() ==
+                                                  'cuti/izin')
+                                                noteColor =
+                                                    Colors.orange.shade800;
+
+                                              return DataRow(
+                                                cells: [
+                                                  DataCell(
+                                                      Text('${index + 1}')),
+                                                  DataCell(
+                                                    Text(
+                                                      _formatTanggalWaktu(
+                                                          item['created_at']),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Text(
+                                                      empName,
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Container(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 2,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: statusColor
+                                                            .withOpacity(0.1),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(4),
+                                                      ),
+                                                      child: Text(
+                                                        rawStatus.toUpperCase(),
+                                                        style: TextStyle(
+                                                          color: statusColor,
+                                                          fontSize: 10,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    item['photo_url'] != null &&
+                                                            item['photo_url']
+                                                                .toString()
+                                                                .isNotEmpty
+                                                        ? ElevatedButton.icon(
+                                                            icon: const Icon(
+                                                              Icons.image,
+                                                              size: 12,
+                                                            ),
+                                                            label: const Text(
+                                                              'Foto',
+                                                              style: TextStyle(
+                                                                  fontSize: 11),
+                                                            ),
+                                                            style:
+                                                                ElevatedButton
+                                                                    .styleFrom(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .symmetric(
+                                                                horizontal: 8,
+                                                                vertical: 2,
+                                                              ),
+                                                            ),
+                                                            onPressed: () =>
+                                                                _showImageDialog(
+                                                              item['photo_url'],
+                                                              empName,
+                                                            ),
+                                                          )
+                                                        : const Text('-'),
+                                                  ),
+                                                  DataCell(
+                                                    (lat != null && lng != null)
+                                                        ? IconButton(
+                                                            icon: const Icon(
+                                                              Icons
+                                                                  .map_outlined,
+                                                              color: Colors
+                                                                  .blueAccent,
+                                                              size: 20,
+                                                            ),
+                                                            tooltip:
+                                                                'Lihat Peta Lokasi',
+                                                            padding:
+                                                                EdgeInsets.zero,
+                                                            constraints:
+                                                                const BoxConstraints(),
+                                                            onPressed: () =>
+                                                                _showMapPopup(
+                                                              lat,
+                                                              lng,
+                                                              empName,
+                                                            ),
+                                                          )
+                                                        : const Text('-'),
+                                                  ),
+                                                  DataCell(
+                                                    Text(
+                                                      aktifitas,
+                                                      style: TextStyle(
+                                                        color:
+                                                            Colors.green[700],
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Text(
+                                                      notes,
+                                                      style: TextStyle(
+                                                        color: noteColor,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    IconButton(
+                                                      icon: const Icon(
+                                                        Icons.delete_outline,
+                                                        color: Colors.red,
+                                                        size: 18,
+                                                      ),
+                                                      onPressed: () =>
+                                                          _deleteAbsensi(item),
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                      ),
-                    ),
             ),
           ),
         ],

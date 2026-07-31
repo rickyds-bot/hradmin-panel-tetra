@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart'; // Ditambahkan untuk dukungan PointerDeviceKind
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -21,6 +22,10 @@ class _WebLemburPageState extends State<WebLemburPage> {
   int _rowsPerPage = 50;
   final List<int> _pageOptions = [50, 100, 200];
 
+  // Ditambahkan controller untuk scroll horizontal dan vertical
+  final ScrollController _horizontalScroll = ScrollController();
+  final ScrollController _verticalScroll = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -30,6 +35,8 @@ class _WebLemburPageState extends State<WebLemburPage> {
   @override
   void dispose() {
     _searchNameCtrl.dispose();
+    _horizontalScroll.dispose();
+    _verticalScroll.dispose();
     super.dispose();
   }
 
@@ -45,19 +52,29 @@ class _WebLemburPageState extends State<WebLemburPage> {
           .from('employees')
           .select('id, full_name');
 
-      final Map<dynamic, String> employeeMap = {};
+      final Map<int, String> employeeMap = {};
       for (var emp in employeesResponse) {
-        employeeMap[emp['id']] = emp['full_name'] ?? '-';
+        if (emp['id'] != null) {
+          int? parsedId = int.tryParse(emp['id'].toString());
+          if (parsedId != null) {
+            employeeMap[parsedId] = emp['full_name'] ?? '-';
+          }
+        }
       }
 
       final List<dynamic> mergedData = lemburResponse.map((item) {
-        final empId = item['employee_id'];
-        return {
-          ...item,
-          'employees': {
-            'full_name': employeeMap[empId] ?? 'Karyawan Tidak Ditemukan',
-          },
+        var mutableItem = Map<String, dynamic>.from(item);
+
+        int? empId = int.tryParse(mutableItem['employee_id']?.toString() ?? '');
+        int? approverId =
+            int.tryParse(mutableItem['approved_by']?.toString() ?? '');
+
+        mutableItem['employees'] = {
+          'full_name': employeeMap[empId] ?? 'Karyawan Tidak Ditemukan',
         };
+        mutableItem['approver_name'] = employeeMap[approverId] ?? '-';
+
+        return mutableItem;
       }).toList();
 
       _lemburList = mergedData;
@@ -85,17 +102,15 @@ class _WebLemburPageState extends State<WebLemburPage> {
     if (_searchNameCtrl.text.trim().isNotEmpty) {
       final search = _searchNameCtrl.text.trim().toLowerCase();
       temp = temp.where((item) {
-        final empName = (item['employees']?['full_name'] ?? '')
-            .toString()
-            .toLowerCase();
+        final empName =
+            (item['employees']?['full_name'] ?? '').toString().toLowerCase();
         return empName.contains(search);
       }).toList();
     }
 
     if (_selectedDateFilter != null) {
-      final filterDateStr = DateFormat(
-        'yyyy-MM-dd',
-      ).format(_selectedDateFilter!);
+      final filterDateStr =
+          DateFormat('yyyy-MM-dd').format(_selectedDateFilter!);
       temp = temp.where((item) {
         if (item['start_time'] == null) return false;
         try {
@@ -206,29 +221,17 @@ class _WebLemburPageState extends State<WebLemburPage> {
     _applyLocalFilter();
   }
 
-  // Perbaikan agar jam tidak selisih akibat konversi zona waktu ganda
   String _formatJamOnly(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return '-';
     try {
-      // Jika format dari database berupa string ISO (contoh: 2026-07-22T17:00:00 atau dengan Z)
-      // Kita ambil langsung substring jam dan menitnya jika ingin akurat tanpa pergeseran flutter toLocal()
-      // Atau parse langsung string waktu mentahnya:
-      final parsed = DateTime.parse(dateStr);
-      // Jika data di database disimpan dalam bentuk UTC tapi ingin dipaksa tampil sesuai jam aslinya:
-      // Gunakan parsed.hour dan parsed.minute langsung tanpa .toLocal() jika backend sudah menyimpan local time,
-      // atau gunakan .toLocal() jika backend murni UTC. Karena sering selisih, kita ambil string langsung dari format jamnya:
-
-      // Cara paling aman mengambil jam:menit dari string ISO tanpa pergeseran zona waktu:
       if (dateStr.contains('T')) {
-        final timePart = dateStr.split(
-          'T',
-        )[1]; // contoh: "17:00:00.000Z" atau "17:00:00"
+        final timePart = dateStr.split('T')[1];
         final parts = timePart.split(':');
         if (parts.length >= 2) {
           return '${parts[0]}:${parts[1]}';
         }
       }
-
+      final parsed = DateTime.parse(dateStr);
       return DateFormat('HH:mm').format(parsed);
     } catch (_) {
       return '-';
@@ -285,8 +288,6 @@ class _WebLemburPageState extends State<WebLemburPage> {
             ],
           ),
           const SizedBox(height: 16),
-
-          // Baris Filter & Search Sejajar Tinggi 42
           Row(
             children: [
               Expanded(
@@ -330,9 +331,8 @@ class _WebLemburPageState extends State<WebLemburPage> {
                     label: Text(
                       _selectedDateFilter == null
                           ? 'Pilih Tanggal'
-                          : DateFormat(
-                              'dd-MM-yyyy',
-                            ).format(_selectedDateFilter!),
+                          : DateFormat('dd-MM-yyyy')
+                              .format(_selectedDateFilter!),
                       style: GoogleFonts.plusJakartaSans(fontSize: 12),
                     ),
                     style: OutlinedButton.styleFrom(
@@ -409,8 +409,9 @@ class _WebLemburPageState extends State<WebLemburPage> {
                           );
                         }).toList(),
                         onChanged: (int? newValue) {
-                          if (newValue != null)
+                          if (newValue != null) {
                             setState(() => _rowsPerPage = newValue);
+                          }
                         },
                       ),
                     ],
@@ -420,7 +421,6 @@ class _WebLemburPageState extends State<WebLemburPage> {
             ],
           ),
           const SizedBox(height: 16),
-
           Expanded(
             child: Card(
               elevation: 0,
@@ -432,209 +432,275 @@ class _WebLemburPageState extends State<WebLemburPage> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _filteredList.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.more_time,
-                            size: 42,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            'Data lembur tidak ditemukan.',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minWidth:
-                              MediaQuery.of(context).size.width -
-                              100, // Memastikan tabel membentang dan bisa digeser
-                        ),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.vertical,
-                          child: DataTable(
-                            showCheckboxColumn: false,
-                            headingRowColor: WidgetStateProperty.all(
-                              Colors.grey[50],
-                            ),
-                            dataRowMaxHeight: 48,
-                            headingTextStyle: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                            dataTextStyle: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
-                              color: Colors.black87,
-                            ),
-                            columns: const [
-                              DataColumn(label: Text('No')),
-                              DataColumn(label: Text('Karyawan')),
-                              DataColumn(label: Text('Waktu Lembur')),
-                              DataColumn(label: Text('Durasi')),
-                              DataColumn(label: Text('Pekerjaan / Alasan')),
-                              DataColumn(label: Text('Status')),
-                              DataColumn(label: Text('Action')),
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.more_time,
+                                size: 42,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                'Data lembur tidak ditemukan.',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
                             ],
-                            rows: List<DataRow>.generate(
-                              _filteredList.length > _rowsPerPage
-                                  ? _rowsPerPage
-                                  : _filteredList.length,
-                              (index) {
-                                final item = _filteredList[index];
-                                final String empName =
-                                    item['employees'] != null &&
-                                        item['employees']['full_name'] != null
-                                    ? item['employees']['full_name']
-                                    : 'ID: ${item['employee_id']}';
-
-                                final String rawStatus =
-                                    (item['status'] ?? 'pending').toString();
-                                final statusColor = _getStatusColor(rawStatus);
-
-                                final String tglMulai =
-                                    item['start_time'] != null
-                                    ? () {
-                                        try {
-                                          // Ambil bagian tanggal (YYYY-MM-DD) secara langsung dari string database
-                                          final datePart = item['start_time']
-                                              .toString()
-                                              .split('T')[0];
-                                          final parts = datePart.split('-');
-                                          if (parts.length == 3) {
-                                            return '${parts[2]}-${parts[1]}-${parts[0]}'; // Format dd-MM-yyyy
-                                          }
-                                          return DateFormat(
-                                            'dd-MM-yyyy',
-                                          ).format(
-                                            DateTime.parse(
-                                              item['start_time'],
-                                            ).toLocal(),
-                                          );
-                                        } catch (_) {
-                                          return '-';
-                                        }
-                                      }()
-                                    : '-';
-                                final String jamMulai = _formatJamOnly(
-                                  item['start_time'],
-                                );
-                                final String jamSelesai = _formatJamOnly(
-                                  item['end_time'],
-                                );
-
-                                return DataRow(
-                                  cells: [
-                                    DataCell(Text('${index + 1}')),
-                                    DataCell(
-                                      Text(
-                                        empName,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
+                          ),
+                        )
+                      : LayoutBuilder(
+                          builder: (context, constraints) {
+                            return ScrollConfiguration(
+                              behavior:
+                                  ScrollConfiguration.of(context).copyWith(
+                                dragDevices: {
+                                  PointerDeviceKind.touch,
+                                  PointerDeviceKind.mouse,
+                                  PointerDeviceKind.trackpad,
+                                },
+                              ),
+                              child: Scrollbar(
+                                controller: _horizontalScroll,
+                                thumbVisibility: true,
+                                trackVisibility: true,
+                                child: SingleChildScrollView(
+                                  controller: _horizontalScroll,
+                                  scrollDirection: Axis.horizontal,
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      minWidth: constraints.maxWidth,
                                     ),
-                                    DataCell(
-                                      Text(
-                                        '$tglMulai\n$jamMulai - $jamSelesai WIB',
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        '${item['duration_hours'] ?? 0} Jam',
-                                      ),
-                                    ),
-                                    DataCell(
-                                      SizedBox(
-                                        width: 180,
-                                        child: Text(
-                                          item['reason'] ?? '-',
-                                          overflow: TextOverflow.ellipsis,
-                                          maxLines: 2,
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: statusColor.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(
-                                            4,
+                                    child: Scrollbar(
+                                      controller: _verticalScroll,
+                                      thumbVisibility: true,
+                                      child: SingleChildScrollView(
+                                        controller: _verticalScroll,
+                                        scrollDirection: Axis.vertical,
+                                        child: DataTable(
+                                          showCheckboxColumn: false,
+                                          headingRowColor:
+                                              WidgetStateProperty.all(
+                                            Colors.grey[50],
                                           ),
-                                          border: Border.all(
-                                            color: statusColor,
-                                            width: 0.5,
+                                          dataRowMaxHeight: 48,
+                                          headingTextStyle:
+                                              GoogleFonts.plusJakartaSans(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.black87,
                                           ),
-                                        ),
-                                        child: Text(
-                                          rawStatus.toUpperCase(),
-                                          style: TextStyle(
-                                            color: statusColor,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
+                                          dataTextStyle:
+                                              GoogleFonts.plusJakartaSans(
+                                            fontSize: 12,
+                                            color: Colors.black87,
                                           ),
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.edit_note,
-                                              color: Colors.blue,
-                                              size: 18,
-                                            ),
-                                            tooltip: 'Ubah Status',
-                                            onPressed: () {
-                                              showDialog(
-                                                context: context,
-                                                barrierDismissible: false,
-                                                builder: (context) =>
-                                                    EditStatusLemburDialog(
-                                                      lemburData: item,
-                                                      onSuccess:
-                                                          _fetchLemburData,
+                                          columns: const [
+                                            DataColumn(label: Text('No')),
+                                            DataColumn(label: Text('Karyawan')),
+                                            DataColumn(
+                                                label: Text('Waktu Lembur')),
+                                            DataColumn(label: Text('Durasi')),
+                                            DataColumn(
+                                                label:
+                                                    Text('Pekerjaan / Alasan')),
+                                            DataColumn(label: Text('Status')),
+                                            DataColumn(
+                                                label: Text('Approved By')),
+                                            DataColumn(label: Text('Action')),
+                                          ],
+                                          rows: List<DataRow>.generate(
+                                            _filteredList.length > _rowsPerPage
+                                                ? _rowsPerPage
+                                                : _filteredList.length,
+                                            (index) {
+                                              final item = _filteredList[index];
+                                              final String empName = item[
+                                                              'employees'] !=
+                                                          null &&
+                                                      item['employees']
+                                                              ['full_name'] !=
+                                                          null
+                                                  ? item['employees']
+                                                      ['full_name']
+                                                  : 'ID: ${item['employee_id']}';
+
+                                              final String rawStatus =
+                                                  (item['status'] ?? 'pending')
+                                                      .toString();
+                                              final statusColor =
+                                                  _getStatusColor(rawStatus);
+
+                                              final String tglMulai = item[
+                                                          'start_time'] !=
+                                                      null
+                                                  ? () {
+                                                      try {
+                                                        final datePart =
+                                                            item['start_time']
+                                                                .toString()
+                                                                .split('T')[0];
+                                                        final parts =
+                                                            datePart.split('-');
+                                                        if (parts.length == 3) {
+                                                          return '${parts[2]}-${parts[1]}-${parts[0]}';
+                                                        }
+                                                        return DateFormat(
+                                                          'dd-MM-yyyy',
+                                                        ).format(
+                                                          DateTime.parse(
+                                                            item['start_time'],
+                                                          ).toLocal(),
+                                                        );
+                                                      } catch (_) {
+                                                        return '-';
+                                                      }
+                                                    }()
+                                                  : '-';
+                                              final String jamMulai =
+                                                  _formatJamOnly(
+                                                item['start_time'],
+                                              );
+                                              final String jamSelesai =
+                                                  _formatJamOnly(
+                                                item['end_time'],
+                                              );
+
+                                              return DataRow(
+                                                cells: [
+                                                  DataCell(
+                                                      Text('${index + 1}')),
+                                                  DataCell(
+                                                    Text(
+                                                      empName,
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
                                                     ),
+                                                  ),
+                                                  DataCell(
+                                                    Text(
+                                                      '$tglMulai\n$jamMulai - $jamSelesai WIB',
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Text(
+                                                      '${item['duration_hours'] ?? 0} Jam',
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    SizedBox(
+                                                      width: 180,
+                                                      child: Text(
+                                                        item['reason'] ?? '-',
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        maxLines: 2,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Container(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 2,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: statusColor
+                                                            .withOpacity(0.1),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(
+                                                          4,
+                                                        ),
+                                                        border: Border.all(
+                                                          color: statusColor,
+                                                          width: 0.5,
+                                                        ),
+                                                      ),
+                                                      child: Text(
+                                                        rawStatus.toUpperCase(),
+                                                        style: TextStyle(
+                                                          color: statusColor,
+                                                          fontSize: 10,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Text(
+                                                      item['approver_name'] ??
+                                                          '-',
+                                                      style: TextStyle(
+                                                        color: Colors.grey[700],
+                                                        fontStyle:
+                                                            FontStyle.italic,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        IconButton(
+                                                          icon: const Icon(
+                                                            Icons.edit_note,
+                                                            color: Colors.blue,
+                                                            size: 18,
+                                                          ),
+                                                          tooltip:
+                                                              'Ubah Status',
+                                                          onPressed: () {
+                                                            showDialog(
+                                                              context: context,
+                                                              barrierDismissible:
+                                                                  false,
+                                                              builder: (context) =>
+                                                                  EditStatusLemburDialog(
+                                                                lemburData:
+                                                                    item,
+                                                                onSuccess:
+                                                                    _fetchLemburData,
+                                                              ),
+                                                            );
+                                                          },
+                                                        ),
+                                                        IconButton(
+                                                          icon: const Icon(
+                                                            Icons
+                                                                .delete_outline,
+                                                            color: Colors.red,
+                                                            size: 18,
+                                                          ),
+                                                          tooltip: 'Hapus Data',
+                                                          onPressed: () =>
+                                                              _deleteLembur(
+                                                                  item),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
                                               );
                                             },
                                           ),
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.delete_outline,
-                                              color: Colors.red,
-                                              size: 18,
-                                            ),
-                                            tooltip: 'Hapus Data',
-                                            onPressed: () =>
-                                                _deleteLembur(item),
-                                          ),
-                                        ],
+                                        ),
                                       ),
                                     ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                      ),
-                    ),
             ),
           ),
         ],
@@ -676,10 +742,22 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
   Future<void> _updateStatus() async {
     setState(() => _isSaving = true);
     try {
-      await Supabase.instance.client
-          .from('overtime_requests')
-          .update({'status': _selectedStatus, 'notes': _notesCtrl.text})
-          .eq('id', widget.lemburData['id']);
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) throw 'Sesi admin tidak ditemukan';
+
+      final adminData = await Supabase.instance.client
+          .from('employees')
+          .select('id')
+          .eq('email', currentUser.email!)
+          .maybeSingle();
+
+      final int? adminEmpId = adminData?['id'];
+
+      await Supabase.instance.client.from('overtime_requests').update({
+        'status': _selectedStatus,
+        'notes': _notesCtrl.text,
+        if (_selectedStatus != 'pending') 'approved_by': adminEmpId,
+      }).eq('id', widget.lemburData['id']);
 
       if (mounted) {
         Navigator.pop(context);

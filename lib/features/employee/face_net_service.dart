@@ -16,7 +16,6 @@ class FaceNetService {
 
   static const int inputSize = 112;
 
-  // Wajib dikalibrasi menggunakan sampel wajah nyata.
   static const double threshold = 1.0;
 
   Interpreter? _interpreter;
