@@ -98,7 +98,6 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
     });
   }
 
-  // Mengubah status izin absen bebas lokasi
   Future<void> _toggleFreeLocation(
       Map<String, dynamic> karyawan, bool? value) async {
     if (value == null) return;
@@ -340,10 +339,11 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
 
     Map<String, dynamic>? balanceData;
     try {
+      // FALLBACK: Jika user_id di employees kosong/null, cari dari leave_requests
       if (userUuid == null || userUuid.toString().isEmpty) {
         final leaveReqRes = await Supabase.instance.client
             .from('leave_requests')
-            .select('user_id, employee_id')
+            .select('user_id')
             .eq('employee_id', empId)
             .limit(1);
 
@@ -352,6 +352,7 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
         }
       }
 
+      // Ambil data saldo berdasarkan user_id (uuid) yang valid
       if (userUuid != null && userUuid.toString().isNotEmpty) {
         balanceData = await Supabase.instance.client
             .from('leave_balance')
@@ -359,38 +360,18 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
             .eq('user_id', userUuid)
             .maybeSingle();
       }
-
-      if (balanceData == null && empId != null) {
-        final allBalances =
-            await Supabase.instance.client.from('leave_balance').select();
-        for (var bal in allBalances) {
-          if (bal['employee_id'] != null &&
-              bal['employee_id'].toString() == empId.toString()) {
-            balanceData = bal;
-            break;
-          }
-          if (bal['user_id'] != null &&
-              userUuid != null &&
-              bal['user_id'].toString() == userUuid.toString()) {
-            balanceData = bal;
-            break;
-          }
-        }
-      }
     } catch (e) {
       debugPrint('Error fetching balance: $e');
       balanceData = null;
     }
 
     if (mounted) Navigator.pop(context);
-
     if (!mounted) return;
 
     showDialog(
       context: context,
       builder: (context) => KaryawanLeaveBalanceDialog(
-        empId: empId,
-        userUuid: userUuid,
+        userUuid: userUuid, // Kirim userUuid (uuid)
         empName: empName,
         initialBalance: balanceData,
         onSuccess: _fetchKaryawanData,
@@ -816,10 +797,6 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
   }
 }
 
-// ============================================================================
-// DIALOG DETAIL / FULL BIODATA KARYAWAN (DENGAN RIWAYAT KONTRAK & STATUS)
-// ============================================================================
-
 class DetailKaryawanDialog extends StatefulWidget {
   final Map<String, dynamic> karyawan;
   const DetailKaryawanDialog({super.key, required this.karyawan});
@@ -1148,10 +1125,6 @@ class _DetailKaryawanDialogState extends State<DetailKaryawanDialog> {
   }
 }
 
-// ============================================================================
-// DIALOG TAMBAH KARYAWAN
-// ============================================================================
-
 class AddKaryawanDialog extends StatefulWidget {
   final VoidCallback onSuccess;
   const AddKaryawanDialog({super.key, required this.onSuccess});
@@ -1220,7 +1193,6 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
   Uint8List? _selectedFileBytes;
   String? _selectedFileName;
 
-  // Helper mapping role to position_id
   int _mapRoleToPositionId(String role) {
     switch (role.toLowerCase()) {
       case 'manager':
@@ -1286,7 +1258,6 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
       if (newUserId != null) {
         String? contractUrl;
 
-        // Upload PDF jika ada
         if (_selectedEmpStatus == 'Kontrak' && _selectedFileBytes != null) {
           final timestamp = DateTime.now().millisecondsSinceEpoch;
           final safeFileName = _selectedFileName!.replaceAll(' ', '_');
@@ -1638,10 +1609,6 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
   }
 }
 
-// ============================================================================
-// DIALOG EDIT KARYAWAN & RIWAYAT KONTRAK
-// ============================================================================
-
 class EditKaryawanDialog extends StatefulWidget {
   final Map<String, dynamic> karyawan;
   final VoidCallback onSuccess;
@@ -1797,7 +1764,6 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
     _fetchContractHistory();
   }
 
-  // Helper mapping role to position_id
   int _mapRoleToPositionId(String role) {
     switch (role.toLowerCase()) {
       case 'manager':
@@ -2412,11 +2378,7 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
   }
 }
 
-// ============================================================================
-// DIALOG DETAIL & EDIT SALDO CUTI (KHUSUS HALAMAN KARYAWAN)
-// ============================================================================
 class KaryawanLeaveBalanceDialog extends StatefulWidget {
-  final dynamic empId;
   final dynamic userUuid;
   final String empName;
   final Map<String, dynamic>? initialBalance;
@@ -2424,7 +2386,6 @@ class KaryawanLeaveBalanceDialog extends StatefulWidget {
 
   const KaryawanLeaveBalanceDialog({
     super.key,
-    required this.empId,
     required this.userUuid,
     required this.empName,
     required this.initialBalance,
@@ -2490,13 +2451,16 @@ class _KaryawanLeaveBalanceDialogState
   Future<void> _saveBalance() async {
     setState(() => _isSaving = true);
     try {
+      if (widget.userUuid == null || widget.userUuid.toString().isEmpty) {
+        throw 'User UUID tidak ditemukan.';
+      }
+
       final total = int.tryParse(_totalCtrl.text) ?? 12;
       final used = int.tryParse(_usedCtrl.text) ?? 0;
       final remaining = int.tryParse(_remainingCtrl.text) ?? (total - used);
 
       final payload = {
-        if (widget.userUuid != null) 'user_id': widget.userUuid,
-        if (widget.empId != null) 'employee_id': widget.empId,
+        'user_id': widget.userUuid,
         'total_leave': total,
         'used_leave': used,
         'remaining_leave': remaining,
@@ -2505,15 +2469,10 @@ class _KaryawanLeaveBalanceDialogState
             : null,
       };
 
-      if (widget.initialBalance != null &&
-          widget.initialBalance!['id'] != null) {
-        await Supabase.instance.client
-            .from('leave_balance')
-            .update(payload)
-            .eq('id', widget.initialBalance!['id']);
-      } else {
-        await Supabase.instance.client.from('leave_balance').insert(payload);
-      }
+      // GUNAKAN UPSERT UNTUK MENCEGAH DUPLICATE KEY CONFLICT
+      await Supabase.instance.client
+          .from('leave_balance')
+          .upsert(payload, onConflict: 'user_id');
 
       if (mounted) {
         setState(() => _isEditing = false);
@@ -2524,6 +2483,7 @@ class _KaryawanLeaveBalanceDialogState
           ),
         );
         widget.onSuccess();
+        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {

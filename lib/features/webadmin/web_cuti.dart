@@ -53,7 +53,6 @@ class _WebCutiPageState extends State<WebCutiPage> {
           .from('employees')
           .select('id, full_name');
 
-      // Mengubah mapping ke bentuk Integer (angka) agar sesuai dengan struktur DB
       final Map<int, String> employeeMap = {};
       for (var emp in employeesResponse) {
         if (emp['id'] != null) {
@@ -69,7 +68,6 @@ class _WebCutiPageState extends State<WebCutiPage> {
       for (var item in cutiResponse) {
         var mutableItem = Map<String, dynamic>.from(item);
 
-        // Parsing aman ID ke integer
         int? empId = int.tryParse(mutableItem['employee_id']?.toString() ?? '');
         int? approverId =
             int.tryParse(mutableItem['approved_by']?.toString() ?? '');
@@ -77,7 +75,6 @@ class _WebCutiPageState extends State<WebCutiPage> {
         mutableItem['employees'] = {
           'full_name': employeeMap[empId] ?? 'Karyawan Tidak Ditemukan',
         };
-        // Menyimpan nama Admin/Approver
         mutableItem['approver_name'] = employeeMap[approverId] ?? '-';
 
         processedData.add(mutableItem);
@@ -272,9 +269,6 @@ class _WebCutiPageState extends State<WebCutiPage> {
   }
 
   Future<void> _showLeaveBalanceDialog(Map<String, dynamic> item) async {
-    final empIdRaw = item['employee_id'];
-    final int? empId =
-        empIdRaw != null ? int.tryParse(empIdRaw.toString()) : null;
     final userUuid = item['user_id'];
     final empName = item['employees']?['full_name'] ?? 'Karyawan';
 
@@ -286,34 +280,12 @@ class _WebCutiPageState extends State<WebCutiPage> {
 
     Map<String, dynamic>? balanceData;
     try {
-      if (userUuid != null) {
+      if (userUuid != null && userUuid.toString().isNotEmpty) {
         balanceData = await Supabase.instance.client
             .from('leave_balance')
             .select()
             .eq('user_id', userUuid)
             .maybeSingle();
-      }
-
-      if (balanceData == null && empId != null) {
-        balanceData = await Supabase.instance.client
-            .from('leave_balance')
-            .select()
-            .eq('employee_id', empId)
-            .maybeSingle();
-      }
-
-      if (balanceData == null) {
-        final allBalances =
-            await Supabase.instance.client.from('leave_balance').select();
-        for (var bal in allBalances) {
-          if ((bal['employee_id'] != null &&
-                  bal['employee_id'].toString() == empId?.toString()) ||
-              (bal['user_id'] != null &&
-                  bal['user_id'].toString() == userUuid?.toString())) {
-            balanceData = bal;
-            break;
-          }
-        }
       }
     } catch (e) {
       debugPrint('Error fetching balance: $e');
@@ -327,7 +299,6 @@ class _WebCutiPageState extends State<WebCutiPage> {
     showDialog(
       context: context,
       builder: (context) => LeaveBalanceDetailDialog(
-        empId: empId,
         userUuid: userUuid,
         empName: empName,
         initialBalance: balanceData,
@@ -443,53 +414,40 @@ class _WebCutiPageState extends State<WebCutiPage> {
     String endDate,
   ) async {
     try {
-      // 1. Ambil UUID dan Email Admin yang sedang login
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null) throw 'Sesi admin tidak ditemukan';
 
-      // 2. Cari ID Integer Admin dari tabel employees berdasarkan email
       final adminData = await Supabase.instance.client
           .from('employees')
           .select('id')
           .eq('email', currentUser.email!)
           .maybeSingle();
 
-      final int? adminEmpId = adminData?['id']; // Ini adalah BigInt / Integer
+      final int? adminEmpId = adminData?['id'];
 
-      final int? empId =
-          empIdRaw != null ? int.tryParse(empIdRaw.toString()) : null;
-
-      // 3. Simpan adminEmpId (integer) ke approved_by
       await Supabase.instance.client.from('leave_requests').update({
         'status': newStatus,
         if (newStatus != 'pending') 'approved_by': adminEmpId
       }).eq('id', id);
 
       if (newStatus == 'approved') {
+        if (userUuid == null || userUuid.toString().isEmpty) {
+          throw 'User UUID untuk karyawan ini tidak ditemukan, tidak dapat memperbarui saldo cuti.';
+        }
+
         DateTime start = DateTime.parse(startDate);
         DateTime end = DateTime.parse(endDate);
         int durasi = end.difference(start).inDays + 1;
 
-        Map<String, dynamic>? balanceData;
-        if (userUuid != null) {
-          balanceData = await Supabase.instance.client
-              .from('leave_balance')
-              .select('*')
-              .eq('user_id', userUuid)
-              .maybeSingle();
-        }
-        if (balanceData == null && empId != null) {
-          balanceData = await Supabase.instance.client
-              .from('leave_balance')
-              .select('*')
-              .eq('employee_id', empId)
-              .maybeSingle();
-        }
+        Map<String, dynamic>? balanceData = await Supabase.instance.client
+            .from('leave_balance')
+            .select('*')
+            .eq('user_id', userUuid)
+            .maybeSingle();
 
         if (balanceData == null) {
           await Supabase.instance.client.from('leave_balance').insert({
-            if (userUuid != null) 'user_id': userUuid,
-            if (empId != null) 'employee_id': empId,
+            'user_id': userUuid,
             'total_leave': 12,
             'used_leave': durasi,
             'remaining_leave': 12 - durasi,
@@ -498,20 +456,20 @@ class _WebCutiPageState extends State<WebCutiPage> {
           int currentUsed = balanceData['used_leave'] ?? 0;
           int currentRemaining = balanceData['remaining_leave'] ?? 12;
 
-          final query = Supabase.instance.client.from('leave_balance').update({
-            'used_leave': currentUsed + durasi,
-            'remaining_leave': currentRemaining - durasi,
-          });
-
           if (balanceData['id'] != null) {
-            await query.eq('id', balanceData['id']);
-          } else if (userUuid != null) {
-            await query.eq('user_id', userUuid);
-          } else if (empId != null) {
-            await query.eq('employee_id', empId);
+            await Supabase.instance.client.from('leave_balance').update({
+              'used_leave': currentUsed + durasi,
+              'remaining_leave': currentRemaining - durasi,
+            }).eq('id', balanceData['id']);
+          } else {
+            await Supabase.instance.client.from('leave_balance').update({
+              'used_leave': currentUsed + durasi,
+              'remaining_leave': currentRemaining - durasi,
+            }).eq('user_id', userUuid);
           }
         }
       }
+
       _fetchCutiData();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1160,11 +1118,7 @@ class _WebCutiPageState extends State<WebCutiPage> {
   }
 }
 
-// ============================================================================
-// DIALOG DETAIL & EDIT SALDO CUTI (LEAVE BALANCE)
-// ============================================================================
 class LeaveBalanceDetailDialog extends StatefulWidget {
-  final dynamic empId;
   final dynamic userUuid;
   final String empName;
   final Map<String, dynamic>? initialBalance;
@@ -1173,7 +1127,6 @@ class LeaveBalanceDetailDialog extends StatefulWidget {
 
   const LeaveBalanceDetailDialog({
     super.key,
-    required this.empId,
     required this.userUuid,
     required this.empName,
     required this.initialBalance,
@@ -1239,15 +1192,16 @@ class _LeaveBalanceDetailDialogState extends State<LeaveBalanceDetailDialog> {
   Future<void> _saveBalance() async {
     setState(() => _isSaving = true);
     try {
+      if (widget.userUuid == null || widget.userUuid.toString().isEmpty) {
+        throw 'User UUID tidak ditemukan.';
+      }
+
       final total = int.tryParse(_totalCtrl.text) ?? 12;
       final used = int.tryParse(_usedCtrl.text) ?? 0;
       final remaining = int.tryParse(_remainingCtrl.text) ?? (total - used);
-      final int? parsedEmpId =
-          widget.empId != null ? int.tryParse(widget.empId.toString()) : null;
 
       final payload = {
-        if (widget.userUuid != null) 'user_id': widget.userUuid,
-        if (parsedEmpId != null) 'employee_id': parsedEmpId,
+        'user_id': widget.userUuid,
         'total_leave': total,
         'used_leave': used,
         'remaining_leave': remaining,
@@ -1256,15 +1210,10 @@ class _LeaveBalanceDetailDialogState extends State<LeaveBalanceDetailDialog> {
             : null,
       };
 
-      if (widget.initialBalance != null &&
-          widget.initialBalance!['id'] != null) {
-        await Supabase.instance.client
-            .from('leave_balance')
-            .update(payload)
-            .eq('id', widget.initialBalance!['id']);
-      } else {
-        await Supabase.instance.client.from('leave_balance').insert(payload);
-      }
+      // GUNAKAN UPSERT UNTUK MENCEGAH DUPLICATE KEY CONFLICT
+      await Supabase.instance.client
+          .from('leave_balance')
+          .upsert(payload, onConflict: 'user_id');
 
       if (mounted) {
         setState(() => _isEditing = false);
@@ -1275,6 +1224,7 @@ class _LeaveBalanceDetailDialogState extends State<LeaveBalanceDetailDialog> {
           ),
         );
         widget.onSuccess();
+        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
@@ -1579,7 +1529,6 @@ class _EditStatusCutiDialogState extends State<EditStatusCutiDialog> {
     try {
       final currentUser = Supabase.instance.client.auth.currentUser;
 
-      // Ambil ID Integer dari Admin yang sedang login
       final adminData = await Supabase.instance.client
           .from('employees')
           .select('id')
@@ -1588,7 +1537,6 @@ class _EditStatusCutiDialogState extends State<EditStatusCutiDialog> {
 
       final int? adminEmpId = adminData?['id'];
 
-      // Gunakan ID Integer untuk update field approved_by
       await Supabase.instance.client.from('leave_requests').update({
         'status': _selectedStatus,
         if (_selectedStatus != 'pending') 'approved_by': adminEmpId,
