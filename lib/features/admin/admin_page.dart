@@ -203,7 +203,7 @@ class _KaryawanTabState extends State<KaryawanTab> {
 }
 
 // ============================================================================
-// POPUP DETAIL / FULL BIODATA KARYAWAN SESUAI WEB KARYAWAN PAGE
+// POPUP DETAIL / FULL BIODATA KARYAWAN
 // ============================================================================
 class _DetailKaryawanDialog extends StatefulWidget {
   final Map<String, dynamic> karyawan;
@@ -519,7 +519,7 @@ class _DetailKaryawanDialogState extends State<_DetailKaryawanDialog> {
 }
 
 // ==========================================
-// TAB 2: AKTIVITAS
+// TAB 2: AKTIVITAS (DENGAN PEMISAHAN FETCH UNTUK MENCEGAH BUG JOIN SUPABASE)
 // ==========================================
 class AktivitasTab extends StatefulWidget {
   const AktivitasTab({Key? key}) : super(key: key);
@@ -530,6 +530,7 @@ class AktivitasTab extends StatefulWidget {
 class _AktivitasTabState extends State<AktivitasTab> {
   String _search = "";
   late Future<List<Map<String, dynamic>>> _aktivitasFuture;
+  List<Map<String, dynamic>> _employeeList = [];
 
   @override
   void initState() {
@@ -538,12 +539,38 @@ class _AktivitasTabState extends State<AktivitasTab> {
   }
 
   Future<void> _refreshData() async {
-    setState(() {
-      _aktivitasFuture = Supabase.instance.client
+    try {
+      final empResponse = await Supabase.instance.client
+          .from('employees')
+          .select('id, full_name');
+      final attResponse = await Supabase.instance.client
           .from('attendance')
-          .select('*, employees(full_name)')
+          .select()
           .order('created_at', ascending: false);
-    });
+
+      if (mounted) {
+        setState(() {
+          _employeeList = List<Map<String, dynamic>>.from(empResponse);
+          _aktivitasFuture =
+              Future.value(List<Map<String, dynamic>>.from(attResponse));
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _aktivitasFuture = Future.error(e);
+        });
+      }
+    }
+  }
+
+  String _getEmployeeName(dynamic id) {
+    if (id == null) return "Tanpa Nama";
+    final match = _employeeList.firstWhere(
+      (emp) => emp['id'].toString() == id.toString(),
+      orElse: () => <String, dynamic>{},
+    );
+    return match['full_name'] ?? "Tanpa Nama";
   }
 
   @override
@@ -584,13 +611,10 @@ class _AktivitasTabState extends State<AktivitasTab> {
                 }
 
                 final list = snapshot.data!.where((e) {
-                  final empData = e['employees'];
-                  final empName = empData?['full_name'] ?? '';
+                  final empName = _getEmployeeName(e['employee_id']);
                   final status = e['status'] ?? '';
                   final searchLower = _search.toLowerCase();
-                  return empName.toString().toLowerCase().contains(
-                            searchLower,
-                          ) ||
+                  return empName.toLowerCase().contains(searchLower) ||
                       status.toString().toLowerCase().contains(searchLower);
                 }).toList();
 
@@ -598,8 +622,7 @@ class _AktivitasTabState extends State<AktivitasTab> {
                   itemCount: list.length,
                   itemBuilder: (context, i) {
                     final item = list[i];
-                    final empData = item['employees'];
-                    final namaKaryawan = empData?['full_name'] ?? 'Tanpa Nama';
+                    final namaKaryawan = _getEmployeeName(item['employee_id']);
                     final status = item['status'].toString().toUpperCase();
 
                     final DateTime? createdAt = DateTime.tryParse(
@@ -949,6 +972,12 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
                 statusText = "REJECTED";
               }
 
+              // MENAMPILKAN NAMA APPROVER
+              String approver = '';
+              if (row['approved_by'] != null) {
+                approver = _getEmployeeName(row['approved_by']);
+              }
+
               String infoUtama = "-";
               String keterangan = "-";
 
@@ -1031,6 +1060,18 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
                           fontStyle: FontStyle.italic,
                         ),
                       ),
+                      if (rawStatus != 'pending' &&
+                          approver.isNotEmpty &&
+                          approver != 'Karyawan') ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          "Approved by: $approver",
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.blue.shade800,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ],
                       if (rawStatus == 'pending') ...[
                         const SizedBox(height: 10),
                         Row(

@@ -98,6 +98,51 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
     });
   }
 
+  // FITUR BARU: Mengubah status izin absen bebas lokasi
+  Future<void> _toggleFreeLocation(Map<String, dynamic> karyawan, bool? value) async {
+    if (value == null) return;
+    
+    // Simpan nilai asli jika terjadi error
+    final originalValue = karyawan['is_free_location'];
+    
+    // Update UI seketika (Optimistic Update)
+    setState(() {
+      karyawan['is_free_location'] = value;
+    });
+
+    try {
+      await Supabase.instance.client
+          .from('employees')
+          .update({'is_free_location': value})
+          .eq('id', karyawan['id']);
+          
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Status absen bebas ${karyawan['full_name']} diperbarui',
+                style: GoogleFonts.plusJakartaSans(fontSize: 12)),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      // Kembalikan ke nilai awal jika gagal
+      setState(() {
+        karyawan['is_free_location'] = originalValue;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memperbarui status: $e',
+                style: GoogleFonts.plusJakartaSans(fontSize: 12)),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _deleteKaryawan(Map<String, dynamic> karyawan) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -529,12 +574,10 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                           colIndex,
                                           ascending),
                                     ),
-                                    DataColumn(
-                                      label: const Text('No. Telepon'),
-                                      onSort: (colIndex, ascending) => _sort(
-                                          (d) => d['phone'] ?? '',
-                                          colIndex,
-                                          ascending),
+                                    // PERUBAHAN: Kolom No. Telepon diganti menjadi Absen Bebas
+                                    const DataColumn(
+                                      label: Text('Absen Bebas'),
+                                      tooltip: 'Karyawan bebas absen dari lokasi mana saja',
                                     ),
                                     DataColumn(
                                       label: const Text('Jabatan'),
@@ -563,6 +606,9 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                       final item = _filteredList[index];
                                       final isActive =
                                           item['is_active'] ?? true;
+                                      
+                                      // Status Absen Bebas Lokasi
+                                      final isFreeLocation = item['is_free_location'] ?? false;
 
                                       String rawEmpStatus =
                                           item['employee_status']
@@ -602,7 +648,18 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                             ),
                                           ),
                                           DataCell(Text(item['email'] ?? '-')),
-                                          DataCell(Text(item['phone'] ?? '-')),
+                                          
+                                          // PERUBAHAN: Menampilkan Checkbox
+                                          DataCell(
+                                            Checkbox(
+                                              value: isFreeLocation,
+                                              activeColor: Colors.blue[700],
+                                              onChanged: (bool? newValue) {
+                                                _toggleFreeLocation(item, newValue);
+                                              },
+                                            ),
+                                          ),
+
                                           DataCell(Text(
                                               item['jabatan_name'] ?? '-')),
                                           DataCell(

@@ -17,7 +17,7 @@ import 'notification_services.dart';
 import 'register_face_page.dart';
 
 // ============================================================================
-// --- 1. CLASS UTAMA (KARYAWAN PAGE) ---
+// --- 1. CLASS UTAMA (KARYAWAN PAGE DENGAN GOJEK STYLE BOTTOM NAV) ---
 // ============================================================================
 class KaryawanPage extends StatefulWidget {
   @override
@@ -111,6 +111,105 @@ class _KaryawanPageState extends State<KaryawanPage> {
     }
   }
 
+  // =========================================================================
+  // --- WIDGET CUSTOM BOTTOM NAV BAR ALA GOJEK ---
+  // =========================================================================
+  Widget _buildGojekBottomNav(
+      List<Map<String, dynamic>> items, int currentIndex) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Row(
+          children: List.generate(items.length, (index) {
+            final isSelected = index == currentIndex;
+            final item = items[index];
+
+            return Expanded(
+              child: InkWell(
+                onTap: () => setState(() => _currentMenuIndex = index),
+                child: Container(
+                  decoration: isSelected
+                      ? BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.blue.withOpacity(0.12),
+                              Colors.white.withOpacity(0.0),
+                            ],
+                          ),
+                        )
+                      : null,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // --- GARIS GRADASI ATAS (INDICATOR ALA GOJEK) ---
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        height: 3.5,
+                        margin: const EdgeInsets.symmetric(horizontal: 14),
+                        decoration: BoxDecoration(
+                          gradient: isSelected
+                              ? LinearGradient(
+                                  colors: [
+                                    Colors.blue.shade400,
+                                    Colors.blue.shade900,
+                                  ],
+                                )
+                              : const LinearGradient(
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.transparent,
+                                  ],
+                                ),
+                          borderRadius: const BorderRadius.vertical(
+                            bottom: Radius.circular(4),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // --- ICON TAB ---
+                      Icon(
+                        item['icon'],
+                        color: isSelected
+                            ? Colors.blue.shade900
+                            : Colors.grey.shade500,
+                        size: 24,
+                      ),
+                      const SizedBox(height: 4),
+                      // --- LABEL TEXT ---
+                      Text(
+                        item['label'],
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight:
+                              isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isSelected
+                              ? Colors.blue.shade900
+                              : Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
@@ -165,25 +264,21 @@ class _KaryawanPageState extends State<KaryawanPage> {
         userRole.contains('admin'));
 
     final List<Widget> activePages = [];
-    final List<BottomNavigationBarItem> activeNavItems = [];
+    final List<Map<String, dynamic>> activeNavItems = [];
     final List<String> activeTitles = [];
 
     activePages.add(AbsensiKaryawanTab(userData: userData!));
-    activeNavItems.add(
-      const BottomNavigationBarItem(
-        icon: Icon(Icons.dashboard_rounded),
-        label: "Beranda",
-      ),
-    );
+    activeNavItems.add({
+      'icon': Icons.dashboard_rounded,
+      'label': "Beranda",
+    });
     activeTitles.add("HRIS Tetra");
 
     activePages.add(CutiKaryawanTab(userData: userData!));
-    activeNavItems.add(
-      const BottomNavigationBarItem(
-        icon: Icon(Icons.calendar_month_rounded),
-        label: "Cuti/Izin",
-      ),
-    );
+    activeNavItems.add({
+      'icon': Icons.calendar_month_rounded,
+      'label': "Cuti/Izin",
+    });
     activeTitles.add("Pengajuan Cuti/Izin");
 
     if (isApprover) {
@@ -194,21 +289,17 @@ class _KaryawanPageState extends State<KaryawanPage> {
           managerRole: userRole,
         ),
       );
-      activeNavItems.add(
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.fact_check_rounded),
-          label: "Approval",
-        ),
-      );
+      activeNavItems.add({
+        'icon': Icons.fact_check_rounded,
+        'label': "Approval",
+      });
       activeTitles.add("Approval");
     } else {
       activePages.add(LemburKaryawanTab(userData: userData!));
-      activeNavItems.add(
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.more_time_rounded),
-          label: "Lembur",
-        ),
-      );
+      activeNavItems.add({
+        'icon': Icons.more_time_rounded,
+        'label': "Lembur",
+      });
       activeTitles.add("Pengajuan Lembur");
     }
 
@@ -218,12 +309,10 @@ class _KaryawanPageState extends State<KaryawanPage> {
         onProfileUpdated: () => _fetchUserData(),
       ),
     );
-    activeNavItems.add(
-      const BottomNavigationBarItem(
-        icon: Icon(Icons.person_rounded),
-        label: "Profile",
-      ),
-    );
+    activeNavItems.add({
+      'icon': Icons.person_rounded,
+      'label': "Profile",
+    });
     activeTitles.add("Profil Karyawan");
 
     int safeIndex = _currentMenuIndex;
@@ -249,15 +338,7 @@ class _KaryawanPageState extends State<KaryawanPage> {
               foregroundColor: Colors.white,
             ),
       body: activePages[safeIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: safeIndex,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.blue.shade900,
-        unselectedItemColor: Colors.grey,
-        showUnselectedLabels: true,
-        onTap: (index) => setState(() => _currentMenuIndex = index),
-        items: activeNavItems,
-      ),
+      bottomNavigationBar: _buildGojekBottomNav(activeNavItems, safeIndex),
     );
   }
 }
@@ -388,14 +469,21 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
+      // PERUBAHAN: Menambahkan is_free_location pada query select
       final empData = await Supabase.instance.client
           .from('employees')
-          .select('location_id, face_embedding, is_face_registered')
+          .select(
+              'location_id, face_embedding, is_face_registered, is_free_location')
           .eq('id', userId)
           .single();
 
+      final bool isFreeLocation = empData['is_free_location'] == true;
       final locId = empData['location_id'];
-      if (locId == null) throw 'Lokasi kerja belum diatur.';
+
+      // PERUBAHAN: Pengecekan lokasi hanya berlaku jika bukan akun absen bebas
+      if (!isFreeLocation && locId == null) {
+        throw 'Lokasi kerja belum diatur.';
+      }
 
       if (empData['is_face_registered'] != true ||
           empData['face_embedding'] == null) {
@@ -410,21 +498,24 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         throw 'Data wajah korup. Silakan update data wajah di menu Profil.';
       }
 
-      final locData = await Supabase.instance.client
-          .from('locations')
-          .select('*')
-          .eq('id', locId)
-          .single();
+      // PERUBAHAN: Bypass logika pengecekan jarak radius jika isFreeLocation = true
+      if (!isFreeLocation) {
+        final locData = await Supabase.instance.client
+            .from('locations')
+            .select('*')
+            .eq('id', locId)
+            .single();
 
-      double distance = Geolocator.distanceBetween(
-        currentPos.latitude,
-        currentPos.longitude,
-        double.parse(locData['latitude'].toString()),
-        double.parse(locData['longitude'].toString()),
-      );
+        double distance = Geolocator.distanceBetween(
+          currentPos.latitude,
+          currentPos.longitude,
+          double.parse(locData['latitude'].toString()),
+          double.parse(locData['longitude'].toString()),
+        );
 
-      if (distance > (locData['radius_meter'] ?? 50)) {
-        throw 'Anda di luar radius (${distance.toStringAsFixed(0)}m).';
+        if (distance > (locData['radius_meter'] ?? 50)) {
+          throw 'Anda di luar radius (${distance.toStringAsFixed(0)}m).';
+        }
       }
 
       final cameras = await availableCameras();
@@ -722,7 +813,8 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
             const Padding(
               padding: EdgeInsets.only(bottom: 10),
               child: Text(
-                "*Check-In/Check-Out hanya dapat dilakukan di lokasi kerja yang telah ditentukan & wajib daftar pengenalan wajah.",
+                // PERUBAHAN: Teks peringatan diperbarui agar lebih jelas
+                "*Check-In/Check-Out dilakukan di lokasi kerja (kecuali akun diatur bebas lokasi) & wajib verifikasi wajah.",
                 style: TextStyle(
                   fontSize: 11,
                   color: Colors.black,
@@ -922,7 +1014,6 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
   }
 
   Future<void> _pickLampiran() async {
-    // Memunculkan pilihan Kamera atau Galeri dari bawah layar
     await showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -943,9 +1034,9 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                 leading: const Icon(Icons.photo_camera, color: Colors.blue),
                 title: const Text('Ambil dari Kamera'),
                 onTap: () async {
-                  Navigator.of(context).pop(); // Tutup bottom sheet
+                  Navigator.of(context).pop();
                   final XFile? file = await ImagePicker().pickImage(
-                    source: ImageSource.camera, // Gunakan Kamera
+                    source: ImageSource.camera,
                     imageQuality: 70,
                   );
                   if (file != null) {
@@ -957,9 +1048,9 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                 leading: const Icon(Icons.photo_library, color: Colors.blue),
                 title: const Text('Ambil dari Galeri'),
                 onTap: () async {
-                  Navigator.of(context).pop(); // Tutup bottom sheet
+                  Navigator.of(context).pop();
                   final XFile? file = await ImagePicker().pickImage(
-                    source: ImageSource.gallery, // Gunakan Galeri
+                    source: ImageSource.gallery,
                     imageQuality: 70,
                   );
                   if (file != null) {
@@ -1351,7 +1442,7 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
 }
 
 // ============================================================================
-// --- KOMPONEN RIWAYAT CUTI DENGAN NAMA APPROVER ---
+// --- KOMPONEN RIWAYAT CUTI ---
 // ============================================================================
 class RiwayatCutiList extends StatefulWidget {
   final String userId;
@@ -1363,7 +1454,7 @@ class RiwayatCutiList extends StatefulWidget {
 
 class _RiwayatCutiListState extends State<RiwayatCutiList> {
   List<Map<String, dynamic>> _riwayatList = [];
-  Map<int, String> _approverNames = {}; // MENGGUNAKAN INT (ANGKA)
+  Map<int, String> _approverNames = {};
   bool _isLoading = true;
 
   @override
@@ -1394,7 +1485,6 @@ class _RiwayatCutiListState extends State<RiwayatCutiList> {
           .order('created_at', ascending: false)
           .limit(10);
 
-      // 1. Kumpulkan ID Angka dari kolom approved_by
       Set<int> approverIds = {};
       for (var row in data) {
         if (row['approved_by'] != null) {
@@ -1403,7 +1493,6 @@ class _RiwayatCutiListState extends State<RiwayatCutiList> {
         }
       }
 
-      // 2. Cari nama di tabel employees berdasarkan ID Angka
       Map<int, String> tempNames = {};
       if (approverIds.isNotEmpty) {
         final approvers = await Supabase.instance.client
@@ -1450,7 +1539,6 @@ class _RiwayatCutiListState extends State<RiwayatCutiList> {
         if (status == 'REJECTED' || status == 'DITOLAK')
           statusColor = Colors.red;
 
-        // Tarik nama atasan dari Map
         String approver = '';
         if (row['approved_by'] != null) {
           int? appId = int.tryParse(row['approved_by'].toString());
@@ -1478,8 +1566,6 @@ class _RiwayatCutiListState extends State<RiwayatCutiList> {
                 Text("Alasan: ${row['reason'] ?? '-'}",
                     style: const TextStyle(
                         fontSize: 11, fontStyle: FontStyle.italic)),
-
-                // Menampilkan Oleh / Approved By
                 if (status != 'PENDING' && approver.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text("Approved By: $approver",
@@ -1760,7 +1846,7 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
 }
 
 // ============================================================================
-// --- KOMPONEN RIWAYAT LEMBUR DENGAN NAMA APPROVER ---
+// --- KOMPONEN RIWAYAT LEMBUR ---
 // ============================================================================
 class RiwayatLemburList extends StatefulWidget {
   final String userId;
@@ -1772,7 +1858,7 @@ class RiwayatLemburList extends StatefulWidget {
 
 class _RiwayatLemburListState extends State<RiwayatLemburList> {
   List<Map<String, dynamic>> _riwayatList = [];
-  Map<int, String> _approverNames = {}; // MENGGUNAKAN INT (ANGKA)
+  Map<int, String> _approverNames = {};
   bool _isLoading = true;
 
   @override
@@ -1925,8 +2011,6 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
                 Text("Pekerjaan: ${row['reason'] ?? row['description'] ?? '-'}",
                     style: const TextStyle(
                         fontSize: 11, fontStyle: FontStyle.italic)),
-
-                // Menampilkan Oleh / Approved By
                 if (status != 'PENDING' && approver.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text("Approved by: $approver",
@@ -1957,7 +2041,7 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
 }
 
 // ============================================================================
-// --- TAB MANAGER APPROVAL (DENGAN ROLE FILTERING) ---
+// --- TAB MANAGER APPROVAL ---
 // ============================================================================
 class ManagerApprovalTab extends StatefulWidget {
   final int managerId;
@@ -2132,7 +2216,6 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
   Future<void> _updateStatusCuti(int id, String newStatus, String leaveType,
       String? userId, String startDate, String endDate) async {
     try {
-      // SIMPAN ID ANGKA ATASAN
       await Supabase.instance.client.from('leave_requests').update(
           {'status': newStatus, 'approved_by': widget.managerId}).eq('id', id);
 
@@ -2174,7 +2257,6 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
   Future<void> _updateStatusLembur(
       int id, String newStatus, dynamic employeeId, double durasi) async {
     try {
-      // SIMPAN ID ANGKA ATASAN
       await Supabase.instance.client.from('overtime_requests').update(
           {'status': newStatus, 'approved_by': widget.managerId}).eq('id', id);
 
@@ -2532,7 +2614,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
   String? _profileImageUrl;
   bool _isUploadingPhoto = false;
 
-  @override
   DateTime? _parseDateAman(String? dateStr) {
     if (dateStr == null || dateStr.trim().isEmpty || dateStr == 'null')
       return null;
@@ -2562,6 +2643,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
     }
   }
 
+  @override
   void initState() {
     super.initState();
     _loadDataToForm();
