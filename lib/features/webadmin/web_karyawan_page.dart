@@ -98,14 +98,13 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
     });
   }
 
-  // FITUR BARU: Mengubah status izin absen bebas lokasi
-  Future<void> _toggleFreeLocation(Map<String, dynamic> karyawan, bool? value) async {
+  // Mengubah status izin absen bebas lokasi
+  Future<void> _toggleFreeLocation(
+      Map<String, dynamic> karyawan, bool? value) async {
     if (value == null) return;
-    
-    // Simpan nilai asli jika terjadi error
+
     final originalValue = karyawan['is_free_location'];
-    
-    // Update UI seketika (Optimistic Update)
+
     setState(() {
       karyawan['is_free_location'] = value;
     });
@@ -113,13 +112,13 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
     try {
       await Supabase.instance.client
           .from('employees')
-          .update({'is_free_location': value})
-          .eq('id', karyawan['id']);
-          
+          .update({'is_free_location': value}).eq('id', karyawan['id']);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Status absen bebas ${karyawan['full_name']} diperbarui',
+            content: Text(
+                'Status absen bebas ${karyawan['full_name']} diperbarui',
                 style: GoogleFonts.plusJakartaSans(fontSize: 12)),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 1),
@@ -127,7 +126,6 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
         );
       }
     } catch (e) {
-      // Kembalikan ke nilai awal jika gagal
       setState(() {
         karyawan['is_free_location'] = originalValue;
       });
@@ -574,10 +572,10 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                           colIndex,
                                           ascending),
                                     ),
-                                    // PERUBAHAN: Kolom No. Telepon diganti menjadi Absen Bebas
                                     const DataColumn(
                                       label: Text('Absen Bebas'),
-                                      tooltip: 'Karyawan bebas absen dari lokasi mana saja',
+                                      tooltip:
+                                          'Karyawan bebas absen dari lokasi mana saja',
                                     ),
                                     DataColumn(
                                       label: const Text('Jabatan'),
@@ -606,9 +604,9 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                       final item = _filteredList[index];
                                       final isActive =
                                           item['is_active'] ?? true;
-                                      
-                                      // Status Absen Bebas Lokasi
-                                      final isFreeLocation = item['is_free_location'] ?? false;
+
+                                      final isFreeLocation =
+                                          item['is_free_location'] ?? false;
 
                                       String rawEmpStatus =
                                           item['employee_status']
@@ -648,18 +646,16 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                             ),
                                           ),
                                           DataCell(Text(item['email'] ?? '-')),
-                                          
-                                          // PERUBAHAN: Menampilkan Checkbox
                                           DataCell(
                                             Checkbox(
                                               value: isFreeLocation,
                                               activeColor: Colors.blue[700],
                                               onChanged: (bool? newValue) {
-                                                _toggleFreeLocation(item, newValue);
+                                                _toggleFreeLocation(
+                                                    item, newValue);
                                               },
                                             ),
                                           ),
-
                                           DataCell(Text(
                                               item['jabatan_name'] ?? '-')),
                                           DataCell(
@@ -964,6 +960,9 @@ class _DetailKaryawanDialogState extends State<DetailKaryawanDialog> {
                     _buildInfoRow('Email', widget.karyawan['email']),
                     _buildInfoRow('No. Telepon', widget.karyawan['phone']),
                     _buildInfoRow('Jabatan', widget.karyawan['jabatan_name']),
+                    _buildInfoRow('Role', widget.karyawan['role']),
+                    _buildInfoRow(
+                        'Position ID', widget.karyawan['position_id']),
                     _buildInfoRow('Status Karyawan Saat Ini', displayStatus),
                     _buildInfoRow(
                         'Status Akun',
@@ -1040,8 +1039,6 @@ class _DetailKaryawanDialogState extends State<DetailKaryawanDialog> {
                 ),
               ),
             ),
-
-// Menampilkan Riwayat Kontrak / Transisi Status (Termasuk jika sudah jadi Tetap tapi pernah kontrak/magang)
             const SizedBox(height: 16),
             _buildSectionTitle('Riwayat Kontrak / Perubahan Status'),
             _isLoadingContracts
@@ -1068,22 +1065,36 @@ class _DetailKaryawanDialogState extends State<DetailKaryawanDialog> {
                                   style: GoogleFonts.plusJakartaSans(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold)),
-                              trailing: c['contract_file'] != null &&
-                                      c['contract_file'].toString().isNotEmpty
-                                  ? IconButton(
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (c['contract_number'] != null &&
+                                      c['contract_number']
+                                          .toString()
+                                          .isNotEmpty)
+                                    Text('No: ${c['contract_number']}   ',
+                                        style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 11,
+                                            color: Colors.blue[700]))
+                                  else
+                                    Text('Tanpa No.   ',
+                                        style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 10, color: Colors.grey)),
+                                  if (c['contract_file'] != null &&
+                                      c['contract_file'].toString().isNotEmpty)
+                                    IconButton(
                                       icon: const Icon(Icons.download,
-                                          color: Colors.teal),
+                                          color: Colors.teal, size: 20),
+                                      tooltip: 'Download PDF',
                                       onPressed: () =>
                                           _downloadFile(c['contract_file']),
-                                    )
-                                  : Text('Tanpa Dokumen / Magang',
-                                      style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 10, color: Colors.grey)),
+                                    ),
+                                ],
+                              ),
                             ),
                           );
                         },
                       ),
-
             const SizedBox(height: 16),
             Align(
               alignment: Alignment.centerRight,
@@ -1172,6 +1183,9 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
   final _jabatanCtrl = TextEditingController();
   final _contractNumberCtrl = TextEditingController();
 
+  String _selectedRole = 'Staff';
+  final List<String> _roleOptions = ['Staff', 'Supervisor', 'Manager'];
+
   String _selectedGender = 'Laki-laki';
   final List<String> _genderOptions = ['Laki-laki', 'Perempuan'];
 
@@ -1205,6 +1219,19 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
 
   Uint8List? _selectedFileBytes;
   String? _selectedFileName;
+
+  // Helper mapping role to position_id
+  int _mapRoleToPositionId(String role) {
+    switch (role.toLowerCase()) {
+      case 'manager':
+        return 1;
+      case 'supervisor':
+        return 2;
+      case 'staff':
+      default:
+        return 3;
+    }
+  }
 
   Future<void> _selectDate(
       BuildContext context, TextEditingController ctrl) async {
@@ -1259,6 +1286,7 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
       if (newUserId != null) {
         String? contractUrl;
 
+        // Upload PDF jika ada
         if (_selectedEmpStatus == 'Kontrak' && _selectedFileBytes != null) {
           final timestamp = DateTime.now().millisecondsSinceEpoch;
           final safeFileName = _selectedFileName!.replaceAll(' ', '_');
@@ -1283,6 +1311,13 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
           childrenVal =
               _childrenDataCtrl.text.isNotEmpty ? _childrenDataCtrl.text : null;
         }
+
+        final int positionId = _mapRoleToPositionId(_selectedRole);
+        final String? contractNum = (_selectedEmpStatus == 'Kontrak' ||
+                    _selectedEmpStatus == 'Magang') &&
+                _contractNumberCtrl.text.isNotEmpty
+            ? _contractNumberCtrl.text
+            : null;
 
         final newEmployeeData = await Supabase.instance.client
             .from('employees')
@@ -1311,12 +1346,11 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
               'emergency_name': _emergencyNameCtrl.text,
               'emergency_phone': _emergencyPhoneCtrl.text,
               'jabatan_name': _jabatanCtrl.text,
+              'role': _selectedRole,
+              'position_id': positionId,
               'is_active': _selectedAccountStatus == 'Aktif',
               'employee_status': _selectedEmpStatus,
-              'contract_number': (_selectedEmpStatus == 'Kontrak' ||
-                      _selectedEmpStatus == 'Magang')
-                  ? _contractNumberCtrl.text
-                  : null,
+              'contract_number': contractNum,
               'contract_start': (_selectedEmpStatus == 'Kontrak' ||
                           _selectedEmpStatus == 'Magang') &&
                       _contractStartCtrl.text.isNotEmpty
@@ -1343,6 +1377,7 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
                 : null,
             'contract_end':
                 _contractEndCtrl.text.isNotEmpty ? _contractEndCtrl.text : null,
+            'contract_number': contractNum,
             'contract_file': contractUrl,
           });
         }
@@ -1444,6 +1479,8 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
                     _buildTextField(_addressNowCtrl, 'Alamat Domisili Sekarang',
                         width: 616),
                     _buildTextField(_jabatanCtrl, 'Jabatan', width: 300),
+                    _buildDropdownField('Role', _selectedRole, _roleOptions,
+                        (val) => setState(() => _selectedRole = val!)),
                     _buildDropdownField(
                         'Status Akun',
                         _selectedAccountStatus,
@@ -1491,7 +1528,8 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
                               onPressed: _pickFile,
                               icon: const Icon(Icons.upload_file, size: 16),
                               label: Text(
-                                _selectedFileName ?? 'Pilih File PDF',
+                                _selectedFileName ??
+                                    'Pilih File PDF (Opsional)',
                                 style:
                                     GoogleFonts.plusJakartaSans(fontSize: 12),
                                 overflow: TextOverflow.ellipsis,
@@ -1638,6 +1676,9 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
   late TextEditingController _jabatanCtrl;
   late TextEditingController _contractNumberCtrl;
 
+  late String _selectedRole;
+  final List<String> _roleOptions = ['Staff', 'Supervisor', 'Manager'];
+
   late String _selectedGender;
   final List<String> _genderOptions = ['Laki-laki', 'Perempuan'];
 
@@ -1669,7 +1710,6 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
 
   late TextEditingController _contractStartCtrl;
   late TextEditingController _contractEndCtrl;
-  String? _existingFileUrl;
 
   @override
   void initState() {
@@ -1690,6 +1730,13 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
     String dbEducation = widget.karyawan['education'] ?? 'S1';
     _selectedEducation =
         _educationOptions.contains(dbEducation) ? dbEducation : 'S1';
+
+    String dbRole = widget.karyawan['role']?.toString() ?? 'Staff';
+    String formattedRole = _roleOptions.firstWhere(
+      (r) => r.toLowerCase() == dbRole.toLowerCase(),
+      orElse: () => 'Staff',
+    );
+    _selectedRole = formattedRole;
 
     _birthPlaceCtrl =
         TextEditingController(text: widget.karyawan['birth_place'] ?? '');
@@ -1726,8 +1773,8 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
         TextEditingController(text: widget.karyawan['emergency_phone'] ?? '');
     _jabatanCtrl =
         TextEditingController(text: widget.karyawan['jabatan_name'] ?? '');
-    _contractNumberCtrl =
-        TextEditingController(text: widget.karyawan['contract_number'] ?? '');
+    _contractNumberCtrl = TextEditingController(
+        text: widget.karyawan['contract_number']?.toString() ?? '');
 
     _selectedAccountStatus =
         (widget.karyawan['is_active'] == false) ? 'Non-Aktif' : 'Aktif';
@@ -1746,9 +1793,21 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
         TextEditingController(text: widget.karyawan['contract_start'] ?? '');
     _contractEndCtrl =
         TextEditingController(text: widget.karyawan['contract_end'] ?? '');
-    _existingFileUrl = widget.karyawan['contract_file'];
 
     _fetchContractHistory();
+  }
+
+  // Helper mapping role to position_id
+  int _mapRoleToPositionId(String role) {
+    switch (role.toLowerCase()) {
+      case 'manager':
+        return 1;
+      case 'supervisor':
+        return 2;
+      case 'staff':
+      default:
+        return 3;
+    }
   }
 
   Future<void> _fetchContractHistory() async {
@@ -1768,9 +1827,19 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
     }
   }
 
+  Future<void> _downloadFile(String? fileUrl) async {
+    if (fileUrl != null && fileUrl.isNotEmpty) {
+      final uri = Uri.parse(fileUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    }
+  }
+
   Future<void> _showAddContractDialog() async {
     final startCtrl = TextEditingController();
     final endCtrl = TextEditingController();
+    final historyContractNumCtrl = TextEditingController();
     Uint8List? fileBytes;
     String? fileName;
 
@@ -1821,6 +1890,18 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                         labelStyle: GoogleFonts.plusJakartaSans(fontSize: 12),
                         border: const OutlineInputBorder()),
                   ),
+                  if (_selectedEmpStatus == 'Kontrak' ||
+                      _selectedEmpStatus == 'Magang') ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: historyContractNumCtrl,
+                      style: GoogleFonts.plusJakartaSans(fontSize: 12),
+                      decoration: InputDecoration(
+                          labelText: 'No. Kontrak',
+                          labelStyle: GoogleFonts.plusJakartaSans(fontSize: 12),
+                          border: const OutlineInputBorder()),
+                    ),
+                  ],
                   if (_selectedEmpStatus == 'Kontrak') ...[
                     const SizedBox(height: 12),
                     OutlinedButton.icon(
@@ -1838,7 +1919,8 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                         }
                       },
                       icon: const Icon(Icons.upload_file, size: 16),
-                      label: Text(fileName ?? 'Upload Surat Kontrak (PDF)',
+                      label: Text(
+                          fileName ?? 'Upload Surat Kontrak (PDF/Opsional)',
                           style: GoogleFonts.plusJakartaSans(fontSize: 12)),
                     ),
                   ]
@@ -1858,6 +1940,10 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                   if (startCtrl.text.isEmpty || endCtrl.text.isEmpty) return;
 
                   try {
+                    String? contractNum = historyContractNumCtrl.text.isNotEmpty
+                        ? historyContractNumCtrl.text
+                        : null;
+
                     String? fileUrl;
                     if (_selectedEmpStatus == 'Kontrak' &&
                         fileBytes != null &&
@@ -1879,17 +1965,26 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                       'employee_id': widget.karyawan['id'],
                       'contract_start': startCtrl.text,
                       'contract_end': endCtrl.text,
+                      'contract_number': contractNum,
                       'contract_file': fileUrl,
                     });
 
                     await Supabase.instance.client.from('employees').update({
                       'contract_start': startCtrl.text,
                       'contract_end': endCtrl.text,
+                      if (contractNum != null) 'contract_number': contractNum,
                       if (fileUrl != null) 'contract_file': fileUrl,
                     }).eq('id', widget.karyawan['id']);
 
                     Navigator.pop(context);
+
+                    if (contractNum != null) {
+                      setState(() {
+                        _contractNumberCtrl.text = contractNum;
+                      });
+                    }
                     _fetchContractHistory();
+
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                         content: Text('Kontrak berhasil diperpanjang!'),
                         backgroundColor: Colors.green));
@@ -1935,6 +2030,13 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
         );
       }
 
+      final int positionId = _mapRoleToPositionId(_selectedRole);
+      final String? contractNum =
+          (_selectedEmpStatus == 'Kontrak' || _selectedEmpStatus == 'Magang') &&
+                  _contractNumberCtrl.text.isNotEmpty
+              ? _contractNumberCtrl.text
+              : null;
+
       await Supabase.instance.client.from('employees').update({
         'nik': _nikCtrl.text,
         'full_name': _nameCtrl.text,
@@ -1959,12 +2061,11 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
         'emergency_name': _emergencyNameCtrl.text,
         'emergency_phone': _emergencyPhoneCtrl.text,
         'jabatan_name': _jabatanCtrl.text,
+        'role': _selectedRole,
+        'position_id': positionId,
         'is_active': newIsActive,
         'employee_status': _selectedEmpStatus,
-        'contract_number':
-            (_selectedEmpStatus == 'Kontrak' || _selectedEmpStatus == 'Magang')
-                ? _contractNumberCtrl.text
-                : null,
+        'contract_number': contractNum,
         'contract_start': (_selectedEmpStatus == 'Kontrak' ||
                     _selectedEmpStatus == 'Magang') &&
                 _contractStartCtrl.text.isNotEmpty
@@ -2103,6 +2204,8 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                             _addressNowCtrl, 'Alamat Domisili Sekarang',
                             width: 616),
                         _buildTextField(_jabatanCtrl, 'Jabatan', width: 300),
+                        _buildDropdownField('Role', _selectedRole, _roleOptions,
+                            (val) => setState(() => _selectedRole = val!)),
                         _buildDropdownField(
                             'Status Karyawan',
                             _selectedEmpStatus,
@@ -2190,25 +2293,40 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                                             style: GoogleFonts.plusJakartaSans(
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.bold)),
-                                        trailing: c['contract_file'] != null
-                                            ? IconButton(
+                                        trailing: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (c['contract_number'] != null &&
+                                                c['contract_number']
+                                                    .toString()
+                                                    .isNotEmpty)
+                                              Text(
+                                                  'No: ${c['contract_number']}   ',
+                                                  style: GoogleFonts
+                                                      .plusJakartaSans(
+                                                          fontSize: 11,
+                                                          color:
+                                                              Colors.blue[700]))
+                                            else
+                                              Text('Tanpa No.   ',
+                                                  style: GoogleFonts
+                                                      .plusJakartaSans(
+                                                          fontSize: 10,
+                                                          color: Colors.grey)),
+                                            if (c['contract_file'] != null &&
+                                                c['contract_file']
+                                                    .toString()
+                                                    .isNotEmpty)
+                                              IconButton(
                                                 icon: const Icon(Icons.download,
-                                                    color: Colors.teal),
-                                                onPressed: () async {
-                                                  final uri = Uri.parse(
-                                                      c['contract_file']);
-                                                  if (await canLaunchUrl(uri)) {
-                                                    await launchUrl(uri,
-                                                        mode: LaunchMode
-                                                            .externalApplication);
-                                                  }
-                                                },
-                                              )
-                                            : Text('Tanpa Dokumen',
-                                                style:
-                                                    GoogleFonts.plusJakartaSans(
-                                                        fontSize: 10,
-                                                        color: Colors.grey)),
+                                                    color: Colors.teal,
+                                                    size: 20),
+                                                tooltip: 'Download PDF',
+                                                onPressed: () => _downloadFile(
+                                                    c['contract_file']),
+                                              ),
+                                          ],
+                                        ),
                                       ),
                                     );
                                   },
