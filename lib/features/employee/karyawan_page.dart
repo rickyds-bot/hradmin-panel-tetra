@@ -388,7 +388,7 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         .select()
         .eq('employee_id', userId)
         .order('created_at', ascending: false)
-        .limit(20);
+        .limit(30);
 
     if (mounted) setState(() {});
   }
@@ -1483,7 +1483,7 @@ class _RiwayatCutiListState extends State<RiwayatCutiList> {
           .select('*')
           .eq('user_id', widget.userId)
           .order('created_at', ascending: false)
-          .limit(10);
+          .limit(15);
 
       Set<int> approverIds = {};
       for (var row in data) {
@@ -1926,7 +1926,7 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
           .select('*')
           .eq('user_id', widget.userId)
           .order('created_at', ascending: false)
-          .limit(10);
+          .limit(15);
 
       Set<int> approverIds = {};
       for (var row in data) {

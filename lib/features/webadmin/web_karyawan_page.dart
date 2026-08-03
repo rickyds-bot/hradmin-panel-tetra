@@ -98,6 +98,35 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
     });
   }
 
+  // Fungsi untuk mengubah format tanggal yyyy-MM-dd menjadi dd Bulan yyyy
+  String _formatDateIndo(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return '-';
+    try {
+      final dt = DateTime.parse(dateStr);
+      final day = dt.day.toString().padLeft(2, '0');
+      final year = dt.year.toString();
+      const months = [
+        '',
+        'Januari',
+        'Februari',
+        'Maret',
+        'April',
+        'Mei',
+        'Juni',
+        'Juli',
+        'Agustus',
+        'September',
+        'Oktober',
+        'November',
+        'Desember'
+      ];
+      final month = months[dt.month];
+      return '$day $month $year';
+    } catch (_) {
+      return dateStr;
+    }
+  }
+
   Future<void> _toggleFreeLocation(
       Map<String, dynamic> karyawan, bool? value) async {
     if (value == null) return;
@@ -339,7 +368,6 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
 
     Map<String, dynamic>? balanceData;
     try {
-      // FALLBACK: Jika user_id di employees kosong/null, cari dari leave_requests
       if (userUuid == null || userUuid.toString().isEmpty) {
         final leaveReqRes = await Supabase.instance.client
             .from('leave_requests')
@@ -352,7 +380,6 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
         }
       }
 
-      // Ambil data saldo berdasarkan user_id (uuid) yang valid
       if (userUuid != null && userUuid.toString().isNotEmpty) {
         balanceData = await Supabase.instance.client
             .from('leave_balance')
@@ -371,7 +398,7 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
     showDialog(
       context: context,
       builder: (context) => KaryawanLeaveBalanceDialog(
-        userUuid: userUuid, // Kirim userUuid (uuid)
+        userUuid: userUuid,
         empName: empName,
         initialBalance: balanceData,
         onSuccess: _fetchKaryawanData,
@@ -566,6 +593,13 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                           ascending),
                                     ),
                                     DataColumn(
+                                      label: const Text('Tanggal Masuk'),
+                                      onSort: (colIndex, ascending) => _sort(
+                                          (d) => d['join_date'] ?? '',
+                                          colIndex,
+                                          ascending),
+                                    ),
+                                    DataColumn(
                                       label: const Text('Status Karyawan'),
                                       onSort: (colIndex, ascending) => _sort(
                                           (d) => d['employee_status'] ?? '',
@@ -639,6 +673,8 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                           ),
                                           DataCell(Text(
                                               item['jabatan_name'] ?? '-')),
+                                          DataCell(Text(_formatDateIndo(
+                                              item['join_date']))),
                                           DataCell(
                                             Container(
                                               padding:
@@ -1641,6 +1677,7 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
   late TextEditingController _emergencyNameCtrl;
   late TextEditingController _emergencyPhoneCtrl;
   late TextEditingController _jabatanCtrl;
+  late TextEditingController _joinDateCtrl;
   late TextEditingController _contractNumberCtrl;
 
   late String _selectedRole;
@@ -1740,6 +1777,8 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
         TextEditingController(text: widget.karyawan['emergency_phone'] ?? '');
     _jabatanCtrl =
         TextEditingController(text: widget.karyawan['jabatan_name'] ?? '');
+    _joinDateCtrl =
+        TextEditingController(text: widget.karyawan['join_date'] ?? '');
     _contractNumberCtrl = TextEditingController(
         text: widget.karyawan['contract_number']?.toString() ?? '');
 
@@ -2027,6 +2066,7 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
         'emergency_name': _emergencyNameCtrl.text,
         'emergency_phone': _emergencyPhoneCtrl.text,
         'jabatan_name': _jabatanCtrl.text,
+        'join_date': _joinDateCtrl.text.isNotEmpty ? _joinDateCtrl.text : null,
         'role': _selectedRole,
         'position_id': positionId,
         'is_active': newIsActive,
@@ -2170,6 +2210,18 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                             _addressNowCtrl, 'Alamat Domisili Sekarang',
                             width: 616),
                         _buildTextField(_jabatanCtrl, 'Jabatan', width: 300),
+                        _buildTextField(_joinDateCtrl, 'Tanggal Masuk',
+                            width: 300, readOnly: true, onTap: () async {
+                          final p = await showDatePicker(
+                              context: context,
+                              initialDate: DateTime.now(),
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100));
+                          if (p != null) {
+                            setState(() => _joinDateCtrl.text =
+                                DateFormat('yyyy-MM-dd').format(p));
+                          }
+                        }),
                         _buildDropdownField('Role', _selectedRole, _roleOptions,
                             (val) => setState(() => _selectedRole = val!)),
                         _buildDropdownField(
