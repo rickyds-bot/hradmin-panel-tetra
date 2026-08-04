@@ -1,6 +1,6 @@
 # mobile_absensi
 
-A new Flutter project.
+A new Flutter project. Special for internal purpose PT. Tetra 
 
 ## Getting Started
 
