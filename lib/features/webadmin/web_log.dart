@@ -70,24 +70,29 @@ class _WebLogPageState extends State<WebLogPage> {
           .select()
           .order('created_at', ascending: false);
 
-      // Ambil data karyawan untuk mapping nama
+      // Ambil data karyawan untuk mapping nama (id bertipe int / int8)
       final employeesResponse = await Supabase.instance.client
           .from('employees')
           .select('id, full_name');
 
-      final Map<dynamic, String> employeeMap = {};
+      // Buat Map dengan key tipe integer untuk mencocokkan id int8 employees
+      final Map<int, String> employeeMap = {};
       for (var emp in employeesResponse) {
-        employeeMap[emp['id']] = emp['full_name'] ?? '-';
+        int? empId = int.tryParse(emp['id'].toString());
+        if (empId != null) {
+          employeeMap[empId] = emp['full_name'] ?? '-';
+        }
       }
 
       // Gabungkan data log dengan nama karyawan secara aman
       final List<dynamic> mergedData = logResponse.map((item) {
-        final empId = item['employee_id'];
+        int? empId = int.tryParse(item['employee_id']?.toString() ?? '');
         return {
           ...item,
           'employees': {
-            'full_name':
-                employeeMap[empId] ?? 'Sistem / Karyawan Tidak Ditemukan',
+            'full_name': (empId != null && employeeMap.containsKey(empId))
+                ? employeeMap[empId]
+                : 'Sistem / Karyawan Tidak Ditemukan',
           },
         };
       }).toList();

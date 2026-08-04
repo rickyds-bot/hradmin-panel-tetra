@@ -24,16 +24,41 @@ class KaryawanPage extends StatefulWidget {
   _KaryawanPageState createState() => _KaryawanPageState();
 }
 
-class _KaryawanPageState extends State<KaryawanPage> {
+class _KaryawanPageState extends State<KaryawanPage>
+    with WidgetsBindingObserver {
   Map<String, dynamic>? userData;
   bool isLoading = true;
   int _currentMenuIndex = 0;
 
+  bool _skipMorningNotif = false;
+  bool _skipEveningNotif = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     initializeDateFormatting('id_ID', null);
     _initProcess();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.resumed &&
+        userData != null &&
+        userData!['id'] != null) {
+      NotificationService().recheckExactAlarmPermissionAndReschedule(
+        skipMorning: _skipMorningNotif,
+        skipEvening: _skipEveningNotif,
+      );
+    }
   }
 
   Future<void> _initProcess() async {
@@ -56,6 +81,10 @@ class _KaryawanPageState extends State<KaryawanPage> {
             .any((e) => e['status'].toString().toLowerCase() == 'check-in');
         bool hasCheckOut = absensiToday
             .any((e) => e['status'].toString().toLowerCase() == 'check-out');
+
+        // Simpan supaya bisa dipakai ulang di didChangeAppLifecycleState.
+        _skipMorningNotif = hasCheckIn;
+        _skipEveningNotif = hasCheckOut;
 
         await notifService.setupAbsensiNotifications(
           skipMorning: hasCheckIn,
@@ -151,12 +180,15 @@ class _KaryawanPageState extends State<KaryawanPage> {
                       : null,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
+                    // 1. TAMBAHKAN INI: Memaksa Column merentang ke seluruh lebar tab
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // --- GARIS GRADASI ATAS (INDICATOR ALA GOJEK) ---
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 250),
                         height: 3.5,
-                        margin: const EdgeInsets.symmetric(horizontal: 14),
+                        // Margin ini sekarang akan menghitung presisi 14 pixel dari batas luar tab kiri & kanan
+                        margin: const EdgeInsets.symmetric(horizontal: 0),
                         decoration: BoxDecoration(
                           gradient: isSelected
                               ? LinearGradient(
@@ -189,6 +221,8 @@ class _KaryawanPageState extends State<KaryawanPage> {
                       // --- LABEL TEXT ---
                       Text(
                         item['label'],
+                        // 2. TAMBAHKAN INI: Memastikan teks tetap di posisi tengah
+                        textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight:
@@ -469,7 +503,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // PERUBAHAN: Menambahkan is_free_location pada query select
       final empData = await Supabase.instance.client
           .from('employees')
           .select(
@@ -480,7 +513,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
       final bool isFreeLocation = empData['is_free_location'] == true;
       final locId = empData['location_id'];
 
-      // PERUBAHAN: Pengecekan lokasi hanya berlaku jika bukan akun absen bebas
       if (!isFreeLocation && locId == null) {
         throw 'Lokasi kerja belum diatur.';
       }
@@ -498,7 +530,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         throw 'Data wajah korup. Silakan update data wajah di menu Profil.';
       }
 
-      // PERUBAHAN: Bypass logika pengecekan jarak radius jika isFreeLocation = true
       if (!isFreeLocation) {
         final locData = await Supabase.instance.client
             .from('locations')
@@ -813,7 +844,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
             const Padding(
               padding: EdgeInsets.only(bottom: 10),
               child: Text(
-                // PERUBAHAN: Teks peringatan diperbarui agar lebih jelas
                 "*Check-In/Check-Out dilakukan di lokasi kerja (kecuali akun diatur bebas lokasi) & wajib verifikasi wajah.",
                 style: TextStyle(
                   fontSize: 11,
@@ -3112,9 +3142,9 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                     ? rawJoinDate.split('T')[0]
                                     : rawJoinDate.split(' ')[0];
                                 DateTime dt = DateTime.parse(datePart);
-                                joinDateFormatted = DateFormat(
-                                  'dd-MM-yyyy',
-                                ).format(dt);
+                                joinDateFormatted =
+                                    DateFormat('dd MMM yyyy', 'id_ID')
+                                        .format(dt);
                               } catch (e) {
                                 joinDateFormatted = rawJoinDate;
                               }
@@ -3134,7 +3164,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                         Text(
                                           "Divisi",
                                           style: TextStyle(
-                                            fontSize: 11,
+                                            fontSize: 12,
                                             color: Colors.grey.shade500,
                                             fontWeight: FontWeight.w500,
                                           ),
@@ -3144,7 +3174,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                           divisi,
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
-                                            fontSize: 13,
+                                            fontSize: 12,
                                             color: Colors.grey.shade800,
                                             fontWeight: FontWeight.bold,
                                           ),
@@ -3163,7 +3193,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                         Text(
                                           "Jabatan",
                                           style: TextStyle(
-                                            fontSize: 11,
+                                            fontSize: 12,
                                             color: Colors.grey.shade500,
                                             fontWeight: FontWeight.w500,
                                           ),
@@ -3173,7 +3203,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                           jabatan,
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
-                                            fontSize: 13,
+                                            fontSize: 12,
                                             color: Colors.grey.shade800,
                                             fontWeight: FontWeight.bold,
                                           ),
@@ -3192,7 +3222,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                         Text(
                                           "Join Date",
                                           style: TextStyle(
-                                            fontSize: 11,
+                                            fontSize: 12,
                                             color: Colors.grey.shade500,
                                             fontWeight: FontWeight.w500,
                                           ),
@@ -3202,7 +3232,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                           joinDateFormatted,
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
-                                            fontSize: 13,
+                                            fontSize: 12,
                                             color: Colors.grey.shade800,
                                             fontWeight: FontWeight.bold,
                                           ),

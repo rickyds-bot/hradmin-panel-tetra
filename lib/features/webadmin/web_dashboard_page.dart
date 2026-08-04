@@ -1,7 +1,8 @@
+import 'package:web/web.dart' as web;
+import 'dart:js_interop';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../main_web.dart';
 import 'web_login_page.dart';
 import 'web_karyawan_page.dart';
 import 'web_absensi.dart';
@@ -122,7 +123,10 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDarkMode = themeNotifier.value == ThemeMode.dark;
+    // Tema Sidebar menggunakan warna Biru penuh
+    final sidebarBgColor = Colors.blue[800]!;
+    final sidebarTextColor = Colors.white;
+    final sidebarIconColor = Colors.white70;
 
     return Scaffold(
       body: Row(
@@ -131,7 +135,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             width: _isSidebarExpanded ? 260 : 76,
-            color: isDarkMode ? const Color(0xFF1E1E1E) : Colors.grey[50],
+            color: sidebarBgColor,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -142,7 +146,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                   alignment: Alignment.centerLeft,
                   decoration: BoxDecoration(
                     border: Border(
-                      bottom: BorderSide(color: Colors.grey.withOpacity(0.2)),
+                      bottom: BorderSide(color: Colors.white.withOpacity(0.15)),
                     ),
                   ),
                   child: Row(
@@ -156,6 +160,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
+                              color: sidebarTextColor,
                             ),
                           ),
                         ),
@@ -163,6 +168,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                         icon: Icon(
                           _isSidebarExpanded ? Icons.menu_open : Icons.menu,
                           size: 20,
+                          color: sidebarTextColor,
                         ),
                         onPressed: () {
                           setState(() {
@@ -181,11 +187,11 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     children: [
                       _buildNavItem(0, Icons.dashboard_outlined, 'Dashboard'),
-                      _buildNavItem(1, Icons.people_outline, 'Data Karyawan'),
+                      _buildNavItem(1, Icons.people_outline, 'Karyawan'),
                       _buildNavItem(
                         2,
                         Icons.access_time_outlined,
-                        'Data Absensi',
+                        'Absensi',
                       ),
                       _buildNavItem(
                         3,
@@ -203,23 +209,23 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                         Icons.campaign_outlined,
                         'Pemberitahuan',
                       ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
                           vertical: 8,
                           horizontal: 12,
                         ),
-                        child: Divider(),
+                        child: Divider(color: Colors.white.withOpacity(0.2)),
                       ),
 
                       // --- MENU DROPDOWN LAPORAN (Indeks 8 sampai 11) ---
                       _buildLaporanDropdownGroup(),
 
-                      const Padding(
-                        padding: EdgeInsets.symmetric(
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
                           vertical: 8,
                           horizontal: 12,
                         ),
-                        child: Divider(),
+                        child: Divider(color: Colors.white.withOpacity(0.2)),
                       ),
                       _buildNavItem(
                         7,
@@ -234,25 +240,12 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                 Container(
                   decoration: BoxDecoration(
                     border: Border(
-                      top: BorderSide(color: Colors.grey.withOpacity(0.2)),
+                      top: BorderSide(color: Colors.white.withOpacity(0.15)),
                     ),
                   ),
                   child: PopupMenuButton<String>(
-                    offset: const Offset(0, -150),
+                    offset: const Offset(0, -120),
                     itemBuilder: (context) => [
-                      PopupMenuItem(
-                        value: 'theme',
-                        child: Row(
-                          children: [
-                            Icon(
-                              isDarkMode ? Icons.light_mode : Icons.dark_mode,
-                              size: 14,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(isDarkMode ? 'Mode Light' : 'Mode Dark'),
-                          ],
-                        ),
-                      ),
                       const PopupMenuItem(
                         value: 'password',
                         child: Row(
@@ -282,12 +275,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                       ),
                     ],
                     onSelected: (value) async {
-                      if (value == 'theme') {
-                        setState(() {
-                          themeNotifier.value =
-                              isDarkMode ? ThemeMode.light : ThemeMode.dark;
-                        });
-                      } else if (value == 'password') {
+                      if (value == 'password') {
                         _showGantiPasswordDialog(context);
                       } else if (value == 'logout') {
                         await Supabase.instance.client.auth.signOut();
@@ -309,7 +297,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                         children: [
                           const CircleAvatar(
                             radius: 16,
-                            backgroundColor: Colors.blueAccent,
+                            backgroundColor: Colors.white24,
                             child: Icon(
                               Icons.admin_panel_settings,
                               size: 16,
@@ -328,6 +316,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
+                                      color: sidebarTextColor,
                                     ),
                                   ),
                                   Text(
@@ -335,16 +324,16 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                                     overflow: TextOverflow.ellipsis,
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 10,
-                                      color: Colors.grey,
+                                      color: Colors.white70,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            const Icon(
+                            Icon(
                               Icons.unfold_more,
                               size: 16,
-                              color: Colors.grey,
+                              color: sidebarIconColor,
                             ),
                           ],
                         ],
@@ -366,26 +355,14 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
           Expanded(
             child: Column(
               children: [
+                // Header atas dibersihkan dari teks judul ganda
                 Container(
-                  height: 64,
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  height: 16,
                   decoration: BoxDecoration(
                     color: Theme.of(context).cardColor,
                     border: Border(
                       bottom: BorderSide(color: Colors.grey.withOpacity(0.2)),
                     ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        _pageTitles[_selectedIndex],
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
                   ),
                 ),
                 Expanded(child: _pages[_selectedIndex]),
@@ -415,7 +392,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: isSelected
-                  ? Colors.blue.withOpacity(0.1)
+                  ? Colors.white.withOpacity(0.2)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(6),
             ),
@@ -424,7 +401,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                 Icon(
                   icon,
                   size: 18,
-                  color: isSelected ? Colors.blueAccent : Colors.grey,
+                  color: isSelected ? Colors.white : Colors.white70,
                 ),
                 if (_isSidebarExpanded) ...[
                   const SizedBox(width: 12),
@@ -436,7 +413,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                         fontSize: 12,
                         fontWeight:
                             isSelected ? FontWeight.w600 : FontWeight.w500,
-                        color: isSelected ? Colors.blueAccent : null,
+                        color: isSelected ? Colors.white : Colors.white70,
                       ),
                     ),
                   ),
@@ -471,7 +448,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: isLaporanSelected
-                    ? Colors.blue.withOpacity(0.05)
+                    ? Colors.white.withOpacity(0.15)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(6),
               ),
@@ -480,7 +457,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                   Icon(
                     Icons.assessment_outlined,
                     size: 18,
-                    color: isLaporanSelected ? Colors.blueAccent : Colors.grey,
+                    color: isLaporanSelected ? Colors.white : Colors.white70,
                   ),
                   if (_isSidebarExpanded) ...[
                     const SizedBox(width: 12),
@@ -493,7 +470,8 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                           fontWeight: isLaporanSelected
                               ? FontWeight.w600
                               : FontWeight.w500,
-                          color: isLaporanSelected ? Colors.blueAccent : null,
+                          color:
+                              isLaporanSelected ? Colors.white : Colors.white70,
                         ),
                       ),
                     ),
@@ -502,7 +480,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                           ? Icons.expand_less
                           : Icons.expand_more,
                       size: 16,
-                      color: Colors.grey,
+                      color: Colors.white70,
                     ),
                   ],
                 ],
@@ -544,7 +522,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: isSelected
-                  ? Colors.blue.withOpacity(0.1)
+                  ? Colors.white.withOpacity(0.2)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(6),
             ),
@@ -555,7 +533,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                   height: 6,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isSelected ? Colors.blueAccent : Colors.grey[400],
+                    color: isSelected ? Colors.white : Colors.white60,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -567,7 +545,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                       fontSize: 11,
                       fontWeight:
                           isSelected ? FontWeight.w600 : FontWeight.w500,
-                      color: isSelected ? Colors.blueAccent : Colors.grey[700],
+                      color: isSelected ? Colors.white : Colors.white70,
                     ),
                   ),
                 ),

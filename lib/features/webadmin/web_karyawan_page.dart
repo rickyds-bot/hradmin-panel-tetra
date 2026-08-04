@@ -169,64 +169,6 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
     }
   }
 
-  Future<void> _deleteKaryawan(Map<String, dynamic> karyawan) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Hapus Karyawan',
-          style: GoogleFonts.plusJakartaSans(
-              fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-        content: Text(
-          'Yakin ingin menghapus ${karyawan['full_name']}?',
-          style: GoogleFonts.plusJakartaSans(fontSize: 12),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child:
-                Text('Batal', style: GoogleFonts.plusJakartaSans(fontSize: 12)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child:
-                Text('Hapus', style: GoogleFonts.plusJakartaSans(fontSize: 12)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      try {
-        await Supabase.instance.client
-            .from('employees')
-            .delete()
-            .eq('id', karyawan['id']);
-        _fetchKaryawanData();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Karyawan berhasil dihapus')),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Gagal menghapus: $e',
-                  style: GoogleFonts.plusJakartaSans(fontSize: 12)),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }
-  }
-
   Future<void> _showChangePasswordDialog(Map<String, dynamic> karyawan) async {
     final passCtrl = TextEditingController();
     bool isSaving = false;
@@ -755,8 +697,6 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                               onSelected: (value) {
                                                 if (value == 'edit') {
                                                   _showEditDialog(item);
-                                                } else if (value == 'delete') {
-                                                  _deleteKaryawan(item);
                                                 } else if (value ==
                                                     'password') {
                                                   _showChangePasswordDialog(
@@ -790,22 +730,6 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                                           color: Colors.orange),
                                                       const SizedBox(width: 8),
                                                       Text('Ubah Password',
-                                                          style: GoogleFonts
-                                                              .plusJakartaSans(
-                                                                  fontSize:
-                                                                      12)),
-                                                    ],
-                                                  ),
-                                                ),
-                                                PopupMenuItem(
-                                                  value: 'delete',
-                                                  child: Row(
-                                                    children: [
-                                                      const Icon(Icons.delete,
-                                                          size: 16,
-                                                          color: Colors.red),
-                                                      const SizedBox(width: 8),
-                                                      Text('Hapus Data',
                                                           style: GoogleFonts
                                                               .plusJakartaSans(
                                                                   fontSize:
@@ -890,11 +814,43 @@ class _DetailKaryawanDialogState extends State<DetailKaryawanDialog> {
   @override
   Widget build(BuildContext context) {
     String childrenStr = '-';
-    if (widget.karyawan['children_data'] != null) {
-      if (widget.karyawan['children_data'] is String) {
-        childrenStr = widget.karyawan['children_data'];
-      } else {
-        childrenStr = jsonEncode(widget.karyawan['children_data']);
+    final rawChildren = widget.karyawan['children_data'];
+
+    if (rawChildren != null &&
+        rawChildren.toString() != 'null' &&
+        rawChildren.toString().isNotEmpty) {
+      try {
+        List<dynamic> childrenList = [];
+
+        // Cek apakah data berupa String JSON atau sudah ter-parse sebagai List
+        if (rawChildren is String) {
+          if (rawChildren.trim().startsWith('[')) {
+            childrenList = jsonDecode(rawChildren);
+          } else {
+            childrenStr = rawChildren;
+          }
+        } else if (rawChildren is List) {
+          childrenList = rawChildren;
+        }
+
+        // Jika berhasil menjadi List, format menjadi teks bersusun
+        if (childrenList.isNotEmpty) {
+          List<String> formattedAnak = [];
+          for (int i = 0; i < childrenList.length; i++) {
+            var anak = childrenList[i];
+            if (anak is Map) {
+              String nama = anak['name'] ?? '-';
+              String tglLahir = anak['birth_date'] ?? '-';
+              formattedAnak.add("${i + 1}. $nama ($tglLahir)");
+            }
+          }
+          if (formattedAnak.isNotEmpty) {
+            childrenStr = formattedAnak.join('\n');
+          }
+        }
+      } catch (e) {
+        // Fallback jika terjadi error saat parse
+        childrenStr = rawChildren.toString();
       }
     }
 

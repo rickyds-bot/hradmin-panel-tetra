@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http; // Ditambahkan untuk fetch gambar PDF
 
 // Package Export
 import 'package:excel/excel.dart';
@@ -576,6 +577,7 @@ class _DetailLaporanKaryawanDialogState
     extends State<_DetailLaporanKaryawanDialog> {
   bool _isLoadingContracts = true;
   List<dynamic> _contractHistory = [];
+  bool _isExporting = false; // Penanda untuk loading export
 
   @override
   void initState() {
@@ -693,241 +695,254 @@ class _DetailLaporanKaryawanDialogState
   }
 
   Future<void> _exportSinglePdf() async {
-    final pdf = pw.Document();
-    final k = widget.karyawan;
+    setState(() => _isExporting = true);
 
-    pw.MemoryImage? netImage;
-    if (k['photo_url'] != null && k['photo_url'].toString().isNotEmpty) {
-      try {
-        final uri = Uri.parse(k['photo_url']);
-        final networkImageBytes = await NetworkAssetBundle(uri).load("");
-        netImage = pw.MemoryImage(networkImageBytes.buffer.asUint8List());
-      } catch (_) {
-        netImage = null;
+    try {
+      final pdf = pw.Document();
+      final k = widget.karyawan;
+
+      pw.MemoryImage? netImage;
+      final photoUrl = k['photo_url'] ?? k['photo'];
+
+      // Ambil Image Menggunakan http.get (Agar URL Supabase Support)
+      if (photoUrl != null && photoUrl.toString().isNotEmpty) {
+        try {
+          final response = await http.get(Uri.parse(photoUrl.toString()));
+          if (response.statusCode == 200) {
+            netImage = pw.MemoryImage(response.bodyBytes);
+          }
+        } catch (e) {
+          debugPrint('Gagal memuat foto untuk PDF: $e');
+        }
       }
-    }
 
-    final childrenList =
-        _parseChildrenData(k['children_data'] ?? k['childern_data']);
+      final childrenList =
+          _parseChildrenData(k['children_data'] ?? k['childern_data']);
 
-    pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(36),
-        build: (context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text('PT TETRA',
-                          style: pw.TextStyle(
-                              fontSize: 16,
-                              fontWeight: pw.FontWeight.bold,
-                              color: PdfColors.blue900)),
-                      pw.Text('Biodata Karyawan',
-                          style: const pw.TextStyle(
-                              fontSize: 10, color: PdfColors.grey700)),
-                    ],
-                  ),
-                  pw.Text(
-                      'Tanggal Cetak: ${DateFormat('dd-MM-yyyy').format(DateTime.now())}',
-                      style: const pw.TextStyle(
-                          fontSize: 9, color: PdfColors.grey700)),
-                ],
-              ),
-              pw.Divider(thickness: 1.5, color: PdfColors.blue900, height: 20),
-              pw.Row(
-                crossAxisAlignment: pw.CrossAxisAlignment.center,
-                children: [
-                  pw.Container(
-                    width: 70,
-                    height: 85,
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border.all(color: PdfColors.grey400),
-                      borderRadius:
-                          const pw.BorderRadius.all(pw.Radius.circular(4)),
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(36),
+          build: (context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('PT TETRA',
+                            style: pw.TextStyle(
+                                fontSize: 16,
+                                fontWeight: pw.FontWeight.bold,
+                                color: PdfColors.blue900)),
+                        pw.Text('Biodata Karyawan',
+                            style: const pw.TextStyle(
+                                fontSize: 10, color: PdfColors.grey700)),
+                      ],
                     ),
-                    child: netImage != null
-                        ? pw.ClipRRect(
-                            horizontalRadius: 4,
-                            verticalRadius: 4,
-                            child: pw.Image(netImage, fit: pw.BoxFit.cover),
-                          )
-                        : pw.Center(
-                            child: pw.Text('FOTO',
-                                style: const pw.TextStyle(
-                                    fontSize: 8, color: PdfColors.grey))),
-                  ),
-                  pw.SizedBox(width: 15),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(k['full_name'] ?? '-',
-                          style: pw.TextStyle(
-                              fontSize: 14, fontWeight: pw.FontWeight.bold)),
-                      pw.SizedBox(height: 4),
-                      pw.Text('Jabatan: ${k['jabatan_name'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 11)),
-                      pw.Text(
-                          'Status Kerja: ${(k['employee_status'] ?? '-').toUpperCase()}',
-                          style: const pw.TextStyle(fontSize: 11)),
-                      pw.Text('Divisi/Role: ${k['role'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 11)),
-                    ],
-                  ),
-                ],
-              ),
-              pw.SizedBox(height: 15),
-              pw.Container(
-                width: double.infinity,
-                padding: const pw.EdgeInsets.all(5),
-                color: PdfColors.grey200,
-                child: pw.Text('I. INFORMASI PRIBADI',
-                    style: pw.TextStyle(
-                        fontSize: 10, fontWeight: pw.FontWeight.bold)),
-              ),
-              pw.SizedBox(height: 6),
-              pw.Row(
-                children: [
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'NIK: ${k['nik'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'No. KTP: ${k['ktp_number'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                ],
-              ),
-              pw.Row(
-                children: [
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'No. NPWP: ${k['npwp_number'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'Jenis Kelamin: ${k['gender'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                ],
-              ),
-              pw.Row(
-                children: [
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text:
-                              'Tempat, Tgl Lahir: ${k['birth_place'] ?? '-'}, ${_formatTanggal(k['birth_date'])}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'Agama: ${k['religion'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                ],
-              ),
-              pw.Row(
-                children: [
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'Pendidikan: ${k['education'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'No. HP: ${k['phone'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                ],
-              ),
-              pw.Paragraph(
-                  text: 'Tanggal Join: ${_formatTanggal(k['join_date'])}',
-                  style: const pw.TextStyle(fontSize: 10)),
-              pw.Paragraph(
-                  text: 'Alamat KTP: ${k['address_ktp'] ?? '-'}',
-                  style: const pw.TextStyle(fontSize: 10)),
-              pw.Paragraph(
-                  text: 'Alamat Domisili: ${k['address_now'] ?? '-'}',
-                  style: const pw.TextStyle(fontSize: 10)),
-              pw.SizedBox(height: 10),
-              pw.Container(
-                width: double.infinity,
-                padding: const pw.EdgeInsets.all(5),
-                color: PdfColors.grey200,
-                child: pw.Text('II. DATA KELUARGA & KONTAK DARURAT',
-                    style: pw.TextStyle(
-                        fontSize: 10, fontWeight: pw.FontWeight.bold)),
-              ),
-              pw.SizedBox(height: 6),
-              pw.Row(
-                children: [
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'Status Nikah: ${k['marital_status'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                  pw.Expanded(
-                      child: pw.Paragraph(
-                          text: 'Nama Pasangan: ${k['spouse_name'] ?? '-'}',
-                          style: const pw.TextStyle(fontSize: 10))),
-                ],
-              ),
-              pw.Paragraph(
-                  text:
-                      'Kontak Darurat: ${k['emergency_name'] ?? '-'} (${k['emergency_phone'] ?? '-'})',
-                  style: const pw.TextStyle(fontSize: 10)),
-              pw.SizedBox(height: 4),
-              pw.Text('Data Anak:',
-                  style: pw.TextStyle(
-                      fontSize: 10, fontWeight: pw.FontWeight.bold)),
-              if (childrenList.isEmpty)
+                    pw.Text(
+                        'Tanggal Cetak: ${DateFormat('dd-MM-yyyy').format(DateTime.now())}',
+                        style: const pw.TextStyle(
+                            fontSize: 9, color: PdfColors.grey700)),
+                  ],
+                ),
+                pw.Divider(
+                    thickness: 1.5, color: PdfColors.blue900, height: 20),
+                pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    pw.Container(
+                      width: 70,
+                      height: 85,
+                      decoration: pw.BoxDecoration(
+                        border: pw.Border.all(color: PdfColors.grey400),
+                        borderRadius:
+                            const pw.BorderRadius.all(pw.Radius.circular(4)),
+                      ),
+                      child: netImage != null
+                          ? pw.ClipRRect(
+                              horizontalRadius: 4,
+                              verticalRadius: 4,
+                              child: pw.Image(netImage, fit: pw.BoxFit.cover),
+                            )
+                          : pw.Center(
+                              child: pw.Text('FOTO',
+                                  style: const pw.TextStyle(
+                                      fontSize: 8, color: PdfColors.grey))),
+                    ),
+                    pw.SizedBox(width: 15),
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(k['full_name'] ?? '-',
+                            style: pw.TextStyle(
+                                fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                        pw.SizedBox(height: 4),
+                        pw.Text('Jabatan: ${k['jabatan_name'] ?? '-'}',
+                            style: const pw.TextStyle(fontSize: 11)),
+                        pw.Text(
+                            'Status Kerja: ${(k['employee_status'] ?? '-').toUpperCase()}',
+                            style: const pw.TextStyle(fontSize: 11)),
+                        pw.Text('Divisi/Role: ${k['role'] ?? '-'}',
+                            style: const pw.TextStyle(fontSize: 11)),
+                      ],
+                    ),
+                  ],
+                ),
+                pw.SizedBox(height: 15),
+                pw.Container(
+                  width: double.infinity,
+                  padding: const pw.EdgeInsets.all(5),
+                  color: PdfColors.grey200,
+                  child: pw.Text('I. INFORMASI PRIBADI',
+                      style: pw.TextStyle(
+                          fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                ),
+                pw.SizedBox(height: 6),
+                pw.Row(
+                  children: [
+                    pw.Expanded(
+                        child: pw.Paragraph(
+                            text: 'NIK: ${k['nik'] ?? '-'}',
+                            style: const pw.TextStyle(fontSize: 10))),
+                    pw.Expanded(
+                        child: pw.Paragraph(
+                            text: 'No. KTP: ${k['ktp_number'] ?? '-'}',
+                            style: const pw.TextStyle(fontSize: 10))),
+                  ],
+                ),
+                pw.Row(
+                  children: [
+                    pw.Expanded(
+                        child: pw.Paragraph(
+                            text: 'No. NPWP: ${k['npwp_number'] ?? '-'}',
+                            style: const pw.TextStyle(fontSize: 10))),
+                    pw.Expanded(
+                        child: pw.Paragraph(
+                            text: 'Jenis Kelamin: ${k['gender'] ?? '-'}',
+                            style: const pw.TextStyle(fontSize: 10))),
+                  ],
+                ),
+                pw.Row(
+                  children: [
+                    pw.Expanded(
+                        child: pw.Paragraph(
+                            text:
+                                'Tempat, Tgl Lahir: ${k['birth_place'] ?? '-'}, ${_formatTanggal(k['birth_date'])}',
+                            style: const pw.TextStyle(fontSize: 10))),
+                    pw.Expanded(
+                        child: pw.Paragraph(
+                            text: 'Agama: ${k['religion'] ?? '-'}',
+                            style: const pw.TextStyle(fontSize: 10))),
+                  ],
+                ),
+                pw.Row(
+                  children: [
+                    pw.Expanded(
+                        child: pw.Paragraph(
+                            text: 'Pendidikan: ${k['education'] ?? '-'}',
+                            style: const pw.TextStyle(fontSize: 10))),
+                    pw.Expanded(
+                        child: pw.Paragraph(
+                            text: 'No. HP: ${k['phone'] ?? '-'}',
+                            style: const pw.TextStyle(fontSize: 10))),
+                  ],
+                ),
                 pw.Paragraph(
-                    text: '- Tidak ada data anak -',
-                    style: const pw.TextStyle(fontSize: 10))
-              else
-                ...childrenList.asMap().entries.map((entry) {
-                  int idx = entry.key;
-                  var child = entry.value;
-                  return pw.Padding(
-                    padding: const pw.EdgeInsets.only(left: 10, top: 2),
-                    child: pw.Text(
-                        '${idx + 1}. ${child['name']} (Tgl Lahir: ${child['birth_date']})',
-                        style: const pw.TextStyle(fontSize: 10)),
-                  );
-                }),
-            ],
-          );
-        },
-      ),
-    );
+                    text: 'Tanggal Join: ${_formatTanggal(k['join_date'])}',
+                    style: const pw.TextStyle(fontSize: 10)),
+                pw.Paragraph(
+                    text: 'Alamat KTP: ${k['address_ktp'] ?? '-'}',
+                    style: const pw.TextStyle(fontSize: 10)),
+                pw.Paragraph(
+                    text: 'Alamat Domisili: ${k['address_now'] ?? '-'}',
+                    style: const pw.TextStyle(fontSize: 10)),
+                pw.SizedBox(height: 10),
+                pw.Container(
+                  width: double.infinity,
+                  padding: const pw.EdgeInsets.all(5),
+                  color: PdfColors.grey200,
+                  child: pw.Text('II. DATA KELUARGA & KONTAK DARURAT',
+                      style: pw.TextStyle(
+                          fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                ),
+                pw.SizedBox(height: 6),
+                pw.Row(
+                  children: [
+                    pw.Expanded(
+                        child: pw.Paragraph(
+                            text: 'Status Nikah: ${k['marital_status'] ?? '-'}',
+                            style: const pw.TextStyle(fontSize: 10))),
+                    pw.Expanded(
+                        child: pw.Paragraph(
+                            text: 'Nama Pasangan: ${k['spouse_name'] ?? '-'}',
+                            style: const pw.TextStyle(fontSize: 10))),
+                  ],
+                ),
+                pw.Paragraph(
+                    text:
+                        'Kontak Darurat: ${k['emergency_name'] ?? '-'} (${k['emergency_phone'] ?? '-'})',
+                    style: const pw.TextStyle(fontSize: 10)),
+                pw.SizedBox(height: 4),
+                pw.Text('Data Anak:',
+                    style: pw.TextStyle(
+                        fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                if (childrenList.isEmpty)
+                  pw.Paragraph(
+                      text: '- Tidak ada data anak -',
+                      style: const pw.TextStyle(fontSize: 10))
+                else
+                  ...childrenList.asMap().entries.map((entry) {
+                    int idx = entry.key;
+                    var child = entry.value;
+                    return pw.Padding(
+                      padding: const pw.EdgeInsets.only(left: 10, top: 2),
+                      child: pw.Text(
+                          '${idx + 1}. ${child['name']} (Tgl Lahir: ${child['birth_date']})',
+                          style: const pw.TextStyle(fontSize: 10)),
+                    );
+                  }),
+              ],
+            );
+          },
+        ),
+      );
 
-    final bytes = await pdf.save();
-    final uint8List = Uint8List.fromList(bytes);
-    final blob = web.Blob(
-      [uint8List.toJS].toJS,
-      web.BlobPropertyBag(type: 'application/pdf'),
-    );
-    final url = web.URL.createObjectURL(blob);
-    final anchor = web.HTMLAnchorElement()
-      ..href = url
-      ..download = "Biodata_${k['full_name'] ?? 'Karyawan'}.pdf";
+      final bytes = await pdf.save();
+      final uint8List = Uint8List.fromList(bytes);
+      final blob = web.Blob(
+        [uint8List.toJS].toJS,
+        web.BlobPropertyBag(type: 'application/pdf'),
+      );
+      final url = web.URL.createObjectURL(blob);
+      final anchor = web.HTMLAnchorElement()
+        ..href = url
+        ..download = "Biodata_${k['full_name'] ?? 'Karyawan'}.pdf";
 
-    web.document.body?.append(anchor);
-    anchor.click();
-    anchor.remove();
-    web.URL.revokeObjectURL(url);
+      web.document.body?.append(anchor);
+      anchor.click();
+      anchor.remove();
+      web.URL.revokeObjectURL(url);
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    String childrenStr = '-';
-    if (widget.karyawan['children_data'] != null) {
-      if (widget.karyawan['children_data'] is String) {
-        childrenStr = widget.karyawan['children_data'];
-      } else {
-        childrenStr = jsonEncode(widget.karyawan['children_data']);
-      }
-    }
+    // Parse Data Anak agar tampil rapi di UI view
+    final childrenListUI = _parseChildrenData(widget.karyawan['children_data']);
+    String childrenStr = childrenListUI.isEmpty
+        ? '-'
+        : childrenListUI
+            .asMap()
+            .entries
+            .map((e) =>
+                "${e.key + 1}. ${e.value['name']} (${e.value['birth_date']})")
+            .join('\n');
 
     final photoUrl = widget.karyawan['photo_url'] ?? widget.karyawan['photo'];
 
@@ -1145,10 +1160,16 @@ class _DetailLaporanKaryawanDialogState
                     padding: const EdgeInsets.symmetric(
                         vertical: 12, horizontal: 16),
                   ),
-                  onPressed: _exportSinglePdf,
-                  icon: const Icon(Icons.picture_as_pdf, size: 16),
+                  onPressed: _isExporting ? null : _exportSinglePdf,
+                  icon: _isExporting
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2))
+                      : const Icon(Icons.picture_as_pdf, size: 16),
                   label: Text(
-                    'Download PDF Biodata Ini',
+                    _isExporting ? 'Memproses...' : 'Download PDF Biodata Ini',
                     style: GoogleFonts.plusJakartaSans(
                         fontSize: 12, fontWeight: FontWeight.bold),
                   ),

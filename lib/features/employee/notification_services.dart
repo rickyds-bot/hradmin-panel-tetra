@@ -15,6 +15,10 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  // Menyimpan hasil pengecekan izin exact alarm terakhir,
+  // dipakai untuk memilih schedule mode yang aman (exact vs inexact).
+  bool _canScheduleExact = false;
+
   Future<void> initialize() async {
     try {
       tzData.initializeTimeZones();
@@ -47,7 +51,25 @@ class NotificationService {
               AndroidFlutterLocalNotificationsPlugin>();
 
       await androidPlugin?.requestNotificationsPermission();
-      await androidPlugin?.requestExactAlarmsPermission();
+
+      // --- PERBAIKAN UTAMA ---
+      // requestExactAlarmsPermission() hanya membuka halaman Settings dan
+      // langsung return, TIDAK menunggu user menekan toggle "Izinkan".
+      // Karena itu kita cek status SEBENARNYA lewat canScheduleExactNotifications()
+      // dan simpan hasilnya, supaya proses schedule tahu harus pakai mode
+      // exact atau fallback ke inexact.
+      _canScheduleExact =
+          await androidPlugin?.canScheduleExactNotifications() ?? false;
+
+      if (!_canScheduleExact) {
+        await androidPlugin?.requestExactAlarmsPermission();
+        // Cek ulang setelah request (biasanya masih false di titik ini
+        // karena user belum sempat menjawab dialog Settings - itu wajar).
+        _canScheduleExact =
+            await androidPlugin?.canScheduleExactNotifications() ?? false;
+        debugPrint(
+            "Izin exact alarm setelah request: $_canScheduleExact (jika masih false, jadwal akan pakai mode inexact sampai izin diberikan & app dibuka ulang)");
+      }
 
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         'absensi_channel',
@@ -157,6 +179,15 @@ class NotificationService {
         skipToday: skipToday,
       );
 
+      // --- PERBAIKAN ---
+      // Pilih schedule mode berdasarkan status izin yang SUDAH dikonfirmasi
+      // (bukan asumsi selalu granted). Kalau exact alarm belum diizinkan,
+      // fallback ke inexact supaya notifikasi tetap terpasang (meski waktunya
+      // bisa meleset beberapa menit) daripada gagal total kena exception.
+      final scheduleMode = _canScheduleExact
+          ? AndroidScheduleMode.exactAllowWhileIdle
+          : AndroidScheduleMode.inexactAllowWhileIdle;
+
       await flutterLocalNotificationsPlugin.zonedSchedule(
         id,
         title,
@@ -174,19 +205,20 @@ class NotificationService {
             playSound: true,
           ),
         ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: scheduleMode,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
       );
 
-      debugPrint("Alarm $id sukses dijadwalkan pada: $scheduledDate");
+      debugPrint(
+          "Alarm $id sukses dijadwalkan pada: $scheduledDate (mode: $scheduleMode)");
     } catch (e) {
       debugPrint("Gagal menjadwalkan notifikasi ID $id: $e");
     }
   }
 
-  // LOGIKA BARU: Hanya jam 08:30 (Check-in) dan jam 17:30 (Check-out)
+  // LOGIKA: Hanya jam 08:30 (Check-in) dan jam 17:30 (Check-out)
   Future<void> setupAbsensiNotifications(
       {bool skipMorning = false, bool skipEvening = false}) async {
     for (int i = 1; i <= 5; i++) {
@@ -214,6 +246,9 @@ class NotificationService {
         skipToday: skipEvening && isToday,
       );
     }
+
+    // Bantu verifikasi cepat lewat log setiap kali setup dijalankan.
+    await debugPendingNotifications();
   }
 
   Future<void> onCheckIn() async {
@@ -242,6 +277,45 @@ class NotificationService {
         "Waktunya Check-out!",
         "Kerjaan selesai? Yuk absen pulang!",
         skipToday: true,
+      );
+    }
+  }
+
+  /// Panggil ini kapan saja untuk mengecek notifikasi apa saja yang
+  /// benar-benar berhasil terjadwal. Kalau hasilnya kosong padahal
+  /// setupAbsensiNotifications() sudah dipanggil, berarti scheduling
+  /// gagal (biasanya karena izin exact alarm) - cek log di atasnya.
+  Future<void> debugPendingNotifications() async {
+    final pending =
+        await flutterLocalNotificationsPlugin.pendingNotificationRequests();
+    debugPrint("=== Total notifikasi pending: ${pending.length} ===");
+    for (var n in pending) {
+      debugPrint("id=${n.id} title=${n.title}");
+    }
+  }
+
+  /// Panggil ini saat app kembali ke foreground (misal dari
+  /// AppLifecycleState.resumed di widget utama). Berguna untuk
+  /// menjadwalkan ulang begitu user baru saja memberi izin exact alarm
+  /// lewat halaman Settings, tanpa harus menutup & membuka app dari awal.
+  Future<void> recheckExactAlarmPermissionAndReschedule({
+    bool skipMorning = false,
+    bool skipEvening = false,
+  }) async {
+    final androidPlugin =
+        flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+
+    final nowAllowed =
+        await androidPlugin?.canScheduleExactNotifications() ?? false;
+
+    if (nowAllowed != _canScheduleExact) {
+      _canScheduleExact = nowAllowed;
+      debugPrint(
+          "Izin exact alarm berubah menjadi: $_canScheduleExact, menjadwalkan ulang...");
+      await setupAbsensiNotifications(
+        skipMorning: skipMorning,
+        skipEvening: skipEvening,
       );
     }
   }
