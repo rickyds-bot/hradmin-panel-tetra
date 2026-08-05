@@ -53,7 +53,6 @@ android {
 
     buildTypes {
         release {
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -68,5 +67,5 @@ flutter {
 
 dependencies {
     implementation(platform("com.google.firebase:firebase-bom:34.16.0"))
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

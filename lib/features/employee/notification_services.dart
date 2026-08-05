@@ -40,7 +40,7 @@ class NotificationService {
           InitializationSettings(android: initializationSettingsAndroid);
 
       await flutterLocalNotificationsPlugin.initialize(
-        initializationSettings,
+        settings: initializationSettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
           debugPrint("Notifikasi diklik: ${response.payload}");
         },
@@ -115,10 +115,10 @@ class NotificationService {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       if (message.notification != null) {
         flutterLocalNotificationsPlugin.show(
-          message.hashCode,
-          message.notification!.title,
-          message.notification!.body,
-          const NotificationDetails(
+          id: message.hashCode,
+          title: message.notification!.title,
+          body: message.notification!.body,
+          notificationDetails: const NotificationDetails(
             android: AndroidNotificationDetails(
               'fcm_channel',
               'Pemberitahuan',
@@ -189,11 +189,11 @@ class NotificationService {
           : AndroidScheduleMode.inexactAllowWhileIdle;
 
       await flutterLocalNotificationsPlugin.zonedSchedule(
-        id,
-        title,
-        body,
-        scheduledDate,
-        const NotificationDetails(
+        id: id,
+        title: title,
+        body: body,
+        scheduledDate: scheduledDate,
+        notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
             'absensi_channel',
             'Absensi Reminder',
@@ -206,8 +206,8 @@ class NotificationService {
           ),
         ),
         androidScheduleMode: scheduleMode,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
+        // uiLocalNotificationDateInterpretation dihapus sejak plugin v19.0.0
+        // (sudah tidak relevan lagi, dulu hanya untuk iOS < 10).
         matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
       );
 

@@ -20,8 +20,8 @@ dependencies:
   geocoding: ^3.0.0
   permission_handler: ^11.0.0 #
   google_fonts: ^6.3.2
-  flutter_local_notifications: ^17.0.0 # Cek versi terbaru
-  timezone: ^0.9.4
+  flutter_local_notifications: ^21.0.0 # Cek versi terbaru
+  timezone: 0.11.1
   shared_preferences: ^2.5.5
   camera: ^0.11.0
   flutter_image_compress: ^2.3.0

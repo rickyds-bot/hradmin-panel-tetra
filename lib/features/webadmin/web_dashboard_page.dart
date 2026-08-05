@@ -353,21 +353,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
 
           // --- KONTEN UTAMA ---
           Expanded(
-            child: Column(
-              children: [
-                // Header atas dibersihkan dari teks judul ganda
-                Container(
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    border: Border(
-                      bottom: BorderSide(color: Colors.grey.withOpacity(0.2)),
-                    ),
-                  ),
-                ),
-                Expanded(child: _pages[_selectedIndex]),
-              ],
-            ),
+            child: _pages[_selectedIndex],
           ),
         ],
       ),
