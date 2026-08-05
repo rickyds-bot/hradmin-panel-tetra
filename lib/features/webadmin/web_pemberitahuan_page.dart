@@ -47,6 +47,44 @@ class _WebPemberitahuanPageState extends State<WebPemberitahuanPage> {
     }
   }
 
+  // --- Fungsi Tambahan: Toggle Status Aktif ---
+  Future<void> _toggleActiveStatus(Map<String, dynamic> item, bool newValue) async {
+    // 1. Update UI secara lokal terlebih dahulu agar terasa responsif
+    setState(() {
+      final index = _announcementsList.indexWhere((element) => element['id'] == item['id']);
+      if (index != -1) {
+        _announcementsList[index]['is_active'] = newValue;
+      }
+    });
+
+    try {
+      // 2. Update data ke Supabase
+      await Supabase.instance.client
+          .from('announcements')
+          .update({'is_active': newValue})
+          .eq('id', item['id']);
+    } catch (e) {
+      // 3. Jika gagal, kembalikan status seperti semula
+      setState(() {
+        final index = _announcementsList.indexWhere((element) => element['id'] == item['id']);
+        if (index != -1) {
+          _announcementsList[index]['is_active'] = !newValue;
+        }
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Gagal mengubah status: $e',
+              style: GoogleFonts.plusJakartaSans(fontSize: 13),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _deleteAnnouncement(Map<String, dynamic> item) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -296,15 +334,14 @@ class _WebPemberitahuanPageState extends State<WebPemberitahuanPage> {
                                       ),
                                     ),
                                   ),
+                                  // Mengubah Icon Menjadi Switch
                                   DataCell(
-                                    Icon(
-                                      isActive
-                                          ? Icons.check_circle
-                                          : Icons.cancel,
-                                      color: isActive
-                                          ? Colors.green
-                                          : Colors.grey,
-                                      size: 20,
+                                    Switch(
+                                      value: isActive,
+                                      activeColor: Colors.blue,
+                                      onChanged: (bool value) {
+                                        _toggleActiveStatus(item, value);
+                                      },
                                     ),
                                   ),
                                   DataCell(
@@ -384,13 +421,14 @@ class _AddAnnouncementDialogState extends State<AddAnnouncementDialog> {
         );
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Gagal menyimpan: $e'),
             backgroundColor: Colors.red,
           ),
         );
+      }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
