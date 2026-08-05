@@ -15,6 +15,7 @@ import 'kamera_absen_page.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'notification_services.dart';
 import 'register_face_page.dart';
+import 'package:mobile_absensi/features/core/utils/app_logger.dart';
 
 // ============================================================================
 // --- 1. CLASS UTAMA (KARYAWAN PAGE DENGAN GOJEK STYLE BOTTOM NAV) ---

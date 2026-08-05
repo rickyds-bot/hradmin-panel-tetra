@@ -2,6 +2,7 @@ import 'dart:async'; // Tambahkan ini untuk menggunakan StreamSubscription
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'web_dashboard_page.dart';
+import 'package:mobile_absensi/features/core/utils/app_logger.dart';
 
 class WebLoginPage extends StatefulWidget {
   const WebLoginPage({super.key});

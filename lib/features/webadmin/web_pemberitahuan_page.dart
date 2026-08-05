@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mobile_absensi/features/core/utils/app_logger.dart';
 
 class WebPemberitahuanPage extends StatefulWidget {
   const WebPemberitahuanPage({super.key});
@@ -48,10 +49,12 @@ class _WebPemberitahuanPageState extends State<WebPemberitahuanPage> {
   }
 
   // --- Fungsi Tambahan: Toggle Status Aktif ---
-  Future<void> _toggleActiveStatus(Map<String, dynamic> item, bool newValue) async {
+  Future<void> _toggleActiveStatus(
+      Map<String, dynamic> item, bool newValue) async {
     // 1. Update UI secara lokal terlebih dahulu agar terasa responsif
     setState(() {
-      final index = _announcementsList.indexWhere((element) => element['id'] == item['id']);
+      final index = _announcementsList
+          .indexWhere((element) => element['id'] == item['id']);
       if (index != -1) {
         _announcementsList[index]['is_active'] = newValue;
       }
@@ -61,12 +64,12 @@ class _WebPemberitahuanPageState extends State<WebPemberitahuanPage> {
       // 2. Update data ke Supabase
       await Supabase.instance.client
           .from('announcements')
-          .update({'is_active': newValue})
-          .eq('id', item['id']);
+          .update({'is_active': newValue}).eq('id', item['id']);
     } catch (e) {
       // 3. Jika gagal, kembalikan status seperti semula
       setState(() {
-        final index = _announcementsList.indexWhere((element) => element['id'] == item['id']);
+        final index = _announcementsList
+            .indexWhere((element) => element['id'] == item['id']);
         if (index != -1) {
           _announcementsList[index]['is_active'] = !newValue;
         }
@@ -225,7 +228,6 @@ class _WebPemberitahuanPageState extends State<WebPemberitahuanPage> {
             ],
           ),
           const SizedBox(height: 24),
-
           Expanded(
             child: Card(
               elevation: 0,
@@ -237,135 +239,138 @@ class _WebPemberitahuanPageState extends State<WebPemberitahuanPage> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _announcementsList.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.notifications_off_outlined,
-                            size: 48,
-                            color: Colors.grey[400],
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.notifications_off_outlined,
+                                size: 48,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Belum ada data pengumuman.',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 13,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Belum ada data pengumuman.',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 13,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: SingleChildScrollView(
-                        child: DataTable(
-                          showCheckboxColumn: false,
-                          headingRowColor: WidgetStateProperty.all(
-                            Colors.grey[50],
-                          ),
-                          dataRowMaxHeight: 65,
-                          headingTextStyle: GoogleFonts.plusJakartaSans(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                          dataTextStyle: GoogleFonts.plusJakartaSans(
-                            fontSize: 13,
-                            color: Colors.black87,
-                          ),
-                          columns: const [
-                            DataColumn(label: Text('No')),
-                            DataColumn(label: Text('Judul')),
-                            DataColumn(label: Text('Isi Pemberitahuan')),
-                            DataColumn(label: Text('Prioritas')),
-                            DataColumn(label: Text('Status Aktif')),
-                            DataColumn(label: Text('Waktu Dibuat')),
-                            DataColumn(label: Text('Action')),
-                          ],
-                          rows: List<DataRow>.generate(
-                            _announcementsList.length,
-                            (index) {
-                              final item = _announcementsList[index];
-                              final bool isActive = item['is_active'] ?? true;
-                              final String priority =
-                                  item['priority'] ?? 'info';
+                        )
+                      : SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SingleChildScrollView(
+                            child: DataTable(
+                              showCheckboxColumn: false,
+                              headingRowColor: WidgetStateProperty.all(
+                                Colors.grey[50],
+                              ),
+                              dataRowMaxHeight: 65,
+                              headingTextStyle: GoogleFonts.plusJakartaSans(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                              dataTextStyle: GoogleFonts.plusJakartaSans(
+                                fontSize: 13,
+                                color: Colors.black87,
+                              ),
+                              columns: const [
+                                DataColumn(label: Text('No')),
+                                DataColumn(label: Text('Judul')),
+                                DataColumn(label: Text('Isi Pemberitahuan')),
+                                DataColumn(label: Text('Prioritas')),
+                                DataColumn(label: Text('Status Aktif')),
+                                DataColumn(label: Text('Waktu Dibuat')),
+                                DataColumn(label: Text('Action')),
+                              ],
+                              rows: List<DataRow>.generate(
+                                _announcementsList.length,
+                                (index) {
+                                  final item = _announcementsList[index];
+                                  final bool isActive =
+                                      item['is_active'] ?? true;
+                                  final String priority =
+                                      item['priority'] ?? 'info';
 
-                              return DataRow(
-                                cells: [
-                                  DataCell(Text('${index + 1}')),
-                                  DataCell(
-                                    Text(
-                                      item['title'] ?? '-',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    SizedBox(
-                                      width: 250,
-                                      child: Text(
-                                        item['content'] ?? '-',
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: _getPriorityColor(
-                                          priority,
-                                        ).withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        priority.toUpperCase(),
-                                        style: TextStyle(
-                                          color: _getPriorityColor(priority),
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
+                                  return DataRow(
+                                    cells: [
+                                      DataCell(Text('${index + 1}')),
+                                      DataCell(
+                                        Text(
+                                          item['title'] ?? '-',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ),
-                                  // Mengubah Icon Menjadi Switch
-                                  DataCell(
-                                    Switch(
-                                      value: isActive,
-                                      activeColor: Colors.blue,
-                                      onChanged: (bool value) {
-                                        _toggleActiveStatus(item, value);
-                                      },
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Text(_formatDate(item['created_at'])),
-                                  ),
-                                  DataCell(
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.delete_outline,
-                                        color: Colors.red,
-                                        size: 20,
+                                      DataCell(
+                                        SizedBox(
+                                          width: 250,
+                                          child: Text(
+                                            item['content'] ?? '-',
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
                                       ),
-                                      tooltip: 'Hapus Pengumuman',
-                                      onPressed: () =>
-                                          _deleteAnnouncement(item),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
+                                      DataCell(
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: _getPriorityColor(
+                                              priority,
+                                            ).withOpacity(0.1),
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            priority.toUpperCase(),
+                                            style: TextStyle(
+                                              color:
+                                                  _getPriorityColor(priority),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // Mengubah Icon Menjadi Switch
+                                      DataCell(
+                                        Switch(
+                                          value: isActive,
+                                          activeColor: Colors.blue,
+                                          onChanged: (bool value) {
+                                            _toggleActiveStatus(item, value);
+                                          },
+                                        ),
+                                      ),
+                                      DataCell(
+                                        Text(_formatDate(item['created_at'])),
+                                      ),
+                                      DataCell(
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                            color: Colors.red,
+                                            size: 20,
+                                          ),
+                                          tooltip: 'Hapus Pengumuman',
+                                          onPressed: () =>
+                                              _deleteAnnouncement(item),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
             ),
           ),
         ],
@@ -475,7 +480,6 @@ class _AddAnnouncementDialogState extends State<AddAnnouncementDialog> {
                 padding: EdgeInsets.symmetric(vertical: 16),
                 child: Divider(),
               ),
-
               TextFormField(
                 controller: _titleCtrl,
                 style: GoogleFonts.plusJakartaSans(fontSize: 13),
@@ -500,7 +504,6 @@ class _AddAnnouncementDialogState extends State<AddAnnouncementDialog> {
                     val == null || val.isEmpty ? 'Judul wajib diisi' : null,
               ),
               const SizedBox(height: 16),
-
               TextFormField(
                 controller: _contentCtrl,
                 maxLines: 4,
@@ -527,7 +530,6 @@ class _AddAnnouncementDialogState extends State<AddAnnouncementDialog> {
                     val == null || val.isEmpty ? 'Konten wajib diisi' : null,
               ),
               const SizedBox(height: 16),
-
               DropdownButtonFormField<String>(
                 value: _priority,
                 items: _priorityList
@@ -561,7 +563,6 @@ class _AddAnnouncementDialogState extends State<AddAnnouncementDialog> {
                 ),
               ),
               const SizedBox(height: 16),
-
               SwitchListTile(
                 title: Text(
                   'Status Aktif',
@@ -581,7 +582,6 @@ class _AddAnnouncementDialogState extends State<AddAnnouncementDialog> {
                 onChanged: (val) => setState(() => _isActive = val),
                 activeColor: Colors.blue,
               ),
-
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
                 child: Divider(),
