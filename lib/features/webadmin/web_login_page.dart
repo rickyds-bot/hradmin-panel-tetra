@@ -63,6 +63,11 @@ class _WebLoginPageState extends State<WebLoginPage> {
       );
 
       if (response.user != null) {
+        await AppLogger.log(
+          activity: 'Admin berhasil login ke sistem',
+          module: 'Autentikasi Web',
+        );
+
         if (mounted) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => const WebDashboardPage()),

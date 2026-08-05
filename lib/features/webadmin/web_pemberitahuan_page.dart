@@ -65,6 +65,12 @@ class _WebPemberitahuanPageState extends State<WebPemberitahuanPage> {
       await Supabase.instance.client
           .from('announcements')
           .update({'is_active': newValue}).eq('id', item['id']);
+
+      String statusStr = newValue ? 'mengaktifkan' : 'menonaktifkan';
+      await AppLogger.log(
+        activity: 'Berhasil $statusStr pengumuman: "${item['title']}"',
+        module: 'Pemberitahuan',
+      );
     } catch (e) {
       // 3. Jika gagal, kembalikan status seperti semula
       setState(() {
@@ -132,6 +138,12 @@ class _WebPemberitahuanPageState extends State<WebPemberitahuanPage> {
             .from('announcements')
             .delete()
             .eq('id', item['id']);
+
+        await AppLogger.log(
+          activity: 'Menghapus pengumuman: "${item['title']}"',
+          module: 'Pemberitahuan',
+        );
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -412,6 +424,11 @@ class _AddAnnouncementDialogState extends State<AddAnnouncementDialog> {
         'priority': _priority,
         'is_active': _isActive,
       });
+
+      await AppLogger.log(
+        activity: 'Membuat pengumuman baru: "${_titleCtrl.text}"',
+        module: 'Pemberitahuan',
+      );
 
       if (mounted) {
         Navigator.of(context).pop();

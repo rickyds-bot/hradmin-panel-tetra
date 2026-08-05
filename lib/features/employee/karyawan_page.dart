@@ -596,6 +596,11 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
           'longitude': currentPos.longitude,
         });
 
+        await AppLogger.log(
+          activity: 'Melakukan $tipe (Absensi Wajah)',
+          module: 'Absensi Mobile',
+        );
+
         await file.delete();
         _refreshHistory();
 
@@ -1200,6 +1205,12 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
         'attachment_url': attachmentUrl,
         'status': 'pending',
       });
+
+      await AppLogger.log(
+        activity: 'Mengajukan $_selectedLeaveType ($_mode)',
+        module: 'Cuti & Izin',
+      );
+
       _riwayatKey.currentState?._loadData();
 
       _reasonCtrl.clear();
@@ -1726,6 +1737,12 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
         'status': 'pending',
         'notes': null,
       });
+
+      await AppLogger.log(
+        activity:
+            'Mengajukan lembur selama ${durationInHours.toStringAsFixed(1)} jam',
+        module: 'Lembur',
+      );
 
       _reasonCtrl.clear();
       setState(() {

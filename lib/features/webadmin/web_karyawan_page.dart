@@ -1348,6 +1348,12 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
       }
 
       if (mounted) {
+        await AppLogger.log(
+          activity:
+              'Menambahkan karyawan baru: ${_nameCtrl.text} (NIK: ${_nikCtrl.text})',
+          module: 'Data Karyawan',
+        );
+
         Navigator.pop(context);
         widget.onSuccess();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1938,6 +1944,12 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                       if (fileUrl != null) 'contract_file': fileUrl,
                     }).eq('id', widget.karyawan['id']);
 
+                    await AppLogger.log(
+                      activity:
+                          'Memperbarui biodata karyawan: ${_nameCtrl.text}',
+                      module: 'Data Karyawan',
+                    );
+
                     Navigator.pop(context);
 
                     if (contractNum != null) {
@@ -2040,6 +2052,11 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
             ? _contractEndCtrl.text
             : null,
       }).eq('id', widget.karyawan['id']);
+
+      await AppLogger.log(
+        activity: 'Memperbarui biodata karyawan: ${_nameCtrl.text}',
+        module: 'Data Karyawan',
+      );
 
       if (mounted) {
         Navigator.pop(context);
@@ -2482,6 +2499,12 @@ class _KaryawanLeaveBalanceDialogState
       await Supabase.instance.client
           .from('leave_balance')
           .upsert(payload, onConflict: 'user_id');
+
+      await AppLogger.log(
+        activity:
+            'Memperbarui saldo cuti untuk ${widget.empName} (Sisa: $remaining Hari)',
+        module: 'Data Karyawan',
+      );
 
       if (mounted) {
         setState(() => _isEditing = false);
