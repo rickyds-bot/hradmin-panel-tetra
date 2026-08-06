@@ -184,8 +184,12 @@ class _WebLogPageState extends State<WebLogPage> {
     if (dateStr == null || dateStr.isEmpty) return '-';
     try {
       final dt = DateTime.parse(dateStr).toLocal();
-      return DateFormat('dd-MM-yyyy, HH:mm:ss', 'id_ID').format(dt);
-    } catch (_) {
+
+      // Hapus 'id_ID' agar tidak memicu error inisialisasi intl
+      return DateFormat('dd-MM-yyyy: HH:mm:ss').format(dt);
+    } catch (e) {
+      // Tambahkan print log ini agar jika masih gagal, kita bisa tahu penyebab di console
+      debugPrint("Gagal format tanggal: $e");
       return dateStr;
     }
   }

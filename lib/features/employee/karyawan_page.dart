@@ -1,3 +1,8 @@
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:printing/printing.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'dart:typed_data';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -1738,12 +1743,6 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
         'notes': null,
       });
 
-      await AppLogger.log(
-        activity:
-            'Mengajukan lembur selama ${durationInHours.toStringAsFixed(1)} jam',
-        module: 'Lembur',
-      );
-
       _reasonCtrl.clear();
       setState(() {
         _selectedDate = null;
@@ -1775,6 +1774,7 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        // --- FORM PENGAJUAN LEMBUR (TETAP SEPERTI ASLINYA) ---
         Padding(
           padding: const EdgeInsets.all(16.0),
           child: Card(
@@ -1882,10 +1882,13 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
           ),
         ),
         const SizedBox(height: 5),
+
+        // --- RIWAYAT LEMBUR & FITUR LAPORAN ---
         Expanded(
           child: RiwayatLemburList(
             key: _riwayatKey,
             userId: Supabase.instance.client.auth.currentUser!.id,
+            userData: widget.userData, // Pass userData untuk nama di PDF
           ),
         ),
       ],
@@ -1894,11 +1897,17 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
 }
 
 // ============================================================================
-// --- KOMPONEN RIWAYAT LEMBUR ---
+// --- KOMPONEN RIWAYAT LEMBUR (DENGAN EXPORT PDF & KOLOM APPROVED BY) ---
 // ============================================================================
 class RiwayatLemburList extends StatefulWidget {
   final String userId;
-  const RiwayatLemburList({Key? key, required this.userId}) : super(key: key);
+  final Map<String, dynamic> userData; // Digunakan untuk nama di PDF
+
+  const RiwayatLemburList({
+    Key? key,
+    required this.userId,
+    required this.userData,
+  }) : super(key: key);
 
   @override
   _RiwayatLemburListState createState() => _RiwayatLemburListState();
@@ -1908,11 +1917,16 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
   List<Map<String, dynamic>> _riwayatList = [];
   Map<int, String> _approverNames = {};
   bool _isLoading = true;
+  bool _isExporting = false; // Indikator loading saat memproses PDF
+
+  // State untuk filter tanggal (Hanya untuk PDF)
+  DateTime _startDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  DateTime _endDate = DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadData(); // Load 15 data terbaru untuk UI
   }
 
   String _formatTanggalCantik(String? tgl) {
@@ -1966,6 +1980,7 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
     }
   }
 
+  // Fungsi asli: Hanya untuk menampilkan 15 riwayat terbaru di UI
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
@@ -2011,79 +2026,322 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
     }
   }
 
+  // --- FUNGSI EXPORT PDF (Tarik Data Sesuai Tanggal Khusus Untuk PDF) ---
+  Future<void> _exportToPDF() async {
+    setState(() => _isExporting = true);
+
+    try {
+      // 1. Tarik data dari database sesuai rentang tanggal yang dipilih
+      final startStr = DateFormat('yyyy-MM-dd').format(_startDate);
+      final endStr = DateFormat('yyyy-MM-dd').format(_endDate);
+
+      final dataLaporan = await Supabase.instance.client
+          .from('overtime_requests')
+          .select('*')
+          .eq('user_id', widget.userId)
+          .gte('created_at', '${startStr}T00:00:00')
+          .lte('created_at', '${endStr}T23:59:59')
+          .order('created_at', ascending: true);
+
+      if (dataLaporan.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text(
+                    "Tidak ada data lembur pada rentang tanggal tersebut.")),
+          );
+        }
+        setState(() => _isExporting = false);
+        return;
+      }
+
+      // 2. Tarik nama approver khusus untuk data PDF ini
+      Set<int> approverIds = {};
+      for (var row in dataLaporan) {
+        if (row['approved_by'] != null) {
+          int? parsedId = int.tryParse(row['approved_by'].toString());
+          if (parsedId != null) approverIds.add(parsedId);
+        }
+      }
+
+      Map<int, String> namaApproverPdf = {};
+      if (approverIds.isNotEmpty) {
+        final approvers = await Supabase.instance.client
+            .from('employees')
+            .select('id, full_name');
+
+        for (var a in approvers) {
+          int empId = int.parse(a['id'].toString());
+          if (approverIds.contains(empId)) {
+            namaApproverPdf[empId] = a['full_name'].toString();
+          }
+        }
+      }
+
+      // 3. Buat file PDF
+      final pdf = pw.Document();
+      double totalKumulatif = 0.0;
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.all(24),
+          build: (pw.Context context) {
+            return [
+              pw.Header(
+                level: 0,
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Laporan Pekerjaan Lembur',
+                        style: pw.TextStyle(
+                            fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                        'Nama Karyawan: ${widget.userData['full_name'] ?? '-'}',
+                        style: pw.TextStyle(fontSize: 12)),
+                    pw.Text(
+                        'Periode: ${DateFormat('dd MMM yyyy').format(_startDate)} s/d ${DateFormat('dd MMM yyyy').format(_endDate)}',
+                        style: const pw.TextStyle(fontSize: 10)),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Table.fromTextArray(
+                // MENAMBAHKAN HEADER APPROVED BY
+                headers: [
+                  'No',
+                  'Tanggal',
+                  'Pekerjaan Lembur',
+                  'Mulai',
+                  'Selesai',
+                  'Total Jam',
+                  'Status',
+                  'Approved By'
+                ],
+                data: List<List<String>>.generate(dataLaporan.length, (index) {
+                  final item = dataLaporan[index];
+                  totalKumulatif += double.tryParse(
+                          item['duration_hours']?.toString() ?? '0') ??
+                      0.0;
+
+                  String appName = '-';
+                  if (item['approved_by'] != null) {
+                    int? aId = int.tryParse(item['approved_by'].toString());
+                    if (aId != null && namaApproverPdf.containsKey(aId)) {
+                      appName = namaApproverPdf[aId]!;
+                    }
+                  }
+
+                  return [
+                    '${index + 1}',
+                    _formatTanggalCantik(item['start_time']),
+                    item['reason'] ?? item['description'] ?? '-',
+                    _formatJam(item['start_time']),
+                    _formatJam(item['end_time']),
+                    '${item['duration_hours'] ?? '-'}',
+                    (item['status'] ?? 'Pending').toString().toUpperCase(),
+                    appName, // MEMASUKKAN DATA APPROVED BY
+                  ];
+                }),
+                headerStyle: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 10,
+                    color: PdfColors.white),
+                headerDecoration:
+                    const pw.BoxDecoration(color: PdfColors.blue800),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+              ),
+              pw.SizedBox(height: 12),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.end,
+                children: [
+                  pw.Text(
+                      'Total Keseluruhan Jam Lembur: ${totalKumulatif.toStringAsFixed(1)} Jam',
+                      style: pw.TextStyle(
+                          fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                ],
+              ),
+            ];
+          },
+        ),
+      );
+
+      // 4. Print / Bagikan PDF
+      String empName =
+          (widget.userData['full_name'] ?? 'karyawan').replaceAll(' ', '_');
+      String dateStartStr = DateFormat('ddMMyy').format(_startDate);
+      String dateEndStr = DateFormat('ddMMyy').format(_endDate);
+      String fileName = 'Lembur_${empName}_${dateStartStr}_${dateEndStr}.pdf';
+
+      await Printing.sharePdf(bytes: await pdf.save(), filename: fileName);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text("Gagal ekspor PDF: $e"),
+              backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
-    if (_riwayatList.isEmpty)
-      return const Center(child: Text("Belum ada riwayat lembur"));
-
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: _riwayatList.length,
-      itemBuilder: (context, index) {
-        final row = _riwayatList[index];
-        final status = (row['status'] ?? 'PENDING').toString().toUpperCase();
-
-        Color statusColor = Colors.orange;
-        if (status == 'APPROVED' || status == 'DISETUJUI')
-          statusColor = Colors.green;
-        if (status == 'REJECTED' || status == 'DITOLAK')
-          statusColor = Colors.red;
-
-        String approver = '';
-        if (row['approved_by'] != null) {
-          int? appId = int.tryParse(row['approved_by'].toString());
-          if (appId != null) approver = _approverNames[appId] ?? '';
-        }
-
-        String jamMulai = _formatJam(row['start_time']?.toString());
-        String jamSelesai = _formatJam(row['end_time']?.toString());
-        String durasi = _hitungDurasi(
-            row['start_time']?.toString(), row['end_time']?.toString());
-
-        return Card(
-          margin: const EdgeInsets.only(bottom: 9),
-          child: ListTile(
-            dense: true,
-            title: const Text("Lembur",
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Text(
-                    "${_formatTanggalCantik(row['overtime_date'] ?? row['start_time'])} \n$jamMulai - $jamSelesai WIB $durasi",
-                    style: const TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 2),
-                Text("Pekerjaan: ${row['reason'] ?? row['description'] ?? '-'}",
-                    style: const TextStyle(
-                        fontSize: 11, fontStyle: FontStyle.italic)),
-                if (status != 'PENDING' && approver.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text("Approved by: $approver",
-                      style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.blue.shade800,
-                          fontWeight: FontWeight.bold)),
-                ],
-              ],
-            ),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: statusColor)),
-              child: Text(status,
-                  style: TextStyle(
-                      fontSize: 9,
-                      color: statusColor,
-                      fontWeight: FontWeight.bold)),
-            ),
+    return Column(
+      children: [
+        // --- SISIPAN BARIS FILTER & TOMBOL UNDUH PDF ---
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.date_range, size: 18),
+                  label: Text(
+                    "${DateFormat('dd/MM/yy').format(_startDate)} - ${DateFormat('dd/MM/yy').format(_endDate)}",
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () async {
+                    final picked = await showDateRangePicker(
+                      context: context,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2030),
+                      initialDateRange:
+                          DateTimeRange(start: _startDate, end: _endDate),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        _startDate = picked.start;
+                        _endDate = picked.end;
+                      });
+                      // Tidak memanggil _loadData() di sini agar UI riwayat tetap utuh!
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                icon: _isExporting
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2))
+                    : const Icon(Icons.picture_as_pdf, size: 18),
+                label: const Text("Unduh", style: TextStyle(fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: _isExporting ? null : _exportToPDF,
+              ),
+            ],
           ),
-        );
-      },
+        ),
+        const SizedBox(height: 8),
+
+        // --- DAFTAR RIWAYAT ASLI (TETAP MENAMPILKAN DEFAULT 15 DATA) ---
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _riwayatList.isEmpty
+                  ? const Center(child: Text("Belum ada riwayat lembur"))
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      itemCount: _riwayatList.length,
+                      itemBuilder: (context, index) {
+                        final row = _riwayatList[index];
+                        final status = (row['status'] ?? 'PENDING')
+                            .toString()
+                            .toUpperCase();
+
+                        Color statusColor = Colors.orange;
+                        if (status == 'APPROVED' || status == 'DISETUJUI')
+                          statusColor = Colors.green;
+                        if (status == 'REJECTED' || status == 'DITOLAK')
+                          statusColor = Colors.red;
+
+                        String approver = '';
+                        if (row['approved_by'] != null) {
+                          int? appId =
+                              int.tryParse(row['approved_by'].toString());
+                          if (appId != null)
+                            approver = _approverNames[appId] ?? '';
+                        }
+
+                        String jamMulai =
+                            _formatJam(row['start_time']?.toString());
+                        String jamSelesai =
+                            _formatJam(row['end_time']?.toString());
+                        String durasi = _hitungDurasi(
+                            row['start_time']?.toString(),
+                            row['end_time']?.toString());
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 9),
+                          child: ListTile(
+                            dense: true,
+                            title: const Text("Lembur",
+                                style: TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.bold)),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 4),
+                                Text(
+                                    "${_formatTanggalCantik(row['overtime_date'] ?? row['start_time'])} \n$jamMulai - $jamSelesai WIB $durasi",
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 2),
+                                Text(
+                                    "Pekerjaan: ${row['reason'] ?? row['description'] ?? '-'}",
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        fontStyle: FontStyle.italic)),
+                                if (status != 'PENDING' &&
+                                    approver.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text("Approved by: $approver",
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.blue.shade800,
+                                          fontWeight: FontWeight.bold)),
+                                ],
+                              ],
+                            ),
+                            trailing: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: statusColor)),
+                              child: Text(status,
+                                  style: TextStyle(
+                                      fontSize: 9,
+                                      color: statusColor,
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
     );
   }
 }
