@@ -99,7 +99,6 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
     });
   }
 
-  // Fungsi untuk mengubah format tanggal yyyy-MM-dd menjadi dd Bulan yyyy
   String _formatDateIndo(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return '-';
     try {
@@ -823,7 +822,6 @@ class _DetailKaryawanDialogState extends State<DetailKaryawanDialog> {
       try {
         List<dynamic> childrenList = [];
 
-        // Cek apakah data berupa String JSON atau sudah ter-parse sebagai List
         if (rawChildren is String) {
           if (rawChildren.trim().startsWith('[')) {
             childrenList = jsonDecode(rawChildren);
@@ -834,7 +832,6 @@ class _DetailKaryawanDialogState extends State<DetailKaryawanDialog> {
           childrenList = rawChildren;
         }
 
-        // Jika berhasil menjadi List, format menjadi teks bersusun
         if (childrenList.isNotEmpty) {
           List<String> formattedAnak = [];
           for (int i = 0; i < childrenList.length; i++) {
@@ -850,7 +847,6 @@ class _DetailKaryawanDialogState extends State<DetailKaryawanDialog> {
           }
         }
       } catch (e) {
-        // Fallback jika terjadi error saat parse
         childrenStr = rawChildren.toString();
       }
     }
@@ -1140,7 +1136,11 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
   final _npwpCtrl = TextEditingController();
   final _addressKtpCtrl = TextEditingController();
   final _addressNowCtrl = TextEditingController();
-  final _maritalStatusCtrl = TextEditingController();
+
+  // Status Pernikahan menggunakan Dropdown
+  String _selectedMaritalStatus = 'Single';
+  final List<String> _maritalStatusOptions = ['Single', 'Menikah', 'Bercerai'];
+
   final _spouseNameCtrl = TextEditingController();
   final _spouseBirthDateCtrl = TextEditingController();
   final _childrenDataCtrl = TextEditingController();
@@ -1301,7 +1301,8 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
               'address_ktp': _addressKtpCtrl.text,
               'address_now': _addressNowCtrl.text,
               'education': _selectedEducation,
-              'marital_status': _maritalStatusCtrl.text,
+              'marital_status':
+                  _selectedMaritalStatus, // Menggunakan nilai dropdown
               'spouse_name': _spouseNameCtrl.text,
               'spouse_birth_date': _spouseBirthDateCtrl.text.isNotEmpty
                   ? _spouseBirthDateCtrl.text
@@ -1430,7 +1431,12 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
                         _selectedEducation,
                         _educationOptions,
                         (val) => setState(() => _selectedEducation = val!)),
-                    _buildTextField(_maritalStatusCtrl, 'Status Pernikahan',
+                    // Dropdown Status Pernikahan
+                    _buildDropdownField(
+                        'Status Pernikahan',
+                        _selectedMaritalStatus,
+                        _maritalStatusOptions,
+                        (val) => setState(() => _selectedMaritalStatus = val!),
                         width: 300),
                     _buildTextField(_spouseNameCtrl, 'Nama Pasangan',
                         width: 300),
@@ -1633,7 +1639,11 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
   late TextEditingController _npwpCtrl;
   late TextEditingController _addressKtpCtrl;
   late TextEditingController _addressNowCtrl;
-  late TextEditingController _maritalStatusCtrl;
+
+  // Status Pernikahan menggunakan Dropdown
+  late String _selectedMaritalStatus;
+  final List<String> _maritalStatusOptions = ['Single', 'Menikah', 'Bercerai'];
+
   late TextEditingController _spouseNameCtrl;
   late TextEditingController _spouseBirthDateCtrl;
   late TextEditingController _childrenDataCtrl;
@@ -1698,6 +1708,10 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
     _selectedEducation =
         _educationOptions.contains(dbEducation) ? dbEducation : 'S1';
 
+    String dbMarital = widget.karyawan['marital_status'] ?? 'Single';
+    _selectedMaritalStatus =
+        _maritalStatusOptions.contains(dbMarital) ? dbMarital : 'Single';
+
     String dbRole = widget.karyawan['role']?.toString() ?? 'Staff';
     String formattedRole = _roleOptions.firstWhere(
       (r) => r.toLowerCase() == dbRole.toLowerCase(),
@@ -1716,8 +1730,6 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
         TextEditingController(text: widget.karyawan['address_ktp'] ?? '');
     _addressNowCtrl =
         TextEditingController(text: widget.karyawan['address_now'] ?? '');
-    _maritalStatusCtrl =
-        TextEditingController(text: widget.karyawan['marital_status'] ?? '');
     _spouseNameCtrl =
         TextEditingController(text: widget.karyawan['spouse_name'] ?? '');
     _spouseBirthDateCtrl =
@@ -2026,7 +2038,7 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
         'address_ktp': _addressKtpCtrl.text,
         'address_now': _addressNowCtrl.text,
         'education': _selectedEducation,
-        'marital_status': _maritalStatusCtrl.text,
+        'marital_status': _selectedMaritalStatus, // Menggunakan nilai dropdown
         'spouse_name': _spouseNameCtrl.text,
         'spouse_birth_date': _spouseBirthDateCtrl.text.isNotEmpty
             ? _spouseBirthDateCtrl.text
@@ -2152,7 +2164,13 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                             _selectedEducation,
                             _educationOptions,
                             (val) => setState(() => _selectedEducation = val!)),
-                        _buildTextField(_maritalStatusCtrl, 'Status Pernikahan',
+                        // Dropdown Status Pernikahan
+                        _buildDropdownField(
+                            'Status Pernikahan',
+                            _selectedMaritalStatus,
+                            _maritalStatusOptions,
+                            (val) =>
+                                setState(() => _selectedMaritalStatus = val!),
                             width: 300),
                         _buildTextField(_spouseNameCtrl, 'Nama Pasangan',
                             width: 300),
@@ -2495,7 +2513,6 @@ class _KaryawanLeaveBalanceDialogState
             : null,
       };
 
-      // GUNAKAN UPSERT UNTUK MENCEGAH DUPLICATE KEY CONFLICT
       await Supabase.instance.client
           .from('leave_balance')
           .upsert(payload, onConflict: 'user_id');

@@ -1201,6 +1201,7 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
         }
       }
 
+      // 1. Simpan pengajuan cuti ke database
       await Supabase.instance.client.from('leave_requests').insert({
         'user_id': Supabase.instance.client.auth.currentUser!.id,
         'employee_id': widget.userData['id'],
@@ -1211,6 +1212,56 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
         'attachment_url': attachmentUrl,
         'status': 'pending',
       });
+
+      // --- LOGIKA TARGET NOTIFIKASI ATASAN BERDASARKAN HIERARKI & DIVISI ---
+      try {
+        final int deptId = widget.userData['department_id'];
+        final String senderRole =
+            (widget.userData['pos_name'] ?? '').toString().toLowerCase();
+
+        final employeesInDept = await Supabase.instance.client
+            .from('employees')
+            .select('id, position_id, fcm_token')
+            .eq('department_id', deptId);
+
+        final posData =
+            await Supabase.instance.client.from('positions').select('id, name');
+        Map<int, String> posMap = {};
+        for (var p in posData)
+          posMap[p['id']] = p['name'].toString().toLowerCase();
+
+        for (var emp in employeesInDept) {
+          if (emp['id'] == widget.userData['id'])
+            continue; // Jangan kirim ke diri sendiri
+
+          String targetRole = posMap[emp['position_id']] ?? '';
+          bool isTargetManager = targetRole.contains('manager');
+          bool isTargetSupervisor = targetRole.contains('supervisor');
+          bool isTargetAdmin = targetRole.contains('admin');
+
+          bool shouldNotify = false;
+
+          // Staff -> Supervisor & Manager
+          if (!senderRole.contains('supervisor') &&
+              !senderRole.contains('manager')) {
+            if (isTargetSupervisor || isTargetManager || isTargetAdmin) {
+              shouldNotify = true;
+            }
+          }
+          // Supervisor -> Manager
+          else if (senderRole.contains('supervisor')) {
+            if (isTargetManager || isTargetAdmin) {
+              shouldNotify = true;
+            }
+          }
+
+          if (shouldNotify && emp['fcm_token'] != null) {
+            debugPrint("Mengirim notifikasi cuti ke Atasan ID: ${emp['id']}");
+          }
+        }
+      } catch (notifErr) {
+        debugPrint("Gagal mengirim notifikasi ke atasan: $notifErr");
+      }
 
       await AppLogger.log(
         activity: 'Mengajukan $_selectedLeaveType ($_mode)',
@@ -1230,7 +1281,8 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Pengajuan berhasil dikirim!"),
+            content:
+                Text("Pengajuan berhasil dikirim & Atasan telah diberitahu!"),
             backgroundColor: Colors.green,
           ),
         );
@@ -1733,6 +1785,7 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
       int durationInMinutes = endDateTime.difference(startDateTime).inMinutes;
       double durationInHours = durationInMinutes / 60.0;
 
+      // 1. Simpan pengajuan lembur ke database
       await Supabase.instance.client.from('overtime_requests').insert({
         'user_id': Supabase.instance.client.auth.currentUser!.id,
         'employee_id': widget.userData['id'],
@@ -1743,6 +1796,56 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
         'status': 'pending',
         'notes': null,
       });
+
+      // --- LOGIKA TARGET NOTIFIKASI ATASAN BERDASARKAN HIERARKI & DIVISI ---
+      try {
+        final int deptId = widget.userData['department_id'];
+        final String senderRole =
+            (widget.userData['pos_name'] ?? '').toString().toLowerCase();
+
+        final employeesInDept = await Supabase.instance.client
+            .from('employees')
+            .select('id, position_id, fcm_token')
+            .eq('department_id', deptId);
+
+        final posData =
+            await Supabase.instance.client.from('positions').select('id, name');
+        Map<int, String> posMap = {};
+        for (var p in posData)
+          posMap[p['id']] = p['name'].toString().toLowerCase();
+
+        for (var emp in employeesInDept) {
+          if (emp['id'] == widget.userData['id'])
+            continue; // Jangan kirim ke diri sendiri
+
+          String targetRole = posMap[emp['position_id']] ?? '';
+          bool isTargetManager = targetRole.contains('manager');
+          bool isTargetSupervisor = targetRole.contains('supervisor');
+          bool isTargetAdmin = targetRole.contains('admin');
+
+          bool shouldNotify = false;
+
+          // Staff -> Supervisor & Manager
+          if (!senderRole.contains('supervisor') &&
+              !senderRole.contains('manager')) {
+            if (isTargetSupervisor || isTargetManager || isTargetAdmin) {
+              shouldNotify = true;
+            }
+          }
+          // Supervisor -> Manager
+          else if (senderRole.contains('supervisor')) {
+            if (isTargetManager || isTargetAdmin) {
+              shouldNotify = true;
+            }
+          }
+
+          if (shouldNotify && emp['fcm_token'] != null) {
+            debugPrint("Mengirim notifikasi lembur ke Atasan ID: ${emp['id']}");
+          }
+        }
+      } catch (notifErr) {
+        debugPrint("Gagal mengirim notifikasi lembur ke atasan: $notifErr");
+      }
 
       _reasonCtrl.clear();
       setState(() {
@@ -1755,7 +1858,8 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Pengajuan Lembur berhasil dikirim!"),
+            content: Text(
+                "Pengajuan Lembur berhasil dikirim & Atasan telah diberitahu!"),
             backgroundColor: Colors.green,
           ),
         );
@@ -2419,10 +2523,12 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
   }
 
   Future<List<Map<String, dynamic>>> _fetchDataCuti() async {
+    // 1. Ambil semua pegawai di departemen yang sama
     final empData = await Supabase.instance.client
         .from('employees')
         .select('id, full_name, position_id')
         .eq('department_id', widget.departmentId);
+
     final posData =
         await Supabase.instance.client.from('positions').select('id, name');
 
@@ -2434,21 +2540,28 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
 
     for (var e in empData) {
       String empIdStr = e['id'].toString();
-      if (empIdStr == widget.managerId.toString()) continue;
+      if (empIdStr == widget.managerId.toString())
+        continue; // Jangan masukkan diri sendiri
 
       String targetRole = posMap[e['position_id']] ?? '';
       bool isTargetAdmin = targetRole.contains('admin');
       bool isTargetManager = targetRole.contains('manager');
       bool isTargetSupervisor = targetRole.contains('supervisor');
 
+      // --- PENERAPAN RULE HIERARKI ---
       if (myRole.contains('admin')) {
+        // Admin bisa melihat semua staff, supervisor, dan manager di departemen ini
         validEmpMap[empIdStr] = e['full_name'].toString();
       } else if (myRole.contains('manager')) {
-        if (!isTargetAdmin && !isTargetManager)
+        // Manager HANYA boleh melihat Supervisor dan Staff (bukan sesama manager/admin)
+        if (!isTargetAdmin && !isTargetManager) {
           validEmpMap[empIdStr] = e['full_name'].toString();
+        }
       } else if (myRole.contains('supervisor')) {
-        if (!isTargetAdmin && !isTargetManager && !isTargetSupervisor)
+        // Supervisor HANYA boleh melihat Staff (bukan supervisor, manager, atau admin)
+        if (!isTargetAdmin && !isTargetManager && !isTargetSupervisor) {
           validEmpMap[empIdStr] = e['full_name'].toString();
+        }
       }
     }
 
@@ -2460,6 +2573,7 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
     List<Map<String, dynamic>> finalData = [];
     for (var req in reqData) {
       String empId = req['employee_id'].toString();
+      // Pastikan pengajuan berasal dari pegawai yang valid sesuai hierarki & departemen
       if (validEmpMap.containsKey(empId)) {
         var row = Map<String, dynamic>.from(req);
         row['full_name'] = validEmpMap[empId];
@@ -2474,6 +2588,7 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
         .from('employees')
         .select('id, full_name, position_id')
         .eq('department_id', widget.departmentId);
+
     final posData =
         await Supabase.instance.client.from('positions').select('id, name');
 
@@ -2492,14 +2607,17 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
       bool isTargetManager = targetRole.contains('manager');
       bool isTargetSupervisor = targetRole.contains('supervisor');
 
+      // --- PENERAPAN RULE HIERARKI ---
       if (myRole.contains('admin')) {
         validEmpMap[empIdStr] = e['full_name'].toString();
       } else if (myRole.contains('manager')) {
-        if (!isTargetAdmin && !isTargetManager)
+        if (!isTargetAdmin && !isTargetManager) {
           validEmpMap[empIdStr] = e['full_name'].toString();
+        }
       } else if (myRole.contains('supervisor')) {
-        if (!isTargetAdmin && !isTargetManager && !isTargetSupervisor)
+        if (!isTargetAdmin && !isTargetManager && !isTargetSupervisor) {
           validEmpMap[empIdStr] = e['full_name'].toString();
+        }
       }
     }
 
@@ -2915,6 +3033,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
   List<ChildInputData> _childrenInputs = [];
   String? _selectedReligion;
   String? _selectedEducation;
+  String? _selectedGender; // <-- VARIABEL TAMBAHAN UNTUK KELAMIN
   String _selectedStatus = 'Single';
   bool _isSaving = false;
 
@@ -2968,6 +3087,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
     _nameCtrl.text = widget.userData['full_name'] ?? '';
     _birthPlaceCtrl.text = widget.userData['birth_place'] ?? '';
     _religionCtrl_init();
+    _genderCtrl_init(); // <-- INISIALISASI KELAMIN
 
     final edu = widget.userData['education'];
     if (['SMA/SMK', 'D3', 'S1', 'S2', 'S3'].contains(edu)) {
@@ -3033,6 +3153,16 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
       'Budha',
     ].contains(rel)) {
       _selectedReligion = rel;
+    }
+  }
+
+  // --- FUNGSI INISIALISASI KELAMIN ---
+  void _genderCtrl_init() {
+    final gender = widget.userData['gender'];
+    if (['Laki-laki', 'Perempuan'].contains(gender)) {
+      _selectedGender = gender;
+    } else {
+      _selectedGender = null;
     }
   }
 
@@ -3118,7 +3248,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
             (c) => {
               'name': c.nameCtrl.text,
               'birth_date': c.birthDate != null
-                  // PERBAIKAN 1: Format ke yyyy-MM-dd
                   ? DateFormat('yyyy-MM-dd').format(c.birthDate!)
                   : null,
             },
@@ -3129,9 +3258,9 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
         'full_name': _nameCtrl.text,
         'birth_place': _birthPlaceCtrl.text,
         'birth_date': _birthDate != null
-            // PERBAIKAN 2: Format ke yyyy-MM-dd
             ? DateFormat('yyyy-MM-dd').format(_birthDate!)
             : null,
+        'gender': _selectedGender, // <-- MENYERTAKAN DATA KELAMIN KE DATABASE
         'religion': _selectedReligion,
         'marital_status': _selectedStatus,
         'ktp_number': _ktpCtrl.text,
@@ -3141,7 +3270,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
         'phone': _phoneCtrl.text,
         'education': _selectedEducation,
         'spouse_name': _spouseCtrl.text,
-        // PERBAIKAN 3: Menggunakan _spouseBirthDate, bukan _spouseBirthCtrl.text
         'spouse_birth_date': _spouseBirthDate != null
             ? DateFormat('yyyy-MM-dd').format(_spouseBirthDate!)
             : null,
@@ -3565,6 +3693,13 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                 setState(() => _birthDate = picked);
                             },
                           ),
+                          // --- DROPDOWN KELAMIN DITAMBAHKAN DI SINI ---
+                          _buildDropdown(
+                            "Jenis Kelamin",
+                            _selectedGender,
+                            ['Laki-laki', 'Perempuan'],
+                            (val) => setState(() => _selectedGender = val),
+                          ),
                           _buildDropdown(
                             "Agama",
                             _selectedReligion,
@@ -3923,6 +4058,17 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                   ),
                                   onPressed: () async {
                                     Navigator.pop(dialogContext);
+
+                                    // Bersihkan fcm_token saat logout agar tidak bertabrakan
+                                    try {
+                                      await Supabase.instance.client
+                                          .from('employees')
+                                          .update({'fcm_token': null}).eq(
+                                              'id', widget.userData['id']);
+                                    } catch (e) {
+                                      debugPrint("Gagal reset token: $e");
+                                    }
+
                                     await Supabase.instance.client.auth
                                         .signOut();
                                     if (mounted) {
@@ -4269,13 +4415,14 @@ class _PengumumanPageState extends State<PengumumanPage> {
                 Expanded(
                   child: SingleChildScrollView(
                     child: Html(
-                      data: item['content'] ?? 'Tidak ada deskripsi',
+                      // Mengubah \n menjadi <br> agar enter/baris baru terbaca
+                      data: (item['content'] ?? 'Tidak ada deskripsi')
+                          .replaceAll('\n', '<br>'),
                       style: {
                         "body": Style(
                           fontSize: FontSize(15.0),
                           lineHeight: LineHeight(1.5),
-                          margin:
-                              Margins.zero, // Hilangkan margin bawaan tag html
+                          margin: Margins.zero,
                           padding: HtmlPaddings.zero,
                         ),
                       },
@@ -4355,6 +4502,12 @@ class _PengumumanPageState extends State<PengumumanPage> {
             separatorBuilder: (context, index) => const Divider(),
             itemBuilder: (context, i) {
               final item = list[i];
+
+              // Membersihkan semua tag HTML (<...>) hanya untuk preview list
+              String rawContent = item['content'] ?? '';
+              String plainTextPreview =
+                  rawContent.replaceAll(RegExp(r'<[^>]*>|&[^;]+;'), '');
+
               return ListTile(
                 leading: CircleAvatar(
                   backgroundColor: Colors.blue.shade50,
@@ -4365,7 +4518,7 @@ class _PengumumanPageState extends State<PengumumanPage> {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text(
-                  item['content'] ?? '',
+                  plainTextPreview, // Gunakan teks yang sudah dibersihkan
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
