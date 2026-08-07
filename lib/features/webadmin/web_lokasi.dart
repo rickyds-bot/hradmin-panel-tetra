@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
 
 class WebLokasiPage extends StatefulWidget {
   const WebLokasiPage({super.key});
@@ -409,6 +410,39 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
         },
       ),
     };
+
+    // --- TAMBAHAN: Jika ini mode Tambah Baru, cari lokasi GPS saat ini ---
+    if (data == null) {
+      _getCurrentLocation();
+    }
+  }
+
+  // --- TAMBAHAN: Fungsi untuk mendapatkan koordinat GPS perangkat ---
+  Future<void> _getCurrentLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return; // GPS tidak aktif
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return; // Izin ditolak
+      }
+      if (permission == LocationPermission.deniedForever) return;
+
+      // Ambil posisi akurat
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      // Jika widget masih aktif, update pin map ke lokasi asli GPS
+      if (mounted) {
+        _updatePosition(LatLng(position.latitude, position.longitude),
+            animateCamera: true);
+      }
+    } catch (e) {
+      debugPrint("Gagal mengambil GPS: $e");
+    }
   }
 
   @override
