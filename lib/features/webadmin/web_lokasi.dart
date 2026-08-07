@@ -174,7 +174,6 @@ class _WebLokasiPageState extends State<WebLokasiPage> {
             ],
           ),
           const SizedBox(height: 24),
-
           Expanded(
             child: Card(
               elevation: 0,
@@ -186,130 +185,132 @@ class _WebLokasiPageState extends State<WebLokasiPage> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _lokasiList.isEmpty
-                  ? Center(
-                      child: Text(
-                        'Belum ada data lokasi.',
-                        style: GoogleFonts.plusJakartaSans(fontSize: 13),
-                      ),
-                    )
-                  : SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: SingleChildScrollView(
-                        child: DataTable(
-                          showCheckboxColumn: false,
-                          headingRowColor: WidgetStateProperty.all(
-                            Colors.grey[50],
+                      ? Center(
+                          child: Text(
+                            'Belum ada data lokasi.',
+                            style: GoogleFonts.plusJakartaSans(fontSize: 13),
                           ),
-                          dataRowMaxHeight: 60,
-                          headingTextStyle: GoogleFonts.plusJakartaSans(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                          dataTextStyle: GoogleFonts.plusJakartaSans(
-                            fontSize: 13,
-                            color: Colors.black87,
-                          ),
-                          columns: const [
-                            DataColumn(label: Text('No')),
-                            DataColumn(label: Text('Nama Lokasi')),
-                            DataColumn(label: Text('Tipe')),
-                            DataColumn(label: Text('Alamat')),
-                            DataColumn(label: Text('Jam Operasional')),
-                            DataColumn(label: Text('Radius (m)')),
-                            DataColumn(label: Text('Action')),
-                          ],
-                          rows: List<DataRow>.generate(_lokasiList.length, (
-                            index,
-                          ) {
-                            final loc = _lokasiList[index];
-                            return DataRow(
-                              cells: [
-                                DataCell(Text('${index + 1}')),
-                                DataCell(
-                                  Text(
-                                    loc['name'] ?? '-',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                DataCell(
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      loc['location_type'] ?? '-',
-                                      style: const TextStyle(
-                                        color: Colors.blue,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
+                        )
+                      : SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SingleChildScrollView(
+                            child: DataTable(
+                              showCheckboxColumn: false,
+                              headingRowColor: WidgetStateProperty.all(
+                                Colors.grey[50],
+                              ),
+                              dataRowMaxHeight: 60,
+                              headingTextStyle: GoogleFonts.plusJakartaSans(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                              dataTextStyle: GoogleFonts.plusJakartaSans(
+                                fontSize: 13,
+                                color: Colors.black87,
+                              ),
+                              columns: const [
+                                DataColumn(label: Text('No')),
+                                DataColumn(label: Text('Nama Lokasi')),
+                                DataColumn(label: Text('Tipe')),
+                                DataColumn(label: Text('Alamat')),
+                                DataColumn(label: Text('Jam Operasional')),
+                                DataColumn(label: Text('Radius (m)')),
+                                DataColumn(label: Text('Action')),
+                              ],
+                              rows: List<DataRow>.generate(_lokasiList.length, (
+                                index,
+                              ) {
+                                final loc = _lokasiList[index];
+                                return DataRow(
+                                  cells: [
+                                    DataCell(Text('${index + 1}')),
+                                    DataCell(
+                                      Text(
+                                        loc['name'] ?? '-',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ),
-                                DataCell(
-                                  SizedBox(
-                                    width: 200,
-                                    child: Text(
-                                      loc['address'] ?? '-',
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                                DataCell(
-                                  Text(
-                                    '${_formatTime(loc['start_time'])} - ${_formatTime(loc['end_time'])} WIB',
-                                  ),
-                                ),
-                                DataCell(Text('${loc['radius_meter'] ?? 0} m')),
-                                DataCell(
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.edit_outlined,
-                                          color: Colors.blue,
-                                          size: 20,
+                                    DataCell(
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
                                         ),
-                                        tooltip: 'Edit Lokasi',
-                                        onPressed: () {
-                                          showDialog(
-                                            context: context,
-                                            barrierDismissible: false,
-                                            builder: (context) =>
-                                                AddLokasiDialog(
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.withOpacity(0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          loc['location_type'] ?? '-',
+                                          style: const TextStyle(
+                                            color: Colors.blue,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    DataCell(
+                                      SizedBox(
+                                        width: 200,
+                                        child: Text(
+                                          loc['address'] ?? '-',
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        '${_formatTime(loc['start_time'])} - ${_formatTime(loc['end_time'])} WIB',
+                                      ),
+                                    ),
+                                    DataCell(
+                                        Text('${loc['radius_meter'] ?? 0} m')),
+                                    DataCell(
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.edit_outlined,
+                                              color: Colors.blue,
+                                              size: 20,
+                                            ),
+                                            tooltip: 'Edit Lokasi',
+                                            onPressed: () {
+                                              showDialog(
+                                                context: context,
+                                                barrierDismissible: false,
+                                                builder: (context) =>
+                                                    AddLokasiDialog(
                                                   lokasiData: loc,
                                                   onSuccess: _fetchLokasi,
                                                 ),
-                                          );
-                                        },
+                                              );
+                                            },
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.delete_outline,
+                                              color: Colors.red,
+                                              size: 20,
+                                            ),
+                                            tooltip: 'Hapus Lokasi',
+                                            onPressed: () => _deleteLokasi(loc),
+                                          ),
+                                        ],
                                       ),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          color: Colors.red,
-                                          size: 20,
-                                        ),
-                                        tooltip: 'Hapus Lokasi',
-                                        onPressed: () => _deleteLokasi(loc),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            );
-                          }),
+                                    ),
+                                  ],
+                                );
+                              }),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
             ),
           ),
         ],
@@ -348,6 +349,9 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
 
   late double _currentLat;
   late double _currentLng;
+
+  // --- TAMBAHAN: State untuk Tipe Map (Normal / Satelit) ---
+  MapType _currentMapType = MapType.normal;
 
   @override
   void initState() {
@@ -446,7 +450,8 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
   Future<void> _searchAddressOnMap(String address) async {
     if (address.isEmpty || address.length < 3) return;
 
-    const String apiKey = 'AIzaSyC0XAmTKERAE3TzPxYTCLPl4wfRYV6ZEP0';
+    const String apiKey =
+        'AIzaSyC0XAmTKERAE3TzPxYTCLPl4wfRYV6ZEP0'; // Disarankan menggunakan env/variabel aman
     final encodedAddress = Uri.encodeComponent(address);
     final url = Uri.parse(
       'https://maps.googleapis.com/maps/api/geocode/json?address=$encodedAddress&key=$apiKey',
@@ -631,7 +636,6 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
               padding: EdgeInsets.symmetric(vertical: 16),
               child: Divider(),
             ),
-
             Flexible(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -741,13 +745,18 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Tentukan Titik Koordinat',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Colors.black87,
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Tentukan Titik Koordinat',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 8),
                           Text(
@@ -758,6 +767,7 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
                             ),
                           ),
                           const SizedBox(height: 12),
+                          // --- TAMBAHAN: Stack digunakan untuk meletakkan tombol ganti mode map di atas GoogleMap ---
                           Container(
                             height: 380,
                             decoration: BoxDecoration(
@@ -766,32 +776,70 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
                             ),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(12),
-                              child: GoogleMap(
-                                initialCameraPosition: CameraPosition(
-                                  target: LatLng(_currentLat, _currentLng),
-                                  zoom: 16,
-                                ),
-                                markers: _markers,
-                                onMapCreated: (controller) {
-                                  _mapController = controller;
-                                  // Memaksa kamera untuk menyesuaikan titik ketika peta baru dirender
-                                  Future.delayed(
-                                    const Duration(milliseconds: 500),
-                                    () {
-                                      if (mounted && _mapController != null) {
-                                        _mapController!.animateCamera(
-                                          CameraUpdate.newLatLngZoom(
-                                            LatLng(_currentLat, _currentLng),
-                                            16,
-                                          ),
-                                        );
-                                      }
+                              child: Stack(
+                                children: [
+                                  GoogleMap(
+                                    // SET MAP TYPE DI SINI
+                                    mapType: _currentMapType,
+                                    initialCameraPosition: CameraPosition(
+                                      target: LatLng(_currentLat, _currentLng),
+                                      zoom: 16,
+                                    ),
+                                    markers: _markers,
+                                    onMapCreated: (controller) {
+                                      _mapController = controller;
+                                      Future.delayed(
+                                        const Duration(milliseconds: 500),
+                                        () {
+                                          if (mounted &&
+                                              _mapController != null) {
+                                            _mapController!.animateCamera(
+                                              CameraUpdate.newLatLngZoom(
+                                                LatLng(
+                                                    _currentLat, _currentLng),
+                                                16,
+                                              ),
+                                            );
+                                          }
+                                        },
+                                      );
                                     },
-                                  );
-                                },
-                                onTap: (LatLng position) {
-                                  _updatePosition(position);
-                                },
+                                    onTap: (LatLng position) {
+                                      _updatePosition(position);
+                                    },
+                                  ),
+                                  // TOMBOL TOGGLE VIEW
+                                  Positioned(
+                                    top: 10,
+                                    right: 10,
+                                    child: Card(
+                                      elevation: 2,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: IconButton(
+                                        tooltip:
+                                            _currentMapType == MapType.normal
+                                                ? 'Beralih ke Satelit'
+                                                : 'Beralih ke Peta Normal',
+                                        icon: Icon(
+                                          _currentMapType == MapType.normal
+                                              ? Icons.satellite_alt
+                                              : Icons.map_outlined,
+                                          color: Colors.blue[800],
+                                        ),
+                                        onPressed: () {
+                                          setState(() {
+                                            _currentMapType = _currentMapType ==
+                                                    MapType.normal
+                                                ? MapType.satellite
+                                                : MapType.normal;
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),

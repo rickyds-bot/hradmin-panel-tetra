@@ -3117,7 +3117,8 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
             (c) => {
               'name': c.nameCtrl.text,
               'birth_date': c.birthDate != null
-                  ? DateFormat('dd-MM-yyyy').format(c.birthDate!)
+                  // PERBAIKAN 1: Format ke yyyy-MM-dd
+                  ? DateFormat('yyyy-MM-dd').format(c.birthDate!)
                   : null,
             },
           )
@@ -3127,7 +3128,8 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
         'full_name': _nameCtrl.text,
         'birth_place': _birthPlaceCtrl.text,
         'birth_date': _birthDate != null
-            ? DateFormat('dd-MM-yyyy').format(_birthDate!)
+            // PERBAIKAN 2: Format ke yyyy-MM-dd
+            ? DateFormat('yyyy-MM-dd').format(_birthDate!)
             : null,
         'religion': _selectedReligion,
         'marital_status': _selectedStatus,
@@ -3138,7 +3140,10 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
         'phone': _phoneCtrl.text,
         'education': _selectedEducation,
         'spouse_name': _spouseCtrl.text,
-        'spouse_birth_date': _spouseBirthCtrl.text,
+        // PERBAIKAN 3: Menggunakan _spouseBirthDate, bukan _spouseBirthCtrl.text
+        'spouse_birth_date': _spouseBirthDate != null
+            ? DateFormat('yyyy-MM-dd').format(_spouseBirthDate!)
+            : null,
         'children_data': childrenJson,
         'emergency_name': _emerNameCtrl.text,
         'emergency_phone': _emerPhoneCtrl.text,

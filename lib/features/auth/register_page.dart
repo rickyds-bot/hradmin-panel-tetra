@@ -179,7 +179,24 @@ class _RegisterPageState extends State<RegisterPage> {
         // ------------------------------------------
       }
     } catch (e) {
-      _tampilkanDialogPesan("Registrasi Gagal", e.toString(), Colors.red);
+      String pesanError = e.toString();
+
+      // Cek apakah error berasal dari Supabase Auth
+      if (e is AuthException) {
+        // Jika pesan error mengandung kata kunci email sudah terdaftar
+        if (e.message.toLowerCase().contains('already registered') ||
+            e.message.toLowerCase().contains('already exists') ||
+            e.message.toLowerCase().contains('sudah terdaftar')) {
+          pesanError =
+              "Alamat email ini sudah terdaftar. Silakan gunakan email lain atau langsung Login.";
+        } else {
+          // Tampilkan pesan error bawaan Supabase jika error lainnya (misal password kurang dari 6 karakter)
+          pesanError = e.message;
+        }
+      }
+
+      // Tampilkan dialog gagal menggunakan fungsi yang sudah Anda buat
+      _tampilkanDialogPesan("Registrasi Gagal", pesanError, Colors.red);
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
