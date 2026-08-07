@@ -21,6 +21,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'notification_services.dart';
 import 'register_face_page.dart';
 import 'package:mobile_absensi/features/core/utils/app_logger.dart';
+import 'package:flutter_html/flutter_html.dart' hide Marker;
 
 // ============================================================================
 // --- 1. CLASS UTAMA (KARYAWAN PAGE DENGAN GOJEK STYLE BOTTOM NAV) ---
@@ -403,7 +404,7 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
 
   GoogleMapController? _mapController;
   Position? _currentPosition;
-  Set<Marker> _markers = {};
+  final Set<Marker> _markers = {};
   bool _isLoadingMap = true;
 
   late Future<List<Map<String, dynamic>>> _historyFuture;
@@ -4267,9 +4268,17 @@ class _PengumumanPageState extends State<PengumumanPage> {
                 const Divider(height: 30),
                 Expanded(
                   child: SingleChildScrollView(
-                    child: Text(
-                      item['content'] ?? 'Tidak ada deskripsi',
-                      style: const TextStyle(fontSize: 15, height: 1.5),
+                    child: Html(
+                      data: item['content'] ?? 'Tidak ada deskripsi',
+                      style: {
+                        "body": Style(
+                          fontSize: FontSize(15.0),
+                          lineHeight: LineHeight(1.5),
+                          margin:
+                              Margins.zero, // Hilangkan margin bawaan tag html
+                          padding: HtmlPaddings.zero,
+                        ),
+                      },
                     ),
                   ),
                 ),

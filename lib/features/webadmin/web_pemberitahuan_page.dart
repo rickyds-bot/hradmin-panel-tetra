@@ -351,7 +351,6 @@ class _WebPemberitahuanPageState extends State<WebPemberitahuanPage> {
                                           ),
                                         ),
                                       ),
-                                      // Mengubah Icon Menjadi Switch
                                       DataCell(
                                         Switch(
                                           value: isActive,
@@ -365,15 +364,41 @@ class _WebPemberitahuanPageState extends State<WebPemberitahuanPage> {
                                         Text(_formatDate(item['created_at'])),
                                       ),
                                       DataCell(
-                                        IconButton(
-                                          icon: const Icon(
-                                            Icons.delete_outline,
-                                            color: Colors.red,
-                                            size: 20,
-                                          ),
-                                          tooltip: 'Hapus Pengumuman',
-                                          onPressed: () =>
-                                              _deleteAnnouncement(item),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            // --- TAMBAHAN TOMBOL EDIT ---
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.edit_outlined,
+                                                color: Colors.blue,
+                                                size: 20,
+                                              ),
+                                              tooltip: 'Edit Pengumuman',
+                                              onPressed: () {
+                                                showDialog(
+                                                  context: context,
+                                                  barrierDismissible: false,
+                                                  builder: (context) =>
+                                                      AddAnnouncementDialog(
+                                                    announcementData: item,
+                                                    onSuccess:
+                                                        _fetchAnnouncements,
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.delete_outline,
+                                                color: Colors.red,
+                                                size: 20,
+                                              ),
+                                              tooltip: 'Hapus Pengumuman',
+                                              onPressed: () =>
+                                                  _deleteAnnouncement(item),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ],
@@ -392,8 +417,13 @@ class _WebPemberitahuanPageState extends State<WebPemberitahuanPage> {
 }
 
 class AddAnnouncementDialog extends StatefulWidget {
+  final Map<String, dynamic>?
+      announcementData; // TAMBAHAN: Untuk menampung data edit
   final VoidCallback onSuccess;
-  const AddAnnouncementDialog({super.key, required this.onSuccess});
+
+  const AddAnnouncementDialog(
+      {super.key, this.announcementData, required this.onSuccess});
+
   @override
   State<AddAnnouncementDialog> createState() => _AddAnnouncementDialogState();
 }
@@ -408,27 +438,84 @@ class _AddAnnouncementDialogState extends State<AddAnnouncementDialog> {
   final List<String> _priorityList = ['info', 'penting', 'darurat'];
 
   @override
+  void initState() {
+    super.initState();
+    // Jika ada data yang dilempar (Mode Edit), isi kolom-kolomnya
+    if (widget.announcementData != null) {
+      _titleCtrl.text = widget.announcementData!['title'] ?? '';
+      _contentCtrl.text = widget.announcementData!['content'] ?? '';
+      _priority = widget.announcementData!['priority'] ?? 'info';
+      _isActive = widget.announcementData!['is_active'] ?? true;
+    }
+  }
+
+  @override
   void dispose() {
     _titleCtrl.dispose();
     _contentCtrl.dispose();
     super.dispose();
   }
 
+  // --- FUNGSI TAMBAHAN: Menyisipkan Format Teks HTML ---
+  void _insertFormat(String prefix, String suffix) {
+    final text = _contentCtrl.text;
+    final selection = _contentCtrl.selection;
+
+    // Jika pengguna tidak menyeleksi teks apapun, tambahkan di akhir
+    if (selection.start == -1 || selection.end == -1) {
+      _contentCtrl.text = text + prefix + suffix;
+      _contentCtrl.selection = TextSelection.collapsed(
+        offset: _contentCtrl.text.length - suffix.length,
+      );
+      return;
+    }
+
+    // Jika pengguna menyeleksi teks, apit teks tersebut
+    final selectedText = text.substring(selection.start, selection.end);
+    final newText = text.replaceRange(
+      selection.start,
+      selection.end,
+      '$prefix$selectedText$suffix',
+    );
+
+    _contentCtrl.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(
+        offset: selection.start + prefix.length + selectedText.length,
+      ),
+    );
+  }
+
   Future<void> _saveAnnouncement() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
     try {
-      await Supabase.instance.client.from('announcements').insert({
+      final payload = {
         'title': _titleCtrl.text,
         'content': _contentCtrl.text,
         'priority': _priority,
         'is_active': _isActive,
-      });
+      };
 
-      await AppLogger.log(
-        activity: 'Membuat pengumuman baru: "${_titleCtrl.text}"',
-        module: 'Pemberitahuan',
-      );
+      // Cek apakah ini mode Edit atau Tambah Baru
+      if (widget.announcementData == null) {
+        // Mode Tambah Baru
+        await Supabase.instance.client.from('announcements').insert(payload);
+        await AppLogger.log(
+          activity: 'Membuat pengumuman baru: "${_titleCtrl.text}"',
+          module: 'Pemberitahuan',
+        );
+      } else {
+        // Mode Edit
+        await Supabase.instance.client
+            .from('announcements')
+            .update(payload)
+            .eq('id', widget.announcementData!['id']);
+        await AppLogger.log(
+          activity: 'Memperbarui pengumuman: "${_titleCtrl.text}"',
+          module: 'Pemberitahuan',
+        );
+      }
 
       if (mounted) {
         Navigator.of(context).pop();
@@ -436,7 +523,9 @@ class _AddAnnouncementDialogState extends State<AddAnnouncementDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Pengumuman berhasil dibuat!',
+              widget.announcementData == null
+                  ? 'Pengumuman berhasil dibuat!'
+                  : 'Pengumuman berhasil diperbarui!',
               style: GoogleFonts.plusJakartaSans(fontSize: 13),
             ),
           ),
@@ -458,6 +547,8 @@ class _AddAnnouncementDialogState extends State<AddAnnouncementDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isEdit = widget.announcementData != null;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
@@ -465,194 +556,241 @@ class _AddAnnouncementDialogState extends State<AddAnnouncementDialog> {
         padding: const EdgeInsets.all(28),
         child: Form(
           key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
+          // --- TAMBAHKAN SingleChildScrollView DI SINI ---
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: isEdit ? Colors.orange[50] : Colors.blue[50],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        isEdit ? Icons.edit_note : Icons.campaign,
+                        color: isEdit ? Colors.orange : Colors.blue,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Text(
+                      isEdit ? 'Edit Pengumuman' : 'Buat Pengumuman Baru',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Divider(),
+                ),
+                TextFormField(
+                  controller: _titleCtrl,
+                  style: GoogleFonts.plusJakartaSans(fontSize: 13),
+                  decoration: InputDecoration(
+                    labelText: 'Judul Pengumuman',
+                    labelStyle: GoogleFonts.plusJakartaSans(
+                      color: Colors.black54,
+                      fontSize: 13,
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[50],
+                    border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey[300]!),
                     ),
-                    child: const Icon(
-                      Icons.campaign,
-                      color: Colors.blue,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Text(
-                    'Buat Pengumuman Baru',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey[300]!),
                     ),
                   ),
-                ],
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Divider(),
-              ),
-              TextFormField(
-                controller: _titleCtrl,
-                style: GoogleFonts.plusJakartaSans(fontSize: 13),
-                decoration: InputDecoration(
-                  labelText: 'Judul Pengumuman',
-                  labelStyle: GoogleFonts.plusJakartaSans(
-                    color: Colors.black54,
-                    fontSize: 13,
+                  validator: (val) =>
+                      val == null || val.isEmpty ? 'Judul wajib diisi' : null,
+                ),
+                const SizedBox(height: 16),
+
+                // --- TAMBAHAN: Toolbar Format Teks ---
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(8),
+                      topRight: Radius.circular(8),
+                    ),
+                    border: Border.all(color: Colors.grey[300]!),
                   ),
-                  filled: true,
-                  fillColor: Colors.grey[50],
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.format_bold, size: 20),
+                        tooltip: 'Tebal (Bold)',
+                        onPressed: () => _insertFormat('<b>', '</b>'),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.format_italic, size: 20),
+                        tooltip: 'Miring (Italic)',
+                        onPressed: () => _insertFormat('<i>', '</i>'),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.format_underline, size: 20),
+                        tooltip: 'Garis Bawah (Underline)',
+                        onPressed: () => _insertFormat('<u>', '</u>'),
+                      ),
+                    ],
                   ),
                 ),
-                validator: (val) =>
-                    val == null || val.isEmpty ? 'Judul wajib diisi' : null,
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _contentCtrl,
-                maxLines: 4,
-                style: GoogleFonts.plusJakartaSans(fontSize: 13),
-                decoration: InputDecoration(
-                  labelText: 'Isi Konten Pengumuman',
-                  labelStyle: GoogleFonts.plusJakartaSans(
-                    color: Colors.black54,
-                    fontSize: 13,
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey[50],
-                  alignLabelWithHint: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
-                  ),
-                ),
-                validator: (val) =>
-                    val == null || val.isEmpty ? 'Konten wajib diisi' : null,
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _priority,
-                items: _priorityList
-                    .map(
-                      (e) => DropdownMenuItem(
-                        value: e,
-                        child: Text(
-                          e.toUpperCase(),
-                          style: GoogleFonts.plusJakartaSans(fontSize: 13),
-                        ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (val) => setState(() => _priority = val ?? 'info'),
-                decoration: InputDecoration(
-                  labelText: 'Prioritas',
-                  labelStyle: GoogleFonts.plusJakartaSans(
-                    color: Colors.black54,
-                    fontSize: 13,
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey[50],
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              SwitchListTile(
-                title: Text(
-                  'Status Aktif',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontWeight: FontWeight.w500,
-                    fontSize: 13,
-                  ),
-                ),
-                subtitle: Text(
-                  'Pengumuman aktif akan tampil di aplikasi karyawan',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                value: _isActive,
-                onChanged: (val) => setState(() => _isActive = val),
-                activeColor: Colors.blue,
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Divider(),
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                // Field Konten
+                TextFormField(
+                  controller: _contentCtrl,
+                  maxLines: 5,
+                  style: GoogleFonts.plusJakartaSans(fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'Ketik isi pengumuman di sini...',
+                    hintStyle: GoogleFonts.plusJakartaSans(
+                      color: Colors.black54,
+                      fontSize: 13,
                     ),
-                    child: Text(
-                      'Batal',
-                      style: GoogleFonts.plusJakartaSans(fontSize: 13),
+                    filled: true,
+                    fillColor: Colors.grey[50],
+                    alignLabelWithHint: true,
+                    border: const OutlineInputBorder(
+                      borderRadius: BorderRadius.only(
+                        bottomLeft: Radius.circular(8),
+                        bottomRight: Radius.circular(8),
+                      ),
+                      borderSide: BorderSide(
+                          color: Colors.grey, width: 0.5), // Match border
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(8),
+                        bottomRight: Radius.circular(8),
+                      ),
+                      borderSide: BorderSide(color: Colors.grey[300]!),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    onPressed: _isSaving ? null : _saveAnnouncement,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: _isSaving
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : Text(
-                            'Simpan Pengumuman',
+                  validator: (val) =>
+                      val == null || val.isEmpty ? 'Konten wajib diisi' : null,
+                ),
+
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: _priority,
+                  items: _priorityList
+                      .map(
+                        (e) => DropdownMenuItem(
+                          value: e,
+                          child: Text(
+                            e.toUpperCase(),
                             style: GoogleFonts.plusJakartaSans(fontSize: 13),
                           ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (val) => setState(() => _priority = val ?? 'info'),
+                  decoration: InputDecoration(
+                    labelText: 'Prioritas',
+                    labelStyle: GoogleFonts.plusJakartaSans(
+                      color: Colors.black54,
+                      fontSize: 13,
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[50],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey[300]!),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey[300]!),
+                    ),
                   ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  title: Text(
+                    'Status Aktif',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 13,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Pengumuman aktif akan tampil di aplikasi karyawan',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  value: _isActive,
+                  onChanged: (val) => setState(() => _isActive = val),
+                  activeColor: Colors.blue,
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Divider(),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 14,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text(
+                        'Batal',
+                        style: GoogleFonts.plusJakartaSans(fontSize: 13),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: _isSaving ? null : _saveAnnouncement,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 14,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: _isSaving
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : Text(
+                              isEdit
+                                  ? 'Perbarui Pengumuman'
+                                  : 'Simpan Pengumuman',
+                              style: GoogleFonts.plusJakartaSans(fontSize: 13),
+                            ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
