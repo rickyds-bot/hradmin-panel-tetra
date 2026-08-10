@@ -1,0 +1,51 @@
+workflows:
+  ios-karyawan-build:
+    name: Build iOS Karyawan
+    instance_type: mac_mini_m1
+    max_build_duration: 60
+    environment:
+      flutter: default
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Inject Xcode Flavor Configurations
+        script: |
+          gem install xcodeproj
+          cat << 'EOF' > add_flavor.rb
+          require 'xcodeproj'
+          project_path = 'ios/Runner.xcodeproj'
+          project = Xcodeproj::Project.open(project_path)
+          flavor = 'karyawan'
+          ['Debug', 'Release', 'Profile'].each do |config_name|
+            new_config_name = "#{config_name}-#{flavor}"
+            unless project.build_configurations.map(&:name).include?(new_config_name)
+              base_config = project.build_configurations.find { |c| c.name == config_name }
+              new_config = project.new(Xcodeproj::Project::Object::XCBuildConfiguration)
+              new_config.name = new_config_name
+              new_config.build_settings = base_config.build_settings.clone
+              new_config.base_configuration_reference = base_config.base_configuration_reference
+              project.build_configuration_list.build_configurations << new_config
+            end
+            target = project.targets.first
+            unless target.build_configurations.map(&:name).include?(new_config_name)
+              base_target_config = target.build_configurations.find { |c| c.name == config_name }
+              new_target_config = project.new(Xcodeproj::Project::Object::XCBuildConfiguration)
+              new_target_config.name = new_config_name
+              new_target_config.build_settings = base_target_config.build_settings.clone
+              new_target_config.base_configuration_reference = base_target_config.base_configuration_reference
+              target.build_configuration_list.build_configurations << new_target_config
+            end
+          end
+          project.save
+          puts "Berhasil menambahkan konfigurasi #{flavor} ke Xcode!"
+          EOF
+          ruby add_flavor.rb
+
+      - name: Get Flutter Packages
+        script: flutter pub get
+
+      - name: Build iOS App
+        script: flutter build ios --flavor karyawan -t lib/main_karyawan.dart --release --no-codesign
+
+    artifacts:
+      - build/ios/iphoneos/*.app
