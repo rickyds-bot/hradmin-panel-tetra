@@ -662,11 +662,8 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                 label: Text('Bukti Foto')),
                                             DataColumn(label: Text('Lokasi')),
                                             DataColumn(
-                                                label: Text(
-                                                    'Aktifitas')), // Kolom Baru
-                                            DataColumn(
-                                                label: Text(
-                                                    'Notes')), // Kolom Baru
+                                                label: Text('Aktifitas')),
+                                            DataColumn(label: Text('Notes')),
                                             DataColumn(label: Text('Action')),
                                           ],
                                           rows: List<DataRow>.generate(
@@ -676,7 +673,6 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                             (index) {
                                               final item = _filteredList[index];
 
-                                              // 1. Parsing Variabel Dasar
                                               final int? empId = int.tryParse(
                                                   item['employee_id']
                                                           ?.toString() ??
@@ -701,7 +697,6 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                     ?.toLocal();
                                               }
 
-                                              // 2. Logika Aktifitas & Notes
                                               String aktifitas = 'Bekerja';
                                               String notes =
                                                   (item['notes'] ?? '')
@@ -710,7 +705,6 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                               if (attDate != null) {
                                                 bool isLeave = false;
 
-                                                // Cek apakah tanggal absen masuk dalam rentang cuti yang di-approve
                                                 if (empId != null &&
                                                     _approvedLeaves
                                                         .containsKey(empId)) {
@@ -755,14 +749,66 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                       rawStatus
                                                           .toLowerCase()
                                                           .contains('masuk');
-                                                  // Cek Keterlambatan: Jika Absen Masuk > 09:30
+
+                                                  // Keterlambatan jika > 09:15
                                                   if (isCheckIn) {
                                                     if (attDate.hour > 9 ||
                                                         (attDate.hour == 9 &&
                                                             attDate.minute >
-                                                                30)) {
+                                                                15)) {
                                                       notes = 'Terlambat';
                                                     }
+                                                  }
+
+                                                  // Cek apakah komplit in & out pada hari yang sama
+                                                  bool hasCheckIn = false;
+                                                  bool hasCheckOut = false;
+                                                  DateTime dateOnly = DateTime(
+                                                      attDate.year,
+                                                      attDate.month,
+                                                      attDate.day);
+                                                  for (var a in _absensiList) {
+                                                    if (a['employee_id'] ==
+                                                            empId &&
+                                                        a['created_at'] !=
+                                                            null) {
+                                                      DateTime d =
+                                                          DateTime.parse(a[
+                                                                  'created_at'])
+                                                              .toLocal();
+                                                      if (d.year ==
+                                                              dateOnly.year &&
+                                                          d.month ==
+                                                              dateOnly.month &&
+                                                          d.day ==
+                                                              dateOnly.day) {
+                                                        String st =
+                                                            (a['status'] ?? '')
+                                                                .toString()
+                                                                .toLowerCase();
+                                                        if (st.contains('in') ||
+                                                            st.contains(
+                                                                'masuk'))
+                                                          hasCheckIn = true;
+                                                        if (st.contains(
+                                                                'out') ||
+                                                            st.contains(
+                                                                'pulang'))
+                                                          hasCheckOut = true;
+                                                      }
+                                                    }
+                                                  }
+
+                                                  if (hasCheckIn &&
+                                                      hasCheckOut) {
+                                                    aktifitas = 'Bekerja';
+                                                  } else if (hasCheckIn &&
+                                                      !hasCheckOut) {
+                                                    aktifitas =
+                                                        'Belum Checkout';
+                                                  } else {
+                                                    aktifitas =
+                                                        'Hanya Checkout';
                                                   }
                                                 }
                                               }
@@ -773,12 +819,13 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                               // Styling warna teks Notes
                                               Color noteColor = Colors.black87;
                                               if (notes.toLowerCase() ==
-                                                  'terlambat')
+                                                  'terlambat') {
                                                 noteColor = Colors.red;
-                                              if (notes.toLowerCase() ==
-                                                  'cuti/izin')
-                                                noteColor =
-                                                    Colors.orange.shade800;
+                                              } else if (notes.toLowerCase() ==
+                                                  'cuti/izin') {
+                                                noteColor = Colors
+                                                    .green; // Warna Hijau untuk Cuti/Izin
+                                              }
 
                                               return DataRow(
                                                 cells: [
@@ -886,8 +933,11 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                     Text(
                                                       aktifitas,
                                                       style: TextStyle(
-                                                        color:
-                                                            Colors.green[700],
+                                                        color: aktifitas ==
+                                                                'Bekerja'
+                                                            ? Colors.green[700]
+                                                            : Colors
+                                                                .orange[800],
                                                         fontWeight:
                                                             FontWeight.w600,
                                                       ),

@@ -2,6 +2,7 @@ import 'package:web/web.dart' as web;
 import 'dart:js_interop';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart'; // Ditambahkan untuk PointerDeviceKind
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
@@ -41,6 +42,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
   // Map untuk menyimpan data cuti/izin yang sudah disetujui per karyawan
   final Map<int, List<Map<String, DateTime>>> _approvedLeaves = {};
 
+  // Controllers untuk scroll
+  final ScrollController _horizontalScroll = ScrollController();
+  final ScrollController _verticalScroll = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +57,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
   @override
   void dispose() {
     _employeeSearchCtrl.dispose();
+    _horizontalScroll.dispose();
+    _verticalScroll.dispose();
     super.dispose();
   }
 
@@ -249,9 +256,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
               : '-';
 
           String lateStr = '-';
-          // Batas jam masuk normal 08:30 (atau sesuaikan, telat jika di atas 09:30 sesuai permintaan)
+          // Batas jam masuk keterlambatan diubah menjadi 08:45
           DateTime limitTime = DateTime(
-              checkInDt.year, checkInDt.month, checkInDt.day, 8, 30, 0);
+              checkInDt.year, checkInDt.month, checkInDt.day, 8, 45, 0);
+
           if (checkInDt.isAfter(limitTime)) {
             Duration diff = checkInDt.difference(limitTime);
             int hours = diff.inHours;
@@ -269,11 +277,17 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           if (isLeave) {
             notes = 'Cuti/Izin';
           } else {
-            // Cek jika check-in di atas jam 09:30
-            if (checkInDt.hour > 9 ||
-                (checkInDt.hour == 9 && checkInDt.minute > 30)) {
+            // Jika masuk setelah jam 08:45, notes = Terlambat
+            if (checkInDt.isAfter(limitTime)) {
               notes = 'Terlambat';
             }
+          }
+
+          // Cek apakah check-in & check-out komplit
+          if (checkOutDt != null) {
+            aktifitas = 'Bekerja';
+          } else {
+            aktifitas = 'Belum Checkout';
           }
 
           String coordinate =
@@ -401,6 +415,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
       final pdfData = rows.map((row) {
         if (row['aktifitas'] == 'Bekerja' ||
+            row['aktifitas'] == 'Belum Checkout' ||
             (row['check_in'] != '-' && row['check_in'] != null)) {
           totalHariKerja++;
         }
@@ -579,6 +594,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
       for (var row in rows) {
         if (row['aktifitas'] == 'Bekerja' ||
+            row['aktifitas'] == 'Belum Checkout' ||
             (row['check_in'] != '-' && row['check_in'] != null)) {
           totalHariKerja++;
         }
@@ -851,50 +867,115 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                       ? const Center(
                           child: Text('Tidak ada data kehadiran.',
                               style: TextStyle(fontSize: 12)))
-                      : SingleChildScrollView(
-                          scrollDirection: Axis.vertical,
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: DataTable(
-                              headingRowColor:
-                                  WidgetStateProperty.all(Colors.blue[50]),
-                              headingTextStyle: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue,
+                      : LayoutBuilder(
+                          builder: (context, constraints) {
+                            return ScrollConfiguration(
+                              behavior:
+                                  ScrollConfiguration.of(context).copyWith(
+                                dragDevices: {
+                                  PointerDeviceKind.touch,
+                                  PointerDeviceKind.mouse,
+                                  PointerDeviceKind.trackpad,
+                                },
                               ),
-                              dataTextStyle: TextStyle(fontSize: 12),
-                              columns: const [
-                                DataColumn(label: Text('Nama Karyawan')),
-                                DataColumn(label: Text('Hari | Tanggal')),
-                                DataColumn(label: Text('Jam Kerja')),
-                                DataColumn(label: Text('Jam Check-in')),
-                                DataColumn(label: Text('Jam Check-out')),
-                                DataColumn(label: Text('Kordinat')),
-                                DataColumn(label: Text('Nama Lokasi')),
-                                DataColumn(label: Text('Terlambat')),
-                                DataColumn(label: Text('Aktifitas')),
-                                DataColumn(label: Text('Notes')),
-                              ],
-                              rows: _flatAttendanceData.map((row) {
-                                return DataRow(
-                                  cells: [
-                                    DataCell(Text(row['employee_name'] ?? '-')),
-                                    DataCell(
-                                        Text('${row['day']} | ${row['date']}')),
-                                    DataCell(Text(row['work_hours'] ?? '-')),
-                                    DataCell(Text(row['check_in'] ?? '-')),
-                                    DataCell(Text(row['check_out'] ?? '-')),
-                                    DataCell(Text(row['coordinate'] ?? '-')),
-                                    DataCell(Text(row['location'] ?? '-')),
-                                    DataCell(Text(row['late'] ?? '-')),
-                                    DataCell(Text(row['aktifitas'] ?? '-')),
-                                    DataCell(Text(row['notes'] ?? '-')),
-                                  ],
-                                );
-                              }).toList(),
-                            ),
-                          ),
+                              child: Scrollbar(
+                                controller: _horizontalScroll,
+                                thumbVisibility: true,
+                                trackVisibility: true,
+                                child: SingleChildScrollView(
+                                  controller: _horizontalScroll,
+                                  scrollDirection: Axis.horizontal,
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      minWidth: constraints.maxWidth,
+                                    ),
+                                    child: Scrollbar(
+                                      controller: _verticalScroll,
+                                      thumbVisibility: true,
+                                      child: SingleChildScrollView(
+                                        controller: _verticalScroll,
+                                        scrollDirection: Axis.vertical,
+                                        child: DataTable(
+                                          headingRowColor:
+                                              WidgetStateProperty.all(
+                                            Colors.blue[50],
+                                          ),
+                                          headingTextStyle: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blue,
+                                          ),
+                                          dataTextStyle:
+                                              TextStyle(fontSize: 12),
+                                          columns: const [
+                                            DataColumn(
+                                                label: Text('Nama Karyawan')),
+                                            DataColumn(
+                                                label: Text('Hari | Tanggal')),
+                                            DataColumn(
+                                                label: Text('Jam Kerja')),
+                                            DataColumn(
+                                                label: Text('Jam Check-in')),
+                                            DataColumn(
+                                                label: Text('Jam Check-out')),
+                                            DataColumn(label: Text('Kordinat')),
+                                            DataColumn(
+                                                label: Text('Nama Lokasi')),
+                                            DataColumn(
+                                                label: Text('Terlambat')),
+                                            DataColumn(
+                                                label: Text('Aktifitas')),
+                                            DataColumn(label: Text('Notes')),
+                                          ],
+                                          rows: _flatAttendanceData.map((row) {
+                                            return DataRow(
+                                              cells: [
+                                                DataCell(Text(
+                                                    row['employee_name'] ??
+                                                        '-')),
+                                                DataCell(Text(
+                                                    '${row['day']} | ${row['date']}')),
+                                                DataCell(Text(
+                                                    row['work_hours'] ?? '-')),
+                                                DataCell(Text(
+                                                    row['check_in'] ?? '-')),
+                                                DataCell(Text(
+                                                    row['check_out'] ?? '-')),
+                                                DataCell(Text(
+                                                    row['coordinate'] ?? '-')),
+                                                DataCell(Text(
+                                                    row['location'] ?? '-')),
+                                                DataCell(
+                                                    Text(row['late'] ?? '-')),
+                                                DataCell(Text(
+                                                    row['aktifitas'] ?? '-')),
+                                                DataCell(
+                                                  Text(
+                                                    row['notes'] ?? '-',
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: row['notes'] ==
+                                                              'Cuti/Izin'
+                                                          ? Colors.green
+                                                          : (row['notes'] ==
+                                                                  'Terlambat'
+                                                              ? Colors.red
+                                                              : Colors.black87),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            );
+                                          }).toList(),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
             ),
           ),
