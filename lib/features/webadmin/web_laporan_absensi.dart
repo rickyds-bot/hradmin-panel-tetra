@@ -33,7 +33,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     'jabatan_name': '-'
   };
 
-  // State untuk Filter Divisi / Departemen (menyimpan ID atau 'all')
+  // State untuk Filter Divisi / Departemen
   String _selectedDepartmentId = 'all';
 
   DateTime _startDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
@@ -70,16 +70,13 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
   Future<void> _fetchMasterData() async {
     setState(() => _isLoading = true);
     try {
-      // 1. Ambil data karyawan
       final empData = await Supabase.instance.client
           .from('employees')
           .select()
           .order('full_name', ascending: true);
 
-      // 2. Ambil data lokasi
       final locData = await Supabase.instance.client.from('locations').select();
 
-      // 3. Ambil data dari tabel departments
       final deptData = await Supabase.instance.client
           .from('departments')
           .select()
@@ -186,6 +183,19 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     return 'Luar Area Kantor';
   }
 
+  String _getDepartmentName(dynamic deptId) {
+    if (deptId == null) return '-';
+    try {
+      final dept = _departmentsList.firstWhere(
+        (d) => d['id'].toString() == deptId.toString(),
+        orElse: () => {},
+      );
+      return dept['name'] ?? '-';
+    } catch (_) {
+      return '-';
+    }
+  }
+
   void _processAttendanceData(List<dynamic> rawData) {
     Map<String, Map<String, List<dynamic>>> empDatePunches = {};
 
@@ -210,7 +220,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
     List<Map<String, dynamic>> targetEmployees = [];
     if (_selectedEmployee['id'] == 'all') {
-      // Filter berdasarkan department_id yang dipilih dari tabel departments
       targetEmployees = _employees.where((emp) {
         if (_selectedDepartmentId == 'all') return true;
         final empDeptId = emp['department_id']?.toString();
@@ -226,6 +235,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       final empName = emp['full_name'] ?? 'Karyawan';
       final empNik = emp['nik']?.toString() ?? '-';
       final empJabatan = emp['jabatan_name'] ?? '-';
+      final empDeptName = _getDepartmentName(emp['department_id']);
 
       List<Map<String, dynamic>> empRows = [];
       DateTime curr = _startDate;
@@ -298,13 +308,11 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           if (isLeave) {
             notes = 'Cuti/Izin';
           } else {
-            // Jika masuk setelah jam 08:45, notes = Terlambat
             if (checkInDt.isAfter(limitTime)) {
               notes = 'Terlambat';
             }
           }
 
-          // Cek apakah check-in & check-out komplit
           if (checkOutDt != null) {
             aktifitas = 'Bekerja';
           } else {
@@ -322,6 +330,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'employee_name': empName,
             'nik': empNik,
             'jabatan': empJabatan,
+            'department': empDeptName,
             'day': dayName,
             'date': dateFormatted,
             'work_hours': '08:30-17:30',
@@ -346,6 +355,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'employee_name': empName,
             'nik': empNik,
             'jabatan': empJabatan,
+            'department': empDeptName,
             'day': dayName,
             'date': dateFormatted,
             'work_hours': '08:30-17:30',
@@ -430,6 +440,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       final empName = firstRow['employee_name'];
       final empNik = firstRow['nik'];
       final empJabatan = firstRow['jabatan'];
+      final empDept = firstRow['department'] ?? '-';
 
       int totalHariKerja = 0;
       int totalDetikTerlambat = 0;
@@ -495,6 +506,9 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                           style: pw.TextStyle(fontSize: 10)),
                       pw.Text('Jabatan: $empJabatan',
                           style: pw.TextStyle(fontSize: 10)),
+                      pw.Text('Divisi: $empDept',
+                          style: pw.TextStyle(
+                              fontSize: 10, fontWeight: pw.FontWeight.bold)),
                     ],
                   ),
                   pw.Column(
@@ -588,7 +602,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       sheetObject.appendRow([
         TextCellValue('Nama: $empName'),
         TextCellValue('NIK: ${firstRow['nik']}'),
-        TextCellValue('Jabatan: ${firstRow['jabatan']}')
+        TextCellValue('Jabatan: ${firstRow['jabatan']}'),
+        TextCellValue('Divisi: ${firstRow['department'] ?? '-'}')
       ]);
       sheetObject.appendRow([
         TextCellValue(
@@ -768,7 +783,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                         allOptions.addAll(_employees);
 
                         return allOptions.where((emp) {
-                          // Filter berdasarkan departemen yang sedang dipilih
                           if (_selectedDepartmentId != 'all' &&
                               emp['id'] != 'all') {
                             final empDeptId = emp['department_id']?.toString();
@@ -821,7 +835,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                     ),
                   ),
 
-                  // Filter Berdasarkan Tabel Departments
+                  // Filter Departemen / Divisi
                   SizedBox(
                     width: 220,
                     child: DropdownButtonFormField<String>(
@@ -829,7 +843,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                       items: [
                         const DropdownMenuItem(
                           value: 'all',
-                          child: Text('Semua Departemen',
+                          child: Text('Semua Divisi',
                               style: TextStyle(fontSize: 12)),
                         ),
                         ..._departmentsList.map((dept) {
@@ -847,7 +861,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                         if (val != null) {
                           setState(() {
                             _selectedDepartmentId = val;
-                            // Reset pilihan karyawan ke 'Semua' ketika ganti departemen
                             _selectedEmployee = {
                               'id': 'all',
                               'full_name': 'Semua Karyawan',
@@ -860,7 +873,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                         }
                       },
                       decoration: InputDecoration(
-                        labelText: 'Departemen / Divisi',
+                        labelText: 'Divisi',
                         labelStyle: const TextStyle(fontSize: 12),
                         isDense: true,
                         prefixIcon: const Icon(Icons.business, size: 18),
