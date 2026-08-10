@@ -2,7 +2,7 @@ import 'package:web/web.dart' as web;
 import 'dart:js_interop';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart'; // Ditambahkan untuk PointerDeviceKind
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
@@ -24,12 +24,17 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
   bool _isLoading = false;
   List<Map<String, dynamic>> _employees = [];
   List<Map<String, dynamic>> _locations = [];
+  List<Map<String, dynamic>> _departmentsList = [];
+
   Map<String, dynamic> _selectedEmployee = {
     'id': 'all',
     'full_name': 'Semua Karyawan',
     'nik': 'ALL',
     'jabatan_name': '-'
   };
+
+  // State untuk Filter Divisi / Departemen (menyimpan ID atau 'all')
+  String _selectedDepartmentId = 'all';
 
   DateTime _startDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _endDate = DateTime.now();
@@ -65,16 +70,26 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
   Future<void> _fetchMasterData() async {
     setState(() => _isLoading = true);
     try {
+      // 1. Ambil data karyawan
       final empData = await Supabase.instance.client
           .from('employees')
           .select()
           .order('full_name', ascending: true);
 
+      // 2. Ambil data lokasi
       final locData = await Supabase.instance.client.from('locations').select();
+
+      // 3. Ambil data dari tabel departments
+      final deptData = await Supabase.instance.client
+          .from('departments')
+          .select()
+          .order('name', ascending: true);
 
       setState(() {
         _employees = List<Map<String, dynamic>>.from(empData);
         _locations = List<Map<String, dynamic>>.from(locData);
+        _departmentsList = List<Map<String, dynamic>>.from(deptData);
+        _selectedDepartmentId = 'all';
         _employeeSearchCtrl.text = _selectedEmployee['full_name'];
       });
 
@@ -195,7 +210,12 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
     List<Map<String, dynamic>> targetEmployees = [];
     if (_selectedEmployee['id'] == 'all') {
-      targetEmployees = _employees;
+      // Filter berdasarkan department_id yang dipilih dari tabel departments
+      targetEmployees = _employees.where((emp) {
+        if (_selectedDepartmentId == 'all') return true;
+        final empDeptId = emp['department_id']?.toString();
+        return empDeptId == _selectedDepartmentId;
+      }).toList();
     } else {
       targetEmployees = [_selectedEmployee];
     }
@@ -256,7 +276,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
               : '-';
 
           String lateStr = '-';
-          // Batas jam masuk keterlambatan diubah menjadi 08:45
+
+          // Batas jam masuk keterlambatan di 08:45
           DateTime limitTime = DateTime(
               checkInDt.year, checkInDt.month, checkInDt.day, 8, 45, 0);
 
@@ -356,7 +377,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content: Text(msg, style: TextStyle(fontSize: 12)),
+          content: Text(msg, style: const TextStyle(fontSize: 12)),
           backgroundColor: color),
     );
   }
@@ -691,7 +712,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                         ? null
                         : _exportAttendanceExcel,
                     icon: const Icon(Icons.table_view, size: 16),
-                    label: Text('Export Excel', style: TextStyle(fontSize: 12)),
+                    label: const Text('Export Excel',
+                        style: TextStyle(fontSize: 12)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green[700],
                       foregroundColor: Colors.white,
@@ -703,7 +725,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                         ? null
                         : _exportAttendancePdf,
                     icon: const Icon(Icons.picture_as_pdf, size: 16),
-                    label: Text('Export PDF', style: TextStyle(fontSize: 12)),
+                    label: const Text('Export PDF',
+                        style: TextStyle(fontSize: 12)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red[700],
                       foregroundColor: Colors.white,
@@ -729,6 +752,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                 runSpacing: 16,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
+                  // Filter Karyawan
                   SizedBox(
                     width: 260,
                     child: Autocomplete<Map<String, dynamic>>(
@@ -743,10 +767,15 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                         ];
                         allOptions.addAll(_employees);
 
-                        if (textEditingValue.text == '') {
-                          return allOptions;
-                        }
                         return allOptions.where((emp) {
+                          // Filter berdasarkan departemen yang sedang dipilih
+                          if (_selectedDepartmentId != 'all' &&
+                              emp['id'] != 'all') {
+                            final empDeptId = emp['department_id']?.toString();
+                            if (empDeptId != _selectedDepartmentId)
+                              return false;
+                          }
+
                           final name =
                               (emp['full_name'] ?? '').toString().toLowerCase();
                           final nik =
@@ -777,10 +806,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                         return TextField(
                           controller: controller,
                           focusNode: focusNode,
-                          style: TextStyle(fontSize: 12),
+                          style: const TextStyle(fontSize: 12),
                           decoration: InputDecoration(
                             labelText: 'Cari & Pilih Karyawan',
-                            labelStyle: TextStyle(fontSize: 12),
+                            labelStyle: const TextStyle(fontSize: 12),
                             isDense: true,
                             prefixIcon:
                                 const Icon(Icons.person_search, size: 18),
@@ -791,6 +820,56 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                       },
                     ),
                   ),
+
+                  // Filter Berdasarkan Tabel Departments
+                  SizedBox(
+                    width: 220,
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedDepartmentId,
+                      items: [
+                        const DropdownMenuItem(
+                          value: 'all',
+                          child: Text('Semua Departemen',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                        ..._departmentsList.map((dept) {
+                          return DropdownMenuItem(
+                            value: dept['id'].toString(),
+                            child: Text(
+                              dept['name']?.toString() ?? '-',
+                              style: const TextStyle(fontSize: 12),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() {
+                            _selectedDepartmentId = val;
+                            // Reset pilihan karyawan ke 'Semua' ketika ganti departemen
+                            _selectedEmployee = {
+                              'id': 'all',
+                              'full_name': 'Semua Karyawan',
+                              'nik': 'ALL',
+                              'jabatan_name': '-'
+                            };
+                            _employeeSearchCtrl.text = 'Semua Karyawan';
+                          });
+                          _fetchAttendance();
+                        }
+                      },
+                      decoration: InputDecoration(
+                        labelText: 'Departemen / Divisi',
+                        labelStyle: const TextStyle(fontSize: 12),
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.business, size: 18),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ),
+
                   SizedBox(
                     width: 180,
                     child: InkWell(
@@ -798,7 +877,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                       child: InputDecorator(
                         decoration: InputDecoration(
                           labelText: 'Tanggal Mulai',
-                          labelStyle: TextStyle(fontSize: 12),
+                          labelStyle: const TextStyle(fontSize: 12),
                           isDense: true,
                           prefixIcon:
                               const Icon(Icons.calendar_today, size: 16),
@@ -807,7 +886,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                         ),
                         child: Text(
                           DateFormat('dd-MM-yyyy').format(_startDate),
-                          style: TextStyle(fontSize: 12),
+                          style: const TextStyle(fontSize: 12),
                         ),
                       ),
                     ),
@@ -819,7 +898,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                       child: InputDecorator(
                         decoration: InputDecoration(
                           labelText: 'Tanggal Selesai',
-                          labelStyle: TextStyle(fontSize: 12),
+                          labelStyle: const TextStyle(fontSize: 12),
                           isDense: true,
                           prefixIcon:
                               const Icon(Icons.calendar_today, size: 16),
@@ -828,7 +907,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                         ),
                         child: Text(
                           DateFormat('dd-MM-yyyy').format(_endDate),
-                          style: TextStyle(fontSize: 12),
+                          style: const TextStyle(fontSize: 12),
                         ),
                       ),
                     ),
@@ -843,7 +922,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8)),
                     ),
-                    child: Text('Tampilkan',
+                    child: const Text('Tampilkan',
                         style: TextStyle(
                             fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
@@ -900,13 +979,13 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                                               WidgetStateProperty.all(
                                             Colors.blue[50],
                                           ),
-                                          headingTextStyle: TextStyle(
+                                          headingTextStyle: const TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.bold,
                                             color: Colors.blue,
                                           ),
                                           dataTextStyle:
-                                              TextStyle(fontSize: 12),
+                                              const TextStyle(fontSize: 12),
                                           columns: const [
                                             DataColumn(
                                                 label: Text('Nama Karyawan')),
