@@ -750,12 +750,12 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                           .toLowerCase()
                                                           .contains('masuk');
 
-                                                  // Keterlambatan jika > 09:15
+                                                  // Keterlambatan jika > 08:45
                                                   if (isCheckIn) {
-                                                    if (attDate.hour > 9 ||
-                                                        (attDate.hour == 9 &&
+                                                    if (attDate.hour > 8 ||
+                                                        (attDate.hour == 8 &&
                                                             attDate.minute >
-                                                                15)) {
+                                                                45)) {
                                                       notes = 'Terlambat';
                                                     }
                                                   }
