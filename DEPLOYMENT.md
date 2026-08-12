@@ -28,12 +28,10 @@ Dokumen ini mencatat langkah-langkah go-live untuk mobile app dan web admin dash
 flutter build web --target=lib/main_web.dart --release --no-wasm-dry-run
 
 ```
-
-> Isi/ konfirmasi langkah deploy sesuai setup yang dipakai:
-> - Kalau **Cloudflare Pages**: deploy via `wrangler pages deploy build/web` atau lewat integrasi Git (auto-deploy tiap push ke branch tertentu)
-> - Kalau **Cloudflare Worker** (misal untuk serve static assets/edge logic): isi konfigurasi `wrangler.toml` dan perintah `wrangler deploy`
-> - Nama project/domain Cloudflare yang dipakai
-> - Apakah ada environment terpisah (staging vs production)
+> - Integrasi GITHUB
+> - https://hradmin-panel-tetra.prodigalx.workers.dev/  **Cloudflare Worker** 
+> - https://hradmin.tetra.co.id
+>
 
 ## 3. Build & Rilis Mobile App
 
