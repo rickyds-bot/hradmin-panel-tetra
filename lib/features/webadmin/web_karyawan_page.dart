@@ -1150,7 +1150,7 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
   final _contractNumberCtrl = TextEditingController();
 
   String _selectedRole = 'Staff';
-  final List<String> _roleOptions = ['Staff', 'Supervisor', 'Manager'];
+  final List<String> _roleOptions = ['Staff', 'Supervisor', 'Manager', 'Admin'];
 
   String _selectedGender = 'Laki-laki';
   final List<String> _genderOptions = ['Laki-laki', 'Perempuan'];
@@ -1188,6 +1188,7 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
 
   int _mapRoleToPositionId(String role) {
     switch (role.toLowerCase()) {
+      case 'admin':
       case 'manager':
         return 1;
       case 'supervisor':
@@ -1654,7 +1655,7 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
   late TextEditingController _contractNumberCtrl;
 
   late String _selectedRole;
-  final List<String> _roleOptions = ['Staff', 'Supervisor', 'Manager'];
+  final List<String> _roleOptions = ['Staff', 'Supervisor', 'Manager', 'Admin'];
 
   late String _selectedGender;
   final List<String> _genderOptions = ['Laki-laki', 'Perempuan'];
@@ -1780,6 +1781,7 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
 
   int _mapRoleToPositionId(String role) {
     switch (role.toLowerCase()) {
+      case 'admin':
       case 'manager':
         return 1;
       case 'supervisor':
