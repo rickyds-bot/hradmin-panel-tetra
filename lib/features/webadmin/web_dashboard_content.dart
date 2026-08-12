@@ -30,12 +30,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   Future<void> _fetchDashboardStats() async {
     setState(() => _isLoading = true);
     try {
-      // 1. Ambil data karyawan (untuk total, jenis kelamin, dan status kerja)
+      // 1. Ambil data karyawan (tambahkan 'role' di select)
       final karyawanRes = await Supabase.instance.client
           .from('employees')
-          .select('id, gender, employee_status');
-
-      _totalKaryawan = karyawanRes.length;
+          .select('id, gender, employee_status, role');
 
       int l = 0;
       int p = 0;
@@ -43,7 +41,17 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       int kontrak = 0;
       int magang = 0;
 
+      // List untuk menampung ID karyawan selain Admin
+      List<dynamic> nonAdminIds = [];
+
       for (var emp in karyawanRes) {
+        // Abaikan perhitungan jika role adalah Admin
+        final role = (emp['role'] ?? '').toString().trim().toLowerCase();
+        if (role == 'admin') continue;
+
+        // Simpan ID non-admin untuk filter tabel lain
+        nonAdminIds.add(emp['id']);
+
         // Hitung Gender
         final gender = (emp['gender'] ?? '').toString().trim().toLowerCase();
         if (gender == 'l' || gender == 'laki-laki' || gender == 'male') {
@@ -66,37 +74,49 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         }
       }
 
+      _totalKaryawan = nonAdminIds.length;
       _totalLakiLaki = l;
       _totalPerempuan = p;
       _totalTetap = tetap;
       _totalKontrak = kontrak;
       _totalMagang = magang;
 
-      // 2. Absen Hari Ini (Check-In)
       final todayStr = DateTime.now().toIso8601String().split('T')[0];
+
+      // 2. Absen Hari Ini (Check-In)
       final absensiRes = await Supabase.instance.client
           .from('attendance')
-          .select()
+          .select('employee_id')
           .gte('created_at', '$todayStr 00:00:00');
 
-      Set uniqueHadir = absensiRes.map((e) => e['employee_id']).toSet();
+      // Filter: Hanya hitung ID yang ada di dalam nonAdminIds
+      Set uniqueHadir = absensiRes
+          .map((e) => e['employee_id'])
+          .where((id) => nonAdminIds.contains(id))
+          .toSet();
       _totalHadirHariIni = uniqueHadir.length;
 
       // 3. Cuti Hari Ini
       final cutiRes = await Supabase.instance.client
           .from('leave_requests')
-          .select()
+          .select('employee_id')
           .eq('status', 'approved')
           .lte('start_date', todayStr)
           .gte('end_date', todayStr);
-      _totalCutiHariIni = cutiRes.length;
+
+      // Filter Cuti
+      _totalCutiHariIni =
+          cutiRes.where((e) => nonAdminIds.contains(e['employee_id'])).length;
 
       // 4. Lembur Pending
       final lemburRes = await Supabase.instance.client
           .from('overtime_requests')
-          .select('id')
+          .select('employee_id')
           .eq('status', 'pending');
-      _totalPendingLembur = lemburRes.length;
+
+      // Filter Lembur
+      _totalPendingLembur =
+          lemburRes.where((e) => nonAdminIds.contains(e['employee_id'])).length;
     } catch (e) {
       debugPrint('Error fetching dashboard stats: $e');
     } finally {
