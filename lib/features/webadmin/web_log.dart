@@ -207,7 +207,7 @@ class _WebLogPageState extends State<WebLogPage> {
               Row(
                 children: [
                   Text(
-                    'Log Aktivitas Karyawan',
+                    'Log Aktifitas Karyawan',
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -478,12 +478,12 @@ class _WebLogPageState extends State<WebLogPage> {
                                           columns: const [
                                             DataColumn(label: Text('No')),
                                             DataColumn(
-                                                label: Text('Waktu Aktivitas')),
+                                                label: Text('Waktu Aktifitas')),
                                             DataColumn(
                                                 label: Text('Nama Karyawan')),
                                             DataColumn(
                                                 label: Text(
-                                                    'Aktivitas / Keterangan')),
+                                                    'Aktifitas / Keterangan')),
                                             DataColumn(
                                                 label: Text('Modul / Menu')),
                                           ],

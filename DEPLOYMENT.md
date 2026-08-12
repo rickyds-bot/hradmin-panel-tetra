@@ -19,7 +19,7 @@ Dokumen ini mencatat langkah-langkah go-live untuk mobile app dan web admin dash
 - [ ] Export PDF laporan lembur dari aplikasi mobile sudah diuji (termasuk di device dengan storage terbatas/permission penyimpanan)
 - [ ] Data dummy/testing sudah dibersihkan dari database production
 - [ ] Akun admin pertama sudah dibuat di Supabase Auth
-- [ ] Sudah diuji di device Android & iOS asli (bukan hanya emulator)
+- [ ] Sudah diuji di device Android & iOS (Menyusul)
 - [ ] Web admin dashboard sudah diuji di browser desktop utama (Chrome/Edge)
 
 ## 2. Deploy Web Admin Dashboard (Cloudflare Pages/Worker)
