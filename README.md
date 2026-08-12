@@ -60,6 +60,7 @@ flutter build apk --flavor admin -t lib/main_admin.dart --release --split-per-ab
 Untuk target web (admin dashboard):
 ```bash
 flutter run -d chrome -t lib/main_web.dart
+flutter build web --target=lib/main_web.dart --release --no-wasm-dry-run
 
 ```
 
