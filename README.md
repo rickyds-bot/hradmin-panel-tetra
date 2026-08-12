@@ -22,9 +22,9 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
   - Set titik/radius lokasi absen
   - Bisa mengaktifkan mode **"absen bebas lokasi"** (tanpa validasi GPS) per kebutuhan
 - Form **profil karyawan**: data diri, data keluarga, dan kontak darurat
-- Riwayat absensi karyawan
+- Riwayat absensi, cuti/izin & lembur karyawan
 - Pengajuan cuti/izin dan lembur oleh karyawan
-- Approval pengajuan cuti/izin/lembur oleh atasan, berjenjang per **divisi/departemen**
+- Approval pengajuan cuti/izin/lembur oleh atasan (admin, supervisor & manager), berjenjang per **divisi/departemen**
 - Notifikasi:
   - Check-in/check-out absen → **local notification**
   - Pengajuan & status approval cuti/izin/lembur → **push notification (FCM)**
@@ -34,7 +34,7 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
 - Dashboard admin: monitoring absensi seluruh karyawan
 - Manajemen data karyawan (tambah/edit/hapus)
 - Log Aktifitas Karyawan 
-- Form Pemberitahun/Pengumuman
+- Form Notifikasi Pemberitahun/Pengumuman
 
 ## Struktur Project
 
