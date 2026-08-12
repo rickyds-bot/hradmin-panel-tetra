@@ -4,8 +4,6 @@ Semua perubahan penting pada aplikasi ini dicatat di file ini.
 
 ## [1.0.0] - 2026-08-06
 
-> Ganti tanggal di atas dengan tanggal go-live sebenarnya.
-
 Rilis pertama.
 
 ### Fitur
