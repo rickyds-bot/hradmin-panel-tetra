@@ -2,7 +2,7 @@
 
 Semua perubahan penting pada aplikasi ini dicatat di file ini.
 
-## [1.0.0] - 2026-08-11
+## [1.0.0] - 2026-08-06
 
 > Ganti tanggal di atas dengan tanggal go-live sebenarnya.
 
@@ -33,6 +33,7 @@ Rilis pertama.
 **Admin Dashboard**
 - Monitoring absensi seluruh karyawan
 - Manajemen data karyawan (tambah/edit/hapus)
+- Penambahan role admin 
 
 ### Platform
 

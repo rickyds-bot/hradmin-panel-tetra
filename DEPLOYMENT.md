@@ -25,7 +25,8 @@ Dokumen ini mencatat langkah-langkah go-live untuk mobile app dan web admin dash
 ## 2. Deploy Web Admin Dashboard (Cloudflare Pages/Worker)
 
 ```bash
-flutter build web
+flutter build web --target=lib/main_web.dart --release --no-wasm-dry-run
+
 ```
 
 > Isi/ konfirmasi langkah deploy sesuai setup yang dipakai:
@@ -40,25 +41,25 @@ Repo menggunakan Codemagic (`codemagic.yaml`) untuk CI/CD. Alur umum:
 
 1. Push ke branch yang di-trigger Codemagic (isi nama branch, misal `main` atau `release`)
 2. Codemagic menjalankan build otomatis sesuai konfigurasi
-3. Hasil build (APK/IPA) didistribusikan ke: _(isi — Play Store internal testing, Firebase App Distribution, TestFlight, atau distribusi manual)_
+3. Hasil build (APK/IPA) didistribusikan ke: internal manual (APK)
 
 ### Android — Distribusi Internal
-- [ ] Metode distribusi: _(isi — APK langsung ke karyawan / Play Store Internal Testing track / Firebase App Distribution)_
+- [ ] Metode distribusi: APK langsung ke karyawan 
 - [ ] Versi & build number di `pubspec.yaml` sudah dinaikkan
 - [ ] Signing key sudah disiapkan (keystore untuk build release, bukan debug key)
-- [ ] Cara update aplikasi ke karyawan sudah ditentukan (misal: link download internal, atau update otomatis lewat Play Store internal track)
+- [ ] Cara update aplikasi ke karyawan sudah ditentukan : distribusi file APK & link download internal
 
 ### iOS — Menyusul
 Rilis pertama fokus Android saja. Untuk iOS, siapkan lebih awal supaya tidak jadi blocker nanti:
 - [ ] Apple Developer Program account sudah aktif
 - [ ] Konfigurasi permission `Info.plist` untuk lokasi (GPS) dan kamera (face detection) sudah disiapkan
-- [ ] Target awal distribusi iOS: _(isi — TestFlight internal dulu, atau langsung App Store)_
+- [ ] Target awal distribusi iOS: TestFlight internal dulu
 
 ## 4. Rollback Plan
 
 > Isi: kalau ada masalah kritis setelah live, apa langkah rollback-nya?
 - Web: rollback deployment lewat dashboard Cloudflare Pages (pilih deployment sebelumnya → "Rollback"), atau redeploy versi lama lewat `wrangler` kalau pakai Worker
-- Mobile: _(isi — misal tahan rilis versi baru, gunakan versi sebelumnya di store)_
+- Mobile: rilis versi baru
 
 ## 5. Setelah Live
 

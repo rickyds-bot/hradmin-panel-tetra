@@ -9,6 +9,7 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
 - **Nama internal**: `mobile_absensi`
 - **Platform**:
   - Mobile app karyawan — Flutter (Android/iOS)
+  - Mobile app admin - Flutter (Android)
   - Web admin dashboard — Flutter Web, di-hosting via **Cloudflare Pages/Worker**
 - **Backend**: Supabase (Auth, Database, Storage, RLS)
 - **CI/CD mobile**: Codemagic (`codemagic.yaml`)
@@ -45,18 +46,20 @@ codemagic.yaml  # konfigurasi CI/CD build mobile
 # konfigurasi Cloudflare Pages/Worker untuk hosting web admin — sesuaikan nama file (mis. wrangler.toml) dengan yang ada di repo
 ```
 
-> Catatan: jika `lib/` memisahkan app karyawan dan admin dashboard dalam satu codebase (misal via flavor/target), jelaskan pemisahannya di sini.
 
 ## Menjalankan Secara Lokal
 
 ```bash
 flutter pub get
-flutter run
+flutter build apk --flavor karyawan -t lib/main_karyawan.dart --release --split-per-abi
+flutter build apk --flavor admin -t lib/main_admin.dart --release --split-per-abi
+
 ```
 
 Untuk target web (admin dashboard):
 ```bash
-flutter run -d chrome
+flutter run -d chrome -t lib/main_web.dart
+
 ```
 
 ## Konfigurasi Supabase
@@ -75,4 +78,4 @@ Lokasi penyimpanan config: _(isi — misal `.env`, `--dart-define`, atau Codemag
 
 ## Kontak / PIC
 
-- _(isi nama/kontak yang bertanggung jawab maintain aplikasi ini)_
+- Ricky D. Surya (ricky@tetra.co.id)
