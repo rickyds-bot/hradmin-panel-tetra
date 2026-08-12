@@ -64,12 +64,11 @@ flutter run -d chrome -t lib/main_web.dart
 
 ## Konfigurasi Supabase
 
-Project ini membutuhkan environment/konfigurasi berikut (isi sesuai kondisi nyata, jangan simpan nilai rahasia di file ini):
+Project ini membutuhkan environment/konfigurasi berikut :
 
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 
-Lokasi penyimpanan config: _(isi — misal `.env`, `--dart-define`, atau Codemagic environment variables)_
 
 ## Dokumentasi Terkait
 
