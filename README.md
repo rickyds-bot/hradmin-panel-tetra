@@ -33,7 +33,8 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
   - Karyawan bisa export **PDF laporan lembur** langsung dari aplikasi mobile
 - Dashboard admin: monitoring absensi seluruh karyawan
 - Manajemen data karyawan (tambah/edit/hapus)
-- _(tambahkan fitur lain yang relevan, misal shift kerja)_
+- Log Aktifitas Karyawan 
+- Form Pemberitahun/Pengumuman
 
 ## Struktur Project
 
@@ -43,7 +44,7 @@ supabase/       # konfigurasi & migration database Supabase
 web/            # build target web (admin dashboard)
 android/ ios/   # konfigurasi platform mobile
 codemagic.yaml  # konfigurasi CI/CD build mobile
-# konfigurasi Cloudflare Pages/Worker untuk hosting web admin — sesuaikan nama file (mis. wrangler.toml) dengan yang ada di repo
+
 ```
 
 
@@ -73,7 +74,7 @@ Project ini membutuhkan environment/konfigurasi berikut :
 ## Dokumentasi Terkait
 
 - [`DEPLOYMENT.md`](./DEPLOYMENT.md) — panduan build & go-live
-- [`CHANGELOG.md`](./CHANGELOG.md) — catatan rilis (buat file ini mulai rilis pertama)
+- [`CHANGELOG.md`](./CHANGELOG.md) 
 
 ## Kontak / PIC
 
