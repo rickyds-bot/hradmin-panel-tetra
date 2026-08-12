@@ -8,9 +8,9 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
 
 - **Nama internal**: `mobile_absensi`
 - **Platform**:
-  - Mobile app karyawan — Flutter (Android/iOS)
+  - Mobile app karyawan - Flutter (Android/iOS)
   - Mobile app admin - Flutter (Android)
-  - Web admin dashboard — Flutter Web, di-hosting via **Cloudflare Pages/Worker**
+  - Web admin dashboard - Flutter Web, di-hosting via **Cloudflare Pages/Worker**
 - **Backend**: Supabase (Auth, Database, Storage, RLS)
 - **CI/CD mobile**: Codemagic (`codemagic.yaml`)
 - **Repo**: [rickyds-bot/hradmin-panel-tetra](https://github.com/rickyds-bot/hradmin-panel-tetra)
