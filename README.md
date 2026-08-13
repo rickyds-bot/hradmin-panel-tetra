@@ -35,6 +35,7 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
 - Manajemen data karyawan (tambah/edit/hapus)
 - Log Aktifitas Karyawan 
 - Form Notifikasi Pemberitahun/Pengumuman
+- Sinkron kalendar hari libut & tgl merah ID
 
 ## Struktur Project
 

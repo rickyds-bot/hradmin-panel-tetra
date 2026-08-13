@@ -32,6 +32,7 @@ Rilis pertama.
 - Monitoring absensi seluruh karyawan
 - Manajemen data karyawan (tambah/edit/hapus)
 - Penambahan role admin 
+- Sinkron Kalendar ID
 
 ### Platform
 
