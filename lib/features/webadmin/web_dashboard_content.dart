@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:table_calendar/table_calendar.dart';
 
 class WebDashboardContent extends StatefulWidget {
   const WebDashboardContent({super.key});
@@ -11,6 +14,8 @@ class WebDashboardContent extends StatefulWidget {
 
 class _WebDashboardContentState extends State<WebDashboardContent> {
   bool _isLoading = true;
+
+  // Statistik Utama
   int _totalKaryawan = 0;
   int _totalLakiLaki = 0;
   int _totalPerempuan = 0;
@@ -21,38 +26,58 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   int _totalCutiHariIni = 0;
   int _totalPendingLembur = 0;
 
+  // Data Grafik
+  List<BarChartGroupData> _attendanceChartData = [];
+  List<String> _chartLabels = [];
+  double _maxYChart = 10;
+
+  // Data Kalender & Hari Libur
+  DateTime _focusedDay = DateTime.now();
+  DateTime? _selectedDay;
+  final Map<String, String> _holidaysMap = {};
+
   @override
   void initState() {
     super.initState();
-    _fetchDashboardStats();
+    _selectedDay = _focusedDay;
+    _fetchDashboardData();
   }
 
-  Future<void> _fetchDashboardStats() async {
+  Future<void> _fetchDashboardData() async {
     setState(() => _isLoading = true);
     try {
-      // 1. Ambil data karyawan (tambahkan 'role' di select)
+      // 1. Ambil data hari libur dari Supabase (tabel hari_libur)
+      final holidaysRes = await Supabase.instance.client
+          .from('hari_libur')
+          .select('holiday_date, description');
+
+      _holidaysMap.clear();
+      for (var h in holidaysRes) {
+        if (h['holiday_date'] != null) {
+          // Konversi nilai date dari Supabase menjadi string 'yyyy-MM-dd' dengan aman
+          String rawDate = h['holiday_date'].toString();
+          String dateKey = rawDate.contains('T')
+              ? rawDate.split('T')[0]
+              : rawDate.substring(0, 10);
+
+          _holidaysMap[dateKey] = h['description'] ?? 'Libur Nasional';
+        }
+      }
+
+      // 2. Ambil data karyawan (Filter non-admin)
       final karyawanRes = await Supabase.instance.client
           .from('employees')
           .select('id, gender, employee_status, role');
 
-      int l = 0;
-      int p = 0;
-      int tetap = 0;
-      int kontrak = 0;
-      int magang = 0;
-
-      // List untuk menampung ID karyawan selain Admin
+      int l = 0, p = 0, tetap = 0, kontrak = 0, magang = 0;
       List<dynamic> nonAdminIds = [];
 
       for (var emp in karyawanRes) {
-        // Abaikan perhitungan jika role adalah Admin
         final role = (emp['role'] ?? '').toString().trim().toLowerCase();
         if (role == 'admin') continue;
 
-        // Simpan ID non-admin untuk filter tabel lain
         nonAdminIds.add(emp['id']);
 
-        // Hitung Gender
         final gender = (emp['gender'] ?? '').toString().trim().toLowerCase();
         if (gender == 'l' || gender == 'laki-laki' || gender == 'male') {
           l++;
@@ -62,7 +87,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           p++;
         }
 
-        // Hitung Status Kerja (Tetap, Kontrak, Magang)
         final empStatus =
             (emp['employee_status'] ?? '').toString().trim().toLowerCase();
         if (empStatus == 'tetap') {
@@ -83,20 +107,19 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       final todayStr = DateTime.now().toIso8601String().split('T')[0];
 
-      // 2. Absen Hari Ini (Check-In)
+      // 3. Absen Hari Ini (Check-In)
       final absensiRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id')
           .gte('created_at', '$todayStr 00:00:00');
 
-      // Filter: Hanya hitung ID yang ada di dalam nonAdminIds
       Set uniqueHadir = absensiRes
           .map((e) => e['employee_id'])
           .where((id) => nonAdminIds.contains(id))
           .toSet();
       _totalHadirHariIni = uniqueHadir.length;
 
-      // 3. Cuti Hari Ini
+      // 4. Cuti Hari Ini
       final cutiRes = await Supabase.instance.client
           .from('leave_requests')
           .select('employee_id')
@@ -104,24 +127,103 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           .lte('start_date', todayStr)
           .gte('end_date', todayStr);
 
-      // Filter Cuti
       _totalCutiHariIni =
           cutiRes.where((e) => nonAdminIds.contains(e['employee_id'])).length;
 
-      // 4. Lembur Pending
+      // 5. Lembur Pending
       final lemburRes = await Supabase.instance.client
           .from('overtime_requests')
           .select('employee_id')
           .eq('status', 'pending');
 
-      // Filter Lembur
       _totalPendingLembur =
           lemburRes.where((e) => nonAdminIds.contains(e['employee_id'])).length;
+
+      // 6. Data Grafik Kehadiran 7 Hari Terakhir
+      await _fetchChartData(nonAdminIds);
     } catch (e) {
       debugPrint('Error fetching dashboard stats: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _fetchChartData(List<dynamic> validIds) async {
+    final last7Days = DateTime.now().subtract(const Duration(days: 6));
+    final last7DaysStr = DateFormat('yyyy-MM-dd').format(last7Days);
+
+    final weeklyRes = await Supabase.instance.client
+        .from('attendance')
+        .select('employee_id, created_at')
+        .gte('created_at', '$last7DaysStr 00:00:00');
+
+    Map<String, Set<dynamic>> dailyHadir = {};
+    for (int i = 0; i < 7; i++) {
+      final d = last7Days.add(Duration(days: i));
+      dailyHadir[DateFormat('yyyy-MM-dd').format(d)] = {};
+    }
+
+    for (var row in weeklyRes) {
+      final empId = row['employee_id'];
+      if (!validIds.contains(empId)) continue;
+
+      final createdAt = row['created_at'];
+      if (createdAt != null) {
+        final dateStr = createdAt.toString().split('T')[0];
+        if (dailyHadir.containsKey(dateStr)) {
+          dailyHadir[dateStr]!.add(empId);
+        }
+      }
+    }
+
+    List<BarChartGroupData> tempChartData = [];
+    List<String> tempLabels = [];
+    double maxVal = 0;
+    int index = 0;
+
+    dailyHadir.forEach((dateStr, empSet) {
+      final count = empSet.length.toDouble();
+      if (count > maxVal) maxVal = count;
+
+      final dateObj = DateTime.parse(dateStr);
+      tempLabels.add(DateFormat('dd MMM').format(dateObj));
+
+      tempChartData.add(
+        BarChartGroupData(
+          x: index,
+          barRods: [
+            BarChartRodData(
+              toY: count,
+              color: Colors.blue[600]!,
+              width: 18,
+              borderRadius: BorderRadius.circular(4),
+              backDrawRodData: BackgroundBarChartRodData(
+                show: true,
+                toY: _totalKaryawan.toDouble() > 0
+                    ? _totalKaryawan.toDouble()
+                    : 10,
+                color: Colors.blue[50],
+              ),
+            ),
+          ],
+        ),
+      );
+      index++;
+    });
+
+    _attendanceChartData = tempChartData;
+    _chartLabels = tempLabels;
+    _maxYChart = maxVal < 10 ? 10 : (_totalKaryawan.toDouble() + 5);
+  }
+
+  bool _isPublicHoliday(DateTime day) {
+    String dateKey = DateFormat('yyyy-MM-dd').format(day);
+    return _holidaysMap.containsKey(dateKey);
+  }
+
+  String? _getHolidayDescription(DateTime day) {
+    String dateKey = DateFormat('yyyy-MM-dd').format(day);
+    return _holidaysMap[dateKey];
   }
 
   @override
@@ -132,21 +234,43 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: [
-                Text(
-                  'Dashboard Overview',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF1E293B),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Ringkasan data operasional HR Tetra.',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Dashboard Overview',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF1E293B),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Ringkasan data operasional HR Tetra.',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: _fetchDashboardData,
+                      tooltip: 'Refresh Data',
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(color: Colors.grey[200]!),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 24),
 
@@ -166,93 +290,324 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                       runSpacing: 12,
                       children: [
                         _buildStatCard(
-                          'Total Karyawan',
-                          _totalKaryawan.toString(),
-                          'L: $_totalLakiLaki | P: $_totalPerempuan',
-                          Icons.people_outline,
-                          Colors.blue,
-                          width,
-                        ),
+                            'Total Karyawan',
+                            _totalKaryawan.toString(),
+                            'L: $_totalLakiLaki | P: $_totalPerempuan',
+                            Icons.people_outline,
+                            Colors.blue,
+                            width),
                         _buildStatCard(
-                          'Karyawan Tetap',
-                          _totalTetap.toString(),
-                          'Status: Tetap',
-                          Icons.verified_user_outlined,
-                          Colors.indigo,
-                          width,
-                        ),
+                            'Karyawan Tetap',
+                            _totalTetap.toString(),
+                            'Status: Tetap',
+                            Icons.verified_user_outlined,
+                            Colors.indigo,
+                            width),
                         _buildStatCard(
-                          'Karyawan Kontrak',
-                          _totalKontrak.toString(),
-                          'Status: Kontrak',
-                          Icons.assignment_ind_outlined,
-                          Colors.teal,
-                          width,
-                        ),
+                            'Karyawan Kontrak',
+                            _totalKontrak.toString(),
+                            'Status: Kontrak',
+                            Icons.assignment_ind_outlined,
+                            Colors.teal,
+                            width),
                         _buildStatCard(
-                          'Karyawan Magang',
-                          _totalMagang.toString(),
-                          'Status: Magang',
-                          Icons.school_outlined,
-                          Colors.brown,
-                          width,
-                        ),
+                            'Karyawan Magang',
+                            _totalMagang.toString(),
+                            'Status: Magang',
+                            Icons.school_outlined,
+                            Colors.brown,
+                            width),
                         _buildStatCard(
-                          'Hadir Hari Ini',
-                          _totalHadirHariIni.toString(),
-                          'Tercatat masuk sistem',
-                          Icons.how_to_reg_outlined,
-                          Colors.green,
-                          width,
-                        ),
+                            'Hadir Hari Ini',
+                            _totalHadirHariIni.toString(),
+                            'Tercatat masuk sistem',
+                            Icons.how_to_reg_outlined,
+                            Colors.green,
+                            width),
                         _buildStatCard(
-                          'Cuti / Izin Aktif',
-                          _totalCutiHariIni.toString(),
-                          'Disetujui hari ini',
-                          Icons.event_busy_outlined,
-                          Colors.orange,
-                          width,
-                        ),
+                            'Cuti / Izin Aktif',
+                            _totalCutiHariIni.toString(),
+                            'Disetujui hari ini',
+                            Icons.event_busy_outlined,
+                            Colors.orange,
+                            width),
                         _buildStatCard(
-                          'Lembur Pending',
-                          _totalPendingLembur.toString(),
-                          'Menunggu approval',
-                          Icons.timer_outlined,
-                          Colors.purple,
-                          width,
+                            'Lembur Pending',
+                            _totalPendingLembur.toString(),
+                            'Menunggu approval',
+                            Icons.timer_outlined,
+                            Colors.purple,
+                            width),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
+
+                // Baris Grafik dan Kalender
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    bool isWide = constraints.maxWidth > 900;
+                    return Flex(
+                      direction: isWide ? Axis.horizontal : Axis.vertical,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Bagian Grafik
+                        Expanded(
+                          flex: isWide ? 2 : 0,
+                          child: Container(
+                            width: isWide ? null : constraints.maxWidth,
+                            height: 400,
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey[200]!),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Grafik Kehadiran (7 Hari Terakhir)',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 13,
+                                    //fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                                Expanded(child: _buildAttendanceChart()),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (isWide) const SizedBox(width: 16),
+                        if (!isWide) const SizedBox(height: 16),
+
+                        // Bagian Kalender
+                        Expanded(
+                          flex: isWide ? 1 : 0,
+                          child: Container(
+                            width: isWide ? null : constraints.maxWidth,
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey[200]!),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildCalendar(),
+                                if (_selectedDay != null &&
+                                    _getHolidayDescription(_selectedDay!) !=
+                                        null)
+                                  Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red[50],
+                                        borderRadius: BorderRadius.circular(8),
+                                        border:
+                                            Border.all(color: Colors.red[200]!),
+                                      ),
+                                      child: Text(
+                                        'Libur: ${_getHolidayDescription(_selectedDay!)}',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.red[800],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     );
                   },
                 ),
-                const SizedBox(height: 32),
-
-                // Bagian Informasi Tambahan
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey[200]!),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.refresh, size: 18),
-                            onPressed: _fetchDashboardStats,
-                            tooltip: 'Refresh Statistik',
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+                const SizedBox(height: 40),
               ],
             ),
+    );
+  }
+
+  // Komponen Grafik (fl_chart) dengan Font Konsisten
+  Widget _buildAttendanceChart() {
+    return BarChart(
+      BarChartData(
+        alignment: BarChartAlignment.spaceAround,
+        maxY: _maxYChart,
+        barTouchData: BarTouchData(
+          enabled: true,
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipColor: (group) => Colors.blueGrey[800]!,
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              return BarTooltipItem(
+                '${_chartLabels[group.x.toInt()]}\n',
+                GoogleFonts.plusJakartaSans(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+                children: <TextSpan>[
+                  TextSpan(
+                    text: '${rod.toY.toInt()} Hadir',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.amber,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+        titlesData: FlTitlesData(
+          show: true,
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (double value, TitleMeta meta) {
+                final int index = value.toInt();
+                if (index >= 0 && index < _chartLabels.length) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text(
+                      _chartLabels[index],
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 10,
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  );
+                }
+                return const SizedBox();
+              },
+              reservedSize: 28,
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 40,
+              // TAMBAHKAN BARIS INI:
+              // Jika max > 20, tampilkan per kelipatan 10. Jika max kecil, tampilkan per kelipatan 2.
+              interval: _maxYChart > 20 ? 10 : 2,
+
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  value.toInt().toString(),
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 10,
+                    color: Colors.black54,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.left,
+                );
+              },
+            ),
+          ),
+          topTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        ),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          getDrawingHorizontalLine: (value) => FlLine(
+            color: Colors.grey[200],
+            strokeWidth: 1,
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        barGroups: _attendanceChartData,
+      ),
+    );
+  }
+
+  // Komponen Kalender (table_calendar) dengan Sinkronisasi Hari Libur & Font Konsisten
+  Widget _buildCalendar() {
+    return TableCalendar(
+      firstDay: DateTime.utc(2020, 1, 1),
+      lastDay: DateTime.utc(2030, 12, 31),
+      focusedDay: _focusedDay,
+      rowHeight: 40, // Mengurangi tinggi baris agar kalender lebih kecil
+      selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+      onDaySelected: (selectedDay, focusedDay) {
+        setState(() {
+          _selectedDay = selectedDay;
+          _focusedDay = focusedDay;
+        });
+      },
+      calendarFormat: CalendarFormat.month,
+      headerStyle: HeaderStyle(
+        formatButtonVisible: false,
+        titleCentered: true,
+        titleTextStyle: GoogleFonts.plusJakartaSans(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: Colors.black87,
+        ),
+      ),
+      calendarStyle: CalendarStyle(
+        todayDecoration: BoxDecoration(
+          color: Colors.orange[300],
+          shape: BoxShape.circle,
+        ),
+        selectedDecoration: const BoxDecoration(
+          color: Colors.blue,
+          shape: BoxShape.circle,
+        ),
+        defaultTextStyle: GoogleFonts.plusJakartaSans(fontSize: 12),
+        weekendTextStyle: GoogleFonts.plusJakartaSans(
+          fontSize: 12,
+          color: Colors.red,
+          fontWeight: FontWeight.w600,
+        ),
+        outsideTextStyle: GoogleFonts.plusJakartaSans(
+          fontSize: 12,
+          color: Colors.grey[400],
+        ),
+      ),
+      daysOfWeekStyle: DaysOfWeekStyle(
+        weekdayStyle: GoogleFonts.plusJakartaSans(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Colors.black87,
+        ),
+        weekendStyle: GoogleFonts.plusJakartaSans(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Colors.red,
+        ),
+      ),
+      calendarBuilders: CalendarBuilders(
+        // Beri warna merah pada tanggal yang terdaftar di tabel hari_libur
+        defaultBuilder: (context, day, focusedDay) {
+          if (_isPublicHoliday(day)) {
+            return Center(
+              child: Text(
+                '${day.day}',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                ),
+              ),
+            );
+          }
+          return null;
+        },
+      ),
     );
   }
 

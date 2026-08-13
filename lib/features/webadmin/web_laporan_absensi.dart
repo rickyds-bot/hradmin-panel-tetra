@@ -33,7 +33,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     'jabatan_name': '-'
   };
 
-  // State untuk Filter Divisi / Departemen
   String _selectedDepartmentId = 'all';
 
   DateTime _startDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
@@ -44,10 +43,9 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
   Map<String, List<Map<String, dynamic>>> _groupedAttendanceData = {};
   List<Map<String, dynamic>> _flatAttendanceData = [];
 
-  // Map untuk menyimpan data cuti/izin yang sudah disetujui per karyawan
   final Map<int, List<Map<String, DateTime>>> _approvedLeaves = {};
+  final Map<String, String> _holidaysMap = {};
 
-  // Controllers untuk scroll
   final ScrollController _horizontalScroll = ScrollController();
   final ScrollController _verticalScroll = ScrollController();
 
@@ -108,7 +106,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           DateTime(_endDate.year, _endDate.month, _endDate.day, 23, 59, 59)
               .toUtc();
 
-      // Ambil data cuti/izin yang approved untuk pengecekan notes
       final leaveResponse = await Supabase.instance.client
           .from('leave_requests')
           .select('employee_id, start_date, end_date')
@@ -125,6 +122,26 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                 .putIfAbsent(eId, () => [])
                 .add({'start': s, 'end': e});
           } catch (_) {}
+        }
+      }
+
+      // 2. Ambil data hari libur nasional / cuti bersama dari tabel hari_libur
+      final holidaysResponse = await Supabase.instance.client
+          .from('hari_libur')
+          .select('holiday_date, description')
+          .gte('holiday_date', DateFormat('yyyy-MM-dd').format(_startDate))
+          .lte('holiday_date', DateFormat('yyyy-MM-dd').format(_endDate));
+
+      _holidaysMap.clear();
+      for (var h in holidaysResponse) {
+        if (h['holiday_date'] != null) {
+          // Konversi nilai date dari Supabase menjadi string 'yyyy-MM-dd' dengan aman
+          String rawDate = h['holiday_date'].toString();
+          String dateKey = rawDate.contains('T')
+              ? rawDate.split('T')[0]
+              : rawDate.substring(0, 10);
+
+          _holidaysMap[dateKey] = h['description'] ?? 'Libur Nasional';
         }
       }
 
@@ -247,7 +264,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         bool isWeekend = curr.weekday == DateTime.saturday ||
             curr.weekday == DateTime.sunday;
 
-        // Cek status Cuti/Izin pada tanggal ini
+        bool isPublicHoliday = _holidaysMap.containsKey(dateKey);
+        String publicHolidayName =
+            isPublicHoliday ? _holidaysMap[dateKey]! : '-';
+
         bool isLeave = false;
         if (empIdInt != null && _approvedLeaves.containsKey(empIdInt)) {
           DateTime dateOnly = DateTime(curr.year, curr.month, curr.day);
@@ -286,8 +306,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
               : '-';
 
           String lateStr = '-';
-
-          // Batas jam masuk keterlambatan di 08:45
           DateTime limitTime = DateTime(
               checkInDt.year, checkInDt.month, checkInDt.day, 8, 45, 0);
 
@@ -307,6 +325,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
           if (isLeave) {
             notes = 'Cuti/Izin';
+          } else if (isPublicHoliday) {
+            notes = 'Masuk di Hari Libur ($publicHolidayName)';
           } else {
             if (checkInDt.isAfter(limitTime)) {
               notes = 'Terlambat';
@@ -346,8 +366,17 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           flat.add(row);
         } else {
           String notes = '-';
+          String aktifitas = 'Alpa';
+
           if (isLeave) {
             notes = 'Cuti/Izin';
+            aktifitas = 'Cuti/Izin';
+          } else if (isPublicHoliday) {
+            notes = publicHolidayName;
+            aktifitas = 'Libur';
+          } else if (isWeekend) {
+            notes = 'Libur Akhir Pekan';
+            aktifitas = 'Libur';
           }
 
           var row = {
@@ -364,7 +393,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'coordinate': '-',
             'location': '-',
             'late': '-',
-            'aktifitas': isWeekend ? 'Libur' : (isLeave ? 'Cuti/Izin' : 'Alpa'),
+            'aktifitas': aktifitas,
             'notes': notes,
           };
           empRows.add(row);
@@ -430,7 +459,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       'Kordinat',
       'Nama Lokasi',
       'Terlambat',
-      'Aktifitas',
+      'Aktivitas',
       'Notes'
     ];
 
@@ -620,7 +649,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         'Kordinat',
         'Nama Lokasi',
         'Terlambat',
-        'Aktifitas',
+        'Aktivitas',
         'Notes'
       ];
       sheetObject.appendRow(headers.map((e) => TextCellValue(e)).toList());
@@ -752,8 +781,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             ],
           ),
           const SizedBox(height: 16),
-
-          // --- FILTER CONTROLS ---
           Card(
             elevation: 0,
             shape: RoundedRectangleBorder(
@@ -767,7 +794,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                 runSpacing: 16,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  // Filter Karyawan
                   SizedBox(
                     width: 260,
                     child: Autocomplete<Map<String, dynamic>>(
@@ -834,8 +860,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                       },
                     ),
                   ),
-
-                  // Filter Departemen / Divisi
                   SizedBox(
                     width: 220,
                     child: DropdownButtonFormField<String>(
@@ -882,7 +906,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                       ),
                     ),
                   ),
-
                   SizedBox(
                     width: 180,
                     child: InkWell(
@@ -944,8 +967,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             ),
           ),
           const SizedBox(height: 16),
-
-          // --- TABLE PREVIEW ---
           Expanded(
             child: Card(
               elevation: 0,
@@ -1016,7 +1037,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                                             DataColumn(
                                                 label: Text('Terlambat')),
                                             DataColumn(
-                                                label: Text('Aktifitas')),
+                                                label: Text('Aktivitas')),
                                             DataColumn(label: Text('Notes')),
                                           ],
                                           rows: _flatAttendanceData.map((row) {
@@ -1051,7 +1072,9 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                                                               'Cuti/Izin'
                                                           ? Colors.green
                                                           : (row['notes'] ==
-                                                                  'Terlambat'
+                                                                      'Terlambat' ||
+                                                                  row['aktifitas'] ==
+                                                                      'Libur'
                                                               ? Colors.red
                                                               : Colors.black87),
                                                     ),

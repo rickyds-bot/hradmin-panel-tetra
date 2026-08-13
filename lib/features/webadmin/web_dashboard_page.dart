@@ -38,7 +38,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
     'Pengajuan Lembur', // 4
     'Pengaturan Lokasi', // 5
     'Pemberitahuan', // 6
-    'Log Aktifitas Karyawan', // 7
+    'Log Aktivitas Karyawan', // 7
     'Laporan Karyawan', // 8
     'Laporan Absensi', // 9
     'Laporan Cuti', // 10
@@ -230,7 +230,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                       _buildNavItem(
                         7,
                         Icons.receipt_long_outlined,
-                        'Log Aktifitas',
+                        'Log Aktivitas',
                       ),
                     ],
                   ),

@@ -20,6 +20,9 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
   // Map untuk menyimpan data cuti/izin karyawan yang di-approve
   final Map<int, List<Map<String, DateTime>>> _approvedLeaves = {};
 
+  // Map untuk menyimpan data hari libur nasional
+  final Map<String, String> _holidaysMap = {};
+
   final TextEditingController _searchNameCtrl = TextEditingController();
   DateTime? _selectedDateFilter;
 
@@ -80,6 +83,19 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                 .putIfAbsent(eId, () => [])
                 .add({'start': s, 'end': e});
           } catch (_) {}
+        }
+      }
+
+      // 3.5 Ambil data hari libur nasional dari Supabase
+      final holidaysResponse = await Supabase.instance.client
+          .from('hari_libur')
+          .select('holiday_date, description');
+
+      _holidaysMap.clear();
+      for (var h in holidaysResponse) {
+        if (h['holiday_date'] != null) {
+          _holidaysMap[h['holiday_date'].toString()] =
+              h['description'] ?? 'Libur Nasional';
         }
       }
 
@@ -740,8 +756,23 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                   }
                                                 }
 
+                                                // --- Cek Hari Libur ---
+                                                String dateKey =
+                                                    DateFormat('yyyy-MM-dd')
+                                                        .format(attDate);
+                                                bool isPublicHoliday =
+                                                    _holidaysMap
+                                                        .containsKey(dateKey);
+                                                String publicHolidayName =
+                                                    isPublicHoliday
+                                                        ? _holidaysMap[dateKey]!
+                                                        : '-';
+
                                                 if (isLeave) {
                                                   notes = 'Cuti/Izin';
+                                                } else if (isPublicHoliday) {
+                                                  notes =
+                                                      'Masuk di Hari Libur ($publicHolidayName)';
                                                 } else {
                                                   bool isCheckIn = rawStatus
                                                           .toLowerCase()
@@ -750,7 +781,6 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                           .toLowerCase()
                                                           .contains('masuk');
 
-                                                  // Keterlambatan jika > 08:45
                                                   if (isCheckIn) {
                                                     if (attDate.hour > 8 ||
                                                         (attDate.hour == 8 &&
@@ -759,72 +789,64 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                       notes = 'Terlambat';
                                                     }
                                                   }
+                                                }
 
-                                                  // Cek apakah komplit in & out pada hari yang sama
-                                                  bool hasCheckIn = false;
-                                                  bool hasCheckOut = false;
-                                                  DateTime dateOnly = DateTime(
-                                                      attDate.year,
-                                                      attDate.month,
-                                                      attDate.day);
-                                                  for (var a in _absensiList) {
-                                                    if (a['employee_id'] ==
-                                                            empId &&
-                                                        a['created_at'] !=
-                                                            null) {
-                                                      DateTime d =
-                                                          DateTime.parse(a[
-                                                                  'created_at'])
-                                                              .toLocal();
-                                                      if (d.year ==
-                                                              dateOnly.year &&
-                                                          d.month ==
-                                                              dateOnly.month &&
-                                                          d.day ==
-                                                              dateOnly.day) {
-                                                        String st =
-                                                            (a['status'] ?? '')
-                                                                .toString()
-                                                                .toLowerCase();
-                                                        if (st.contains('in') ||
-                                                            st.contains(
-                                                                'masuk'))
-                                                          hasCheckIn = true;
-                                                        if (st.contains(
-                                                                'out') ||
-                                                            st.contains(
-                                                                'pulang'))
-                                                          hasCheckOut = true;
-                                                      }
+                                                bool hasCheckIn = false;
+                                                bool hasCheckOut = false;
+                                                DateTime dateOnly = DateTime(
+                                                    attDate.year,
+                                                    attDate.month,
+                                                    attDate.day);
+                                                for (var a in _absensiList) {
+                                                  if (a['employee_id'] ==
+                                                          empId &&
+                                                      a['created_at'] != null) {
+                                                    DateTime d = DateTime.parse(
+                                                            a['created_at'])
+                                                        .toLocal();
+                                                    if (d.year ==
+                                                            dateOnly.year &&
+                                                        d.month ==
+                                                            dateOnly.month &&
+                                                        d.day == dateOnly.day) {
+                                                      String st =
+                                                          (a['status'] ?? '')
+                                                              .toString()
+                                                              .toLowerCase();
+                                                      if (st.contains('in') ||
+                                                          st.contains('masuk'))
+                                                        hasCheckIn = true;
+                                                      if (st.contains('out') ||
+                                                          st.contains('pulang'))
+                                                        hasCheckOut = true;
                                                     }
                                                   }
+                                                }
 
-                                                  if (hasCheckIn &&
-                                                      hasCheckOut) {
-                                                    aktifitas = 'Bekerja';
-                                                  } else if (hasCheckIn &&
-                                                      !hasCheckOut) {
-                                                    aktifitas =
-                                                        'Belum Checkout';
-                                                  } else {
-                                                    aktifitas =
-                                                        'Hanya Checkout';
-                                                  }
+                                                if (hasCheckIn && hasCheckOut) {
+                                                  aktifitas = 'Bekerja';
+                                                } else if (hasCheckIn &&
+                                                    !hasCheckOut) {
+                                                  aktifitas = 'Belum Checkout';
+                                                } else {
+                                                  aktifitas = 'Hanya Checkout';
                                                 }
                                               }
 
                                               if (notes.isEmpty ||
                                                   notes == 'null') notes = '-';
 
-                                              // Styling warna teks Notes
                                               Color noteColor = Colors.black87;
                                               if (notes.toLowerCase() ==
                                                   'terlambat') {
                                                 noteColor = Colors.red;
                                               } else if (notes.toLowerCase() ==
                                                   'cuti/izin') {
-                                                noteColor = Colors
-                                                    .green; // Warna Hijau untuk Cuti/Izin
+                                                noteColor = Colors.green;
+                                              } else if (notes
+                                                  .toLowerCase()
+                                                  .contains('hari libur')) {
+                                                noteColor = Colors.orange[800]!;
                                               }
 
                                               return DataRow(
