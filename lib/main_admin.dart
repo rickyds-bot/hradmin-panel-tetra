@@ -3,14 +3,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'features/auth/login_page_admin.dart';
 import 'features/admin/admin_page.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
 
   await Supabase.initialize(
-    url: 'https://srnufxhwmrvazixithku.supabase.co',
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNybnVmeGh3bXJ2YXppeGl0aGt1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2NjcyMDMsImV4cCI6MjA5NzI0MzIwM30.Dj5yinnmQbF0DUN7LapjsiUeD7yPxirkUMCPLQporpU',
+    url: dotenv.env['SUPABASE_URL']!,
+    anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
   );
 
   runApp(const MyApp());

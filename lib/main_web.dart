@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 // Sesuaikan path import ini jika berbeda
 import 'features/webadmin/web_login_page.dart';
@@ -10,12 +11,12 @@ ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
 
-  // Inisialisasi Supabase khusus web[cite: 2]
+  // Inisialisasi Supabase khusus web
   await Supabase.initialize(
-    url: 'https://srnufxhwmrvazixithku.supabase.co',
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNybnVmeGh3bXJ2YXppeGl0aGt1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2NjcyMDMsImV4cCI6MjA5NzI0MzIwM30.Dj5yinnmQbF0DUN7LapjsiUeD7yPxirkUMCPLQporpU',
+    url: dotenv.env['SUPABASE_URL']!,
+    anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
   );
 
   runApp(const WebDashboardApp());
@@ -41,19 +42,18 @@ class WebDashboardApp extends StatelessWidget {
             scaffoldBackgroundColor: const Color(0xFFF8FAFC),
             primarySwatch: Colors.blue,
             cardColor: Colors.white,
-            textTheme:
-                GoogleFonts.plusJakartaSansTextTheme(
-                  ThemeData.light().textTheme,
-                ).copyWith(
-                  bodyMedium: GoogleFonts.roboto(
-                    fontSize: 14,
-                    color: const Color(0xFF334155),
-                  ),
-                  titleLarge: GoogleFonts.roboto(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 18,
-                  ),
-                ),
+            textTheme: GoogleFonts.plusJakartaSansTextTheme(
+              ThemeData.light().textTheme,
+            ).copyWith(
+              bodyMedium: GoogleFonts.roboto(
+                fontSize: 14,
+                color: const Color(0xFF334155),
+              ),
+              titleLarge: GoogleFonts.roboto(
+                fontWeight: FontWeight.w600,
+                fontSize: 18,
+              ),
+            ),
           ),
 
           // --- Konfigurasi Tema Gelap (Dark Theme) ---
@@ -63,20 +63,19 @@ class WebDashboardApp extends StatelessWidget {
             scaffoldBackgroundColor: const Color(0xFF0F172A), // Slate 900
             primarySwatch: Colors.blue,
             cardColor: const Color(0xFF1E293B), // Slate 800
-            textTheme:
-                GoogleFonts.plusJakartaSansTextTheme(
-                  ThemeData.dark().textTheme,
-                ).copyWith(
-                  bodyMedium: GoogleFonts.roboto(
-                    fontSize: 14,
-                    color: const Color(0xFF94A3B8), // Slate 400
-                  ),
-                  titleLarge: GoogleFonts.roboto(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 18,
-                    color: Colors.white,
-                  ),
-                ),
+            textTheme: GoogleFonts.plusJakartaSansTextTheme(
+              ThemeData.dark().textTheme,
+            ).copyWith(
+              bodyMedium: GoogleFonts.roboto(
+                fontSize: 14,
+                color: const Color(0xFF94A3B8), // Slate 400
+              ),
+              titleLarge: GoogleFonts.roboto(
+                fontWeight: FontWeight.w600,
+                fontSize: 18,
+                color: Colors.white,
+              ),
+            ),
           ),
 
           home: const WebLoginPage(),

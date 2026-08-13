@@ -9,15 +9,13 @@ import 'package:firebase_core/firebase_core.dart';
 import 'features/employee/notification_services.dart';
 import 'firebase_options.dart';
 
-//import 'package:mobile_absensi/features/auth/login_page.dart';
-//import 'package:mobile_absensi/features/auth/register_page.dart';
-//import 'package:mobile_absensi/features/employee/karyawan_page.dart';
-//import 'package:mobile_absensi/features/employee/notification_services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:mobile_absensi/features/employee/face_net_service.dart';
 
 void main() async {
   // Pastikan binding ini dipanggil paling pertama
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
 
   // 2. Gunakan DefaultFirebaseOptions yang baru saja kita buat
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -26,9 +24,8 @@ void main() async {
   //tz.initializeTimeZones();
 
   await Supabase.initialize(
-    url: 'https://srnufxhwmrvazixithku.supabase.co',
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNybnVmeGh3bXJ2YXppeGl0aGt1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2NjcyMDMsImV4cCI6MjA5NzI0MzIwM30.Dj5yinnmQbF0DUN7LapjsiUeD7yPxirkUMCPLQporpU',
+    url: dotenv.env['SUPABASE_URL']!,
+    anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
   );
 
   await FaceNetService().loadModel();
