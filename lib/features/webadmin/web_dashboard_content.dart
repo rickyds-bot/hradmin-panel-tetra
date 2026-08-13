@@ -195,7 +195,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             BarChartRodData(
               toY: count,
               color: Colors.blue[600]!,
-              width: 32, // <-- NILAI DIPERBESAR AGAR BAR LEBIH GEMUK
+              width: 40, // <-- NILAI DIPERBESAR AGAR BAR LEBIH GEMUK
               borderRadius: BorderRadius.circular(6), // <-- Disesuaikan sedikit
               backDrawRodData: BackgroundBarChartRodData(
                 show: true,
