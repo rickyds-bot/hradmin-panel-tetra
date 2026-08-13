@@ -195,8 +195,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             BarChartRodData(
               toY: count,
               color: Colors.blue[600]!,
-              width: 18,
-              borderRadius: BorderRadius.circular(4),
+              width: 32, // <-- NILAI DIPERBESAR AGAR BAR LEBIH GEMUK
+              borderRadius: BorderRadius.circular(6), // <-- Disesuaikan sedikit
               backDrawRodData: BackgroundBarChartRodData(
                 show: true,
                 toY: _totalKaryawan.toDouble() > 0
@@ -371,7 +371,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                   'Grafik Kehadiran (7 Hari Terakhir)',
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 13,
-                                    //fontWeight: FontWeight.bold,
                                     color: Colors.black87,
                                   ),
                                 ),
@@ -498,10 +497,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 40,
-              // TAMBAHKAN BARIS INI:
-              // Jika max > 20, tampilkan per kelipatan 10. Jika max kecil, tampilkan per kelipatan 2.
               interval: _maxYChart > 20 ? 10 : 2,
-
               getTitlesWidget: (value, meta) {
                 return Text(
                   value.toInt().toString(),
@@ -540,7 +536,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       firstDay: DateTime.utc(2020, 1, 1),
       lastDay: DateTime.utc(2030, 12, 31),
       focusedDay: _focusedDay,
-      rowHeight: 40, // Mengurangi tinggi baris agar kalender lebih kecil
+      rowHeight: 40,
       selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
       onDaySelected: (selectedDay, focusedDay) {
         setState(() {
@@ -591,7 +587,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         ),
       ),
       calendarBuilders: CalendarBuilders(
-        // Beri warna merah pada tanggal yang terdaftar di tabel hari_libur
         defaultBuilder: (context, day, focusedDay) {
           if (_isPublicHoliday(day)) {
             return Center(
