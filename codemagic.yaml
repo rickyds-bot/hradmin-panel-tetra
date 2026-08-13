@@ -7,7 +7,14 @@ workflows:
       flutter: default
       xcode: latest
       cocoapods: default
+      groups:
+        - supabase
     scripts:
+      - name: Generate .env file
+        script: |
+          echo "SUPABASE_URL=$SUPABASE_URL" > .env
+          echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" >> .env
+
       - name: Inject Xcode Flavor Configurations
         script: |
           gem install xcodeproj
