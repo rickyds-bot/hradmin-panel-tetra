@@ -6,7 +6,7 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
 
 ## Ringkasan
 
-- **Nama internal**: `mobile_absensi`
+- **Nama internal**: `Absensi Tetra`
 - **Platform**:
   - Mobile app karyawan - Flutter (Android/iOS)
   - Mobile app admin - Flutter (Android)
