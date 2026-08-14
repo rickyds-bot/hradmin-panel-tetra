@@ -18,36 +18,37 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
 
 ## Fitur Utama
 
-- Absen masuk/pulang dengan validasi **GPS + foto selfie**, dilengkapi **face detection**
-- Absen check-in & check-out hanya bs dilakukan 1x (1 hari)
-- Form **profil karyawan**: data diri, data keluarga, dan kontak darurat
-- Riwayat absensi, cuti/izin & lembur karyawan
-- Pengajuan cuti/izin dan lembur oleh karyawan
-- Approval pengajuan cuti/izin/lembur oleh atasan (admin, supervisor & manager), berjenjang per **divisi/departemen**
-- Karyawan bisa export **PDF laporan lembur** langsung dari aplikasi mobile
+- Absen Check-in/Check-out dengan validasi **GPS + foto selfie**, dilengkapi **face detection**
+- Absen Check-in/Check-out hanya bs dilakukan 1x (1 hari)
+- Riwayat Absensi, Cuti/Izin & Lembur Karyawan
+- Pengajuan Cuti/Izin dan Lembur oleh Karyawan
+- Approval pengajuan Cuti/Izin/Lembur oleh Atasan (Admin, Supervisor & Manager), berjenjang per **Divisi/Departemen**
+- Karyawan bisa Export **PDF Laporan Lembur** langsung dari Aplikasi Mobile
+- Form **Profil Karyawan**: Data diri, Data keluarga, dan Kontak darurat
 - Notifikasi:
-  - Check-in/check-out absen → **local notification**
-  - Pengajuan & status approval cuti/izin/lembur → **push notification (FCM)**
-- Dashboard admin: monitoring absensi seluruh karyawan
-  - Manajemen data karyawan (tambah/edit/hapus)
+  - Check-in/Check-out Absen → **local notification**
+  - Pengajuan & Status Approval Cuti/Izin/Lembur → **push notification (FCM)**
+
+- Dashboard Admin: Monitoring Absensi seluruh Karyawan
+  - Manajemen Data Karyawan (Tambah/Edit/Hapus)
   - Log Aktifitas Karyawan 
-  - Form input & notifikasi Pemberitahun/Pengumuman
-  - Sinkron kalendar hari libur & tgl merah ID
-  - Konfigurasi lokasi absensi dilakukan lewat **web admin**:
-  - Set titik/radius lokasi absen
-  - Bisa mengaktifkan mode **"absen bebas lokasi"** (tanpa validasi GPS) per kebutuhan
+  - Form Input & Notifikasi Pemberitahun/Pengumuman
+  - Sinkron Kalendar hari Libur & Tgl Merah IDN
+  - Konfigurasi Lokasi Absensi dilakukan lewat **Admin Dashboard**:
+  - Set Titik/Radius Lokasi Absen
+  - Bisa mengaktifkan mode **"Absen Bebas Lokasi"** (tanpa validasi GPS) per kebutuhan
 - Laporan & export:
-  - Laporan absensi, cuti/izin, dan lembur → export **XLSX & PDF** (dari admin dashboard)
+  - Laporan Absensi, Cuti/Izin, dan Lembur → Export **XLSX & PDF** (dari Admin Dashboard)
   
 
 ## Struktur Project
 
 ```
-lib/            # kode utama aplikasi Flutter (app karyawan + admin)
+lib/            # kode utama aplikasi Flutter (app Karyawan + Admin)
 supabase/       # konfigurasi & migration database Supabase
-web/            # build target web (admin dashboard)
-android/ ios/   # konfigurasi platform mobile
-codemagic.yaml  # konfigurasi CI/CD build mobile
+web/            # build target web (Admin Dashboard)
+android/ ios/   # konfigurasi Platform Mobile
+codemagic.yaml  # konfigurasi CI/CD Build Mobile
 
 ```
 
