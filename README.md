@@ -11,7 +11,7 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
   - Mobile app karyawan - Flutter (Android/iOS)
   - Mobile app admin - Flutter (Android)
   - Web admin dashboard - Flutter Web, di-hosting via **Cloudflare Pages/Worker**
-  - Firebase Console & Google Cloud Console
+  - Firebase & Google Cloud Console
 - **Backend**: Supabase (Auth, Database, Storage, RLS, Edge Function, Webhook)
 - **CI/CD mobile**: Codemagic (`codemagic.yaml`)
 - **Repo**: [rickyds-bot/hradmin-panel-tetra](https://github.com/rickyds-bot/hradmin-panel-tetra)
@@ -34,6 +34,7 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
 - Dashboard Admin: Monitoring Absensi, Cuti/Izin & Lembur seluruh Karyawan
   - Manajemen Data Karyawan (Tambah/Edit/Aktif & Non-Aktif)
   - Approval Cuti/Izin & Lembur
+  - Update saldo Cuti
   - Form Input & Notifikasi Pemberitahun/Pengumuman
   - Sinkron Kalendar Hari Libur/Tgl Merah IDN
   - Konfigurasi Lokasi Absensi dilakukan lewat **Admin Dashboard**
@@ -59,6 +60,7 @@ codemagic.yaml  # konfigurasi CI/CD Build Mobile
 ## Menjalankan Secara Lokal
 
 ```bash
+flutter clean
 flutter pub get
 flutter build apk --flavor karyawan -t lib/main_karyawan.dart --release --split-per-abi
 flutter build apk --flavor admin -t lib/main_admin.dart --release --split-per-abi
@@ -85,6 +87,6 @@ Project ini membutuhkan environment/konfigurasi berikut :
 - [`DEPLOYMENT.md`](./DEPLOYMENT.md) — panduan build & go-live
 - [`CHANGELOG.md`](./CHANGELOG.md) 
 
-## Kontak / PIC
+## Kontak   
 
 - Ricky D. Surya (ricky@tetra.co.id)
