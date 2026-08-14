@@ -502,6 +502,38 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
   Future<void> _absen(BuildContext context, String tipe) async {
     setState(() => _isLoading = true);
     try {
+      // --- PERBAIKAN VALIDASI DOUBLE ABSEN ---
+      // 1. Menggunakan .ilike agar tidak sensitif huruf besar/kecil
+      // 2. Memvalidasi tanggal di sisi lokal (Dart) untuk menghindari bug Timezone UTC vs WIB
+      final existingAbsen = await Supabase.instance.client
+          .from('attendance')
+          .select('created_at, status')
+          .eq('employee_id', userId)
+          .ilike('status', tipe)
+          .order('created_at', ascending: false)
+          .limit(5); // Tarik 5 data terakhir saja untuk dievaluasi
+
+      final now = DateTime.now();
+      bool hasAbsenToday = false;
+
+      for (var row in existingAbsen) {
+        if (row['created_at'] != null) {
+          final createdAtLocal =
+              DateTime.parse(row['created_at'].toString()).toLocal();
+          if (createdAtLocal.year == now.year &&
+              createdAtLocal.month == now.month &&
+              createdAtLocal.day == now.day) {
+            hasAbsenToday = true;
+            break;
+          }
+        }
+      }
+
+      if (hasAbsenToday) {
+        throw 'Anda sudah melakukan ${tipe.toUpperCase()} hari ini. Absen hanya dapat dilakukan 1 kali sehari.';
+      }
+      // ----------------------------------------
+
       var cameraStatus = await Permission.camera.request();
       if (!cameraStatus.isGranted)
         throw 'Izin kamera diperlukan untuk absensi.';
