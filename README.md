@@ -23,13 +23,13 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
 - Absen Check-in/Check-out dengan validasi **GPS + Foto Selfie**, dilengkapi **Face Detection**
 - Absen Check-in/Check-out hanya bs dilakukan 1x (1 hari)
 - Riwayat Absensi, Cuti/Izin & Lembur Karyawan
-- Pengajuan Cuti/Izin dan Lembur oleh Karyawan
-- Approval pengajuan Cuti/Izin/Lembur oleh Atasan (Admin, Supervisor & Manager), berjenjang per **Divisi/Departemen**
+- Pengajuan Cuti/Izin & Lembur oleh Karyawan
+- Approval pengajuan Cuti/Izin & Lembur oleh Atasan (Admin, Supervisor & Manager), berjenjang per **Divisi/Departemen**
 - Karyawan bisa Export **PDF Laporan Lembur** langsung dari Aplikasi Mobile
 - Form **Profil Karyawan**: Data Diri, Data Keluarga, dan Kontak Darurat
 - Notifikasi:
   - Check-in/Check-out Absen → **local notification**
-  - Pengajuan & Status Approval Cuti/Izin/Lembur → **push notification (FCM)**
+  - Pengajuan & Status Approval Cuti/Izin & Lembur → **push notification (FCM)**
 
 - Dashboard Admin: Monitoring Absensi seluruh Karyawan
   - Manajemen Data Karyawan (Tambah/Edit/Aktif & Non-Aktif)
