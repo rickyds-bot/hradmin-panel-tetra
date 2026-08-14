@@ -519,7 +519,7 @@ class _DetailKaryawanDialogState extends State<_DetailKaryawanDialog> {
 }
 
 // ==========================================
-// TAB 2: AKTIVITAS (DENGAN PEMISAHAN FETCH UNTUK MENCEGAH BUG JOIN SUPABASE)
+// TAB 2: AKTIVITAS (DENGAN FILTER TANGGAL, NAMA & LIMIT 30)
 // ==========================================
 class AktivitasTab extends StatefulWidget {
   const AktivitasTab({Key? key}) : super(key: key);
@@ -529,6 +529,9 @@ class AktivitasTab extends StatefulWidget {
 
 class _AktivitasTabState extends State<AktivitasTab> {
   String _search = "";
+  DateTime? _startDate;
+  DateTime? _endDate;
+
   late Future<List<Map<String, dynamic>>> _aktivitasFuture;
   List<Map<String, dynamic>> _employeeList = [];
 
@@ -543,10 +546,22 @@ class _AktivitasTabState extends State<AktivitasTab> {
       final empResponse = await Supabase.instance.client
           .from('employees')
           .select('id, full_name');
-      final attResponse = await Supabase.instance.client
-          .from('attendance')
-          .select()
-          .order('created_at', ascending: false);
+
+      // 1. Inisialisasi query dasar tanpa order()
+      var query = Supabase.instance.client.from('attendance').select();
+
+      // 2. Masukkan filter tanggal TERLEBIH DAHULU (jika ada)
+      if (_startDate != null && _endDate != null) {
+        final startStr = DateFormat('yyyy-MM-dd').format(_startDate!);
+        final endStr = DateFormat('yyyy-MM-dd').format(_endDate!);
+        query = query
+            .gte('created_at', '${startStr}T00:00:00')
+            .lte('created_at', '${endStr}T23:59:59');
+      }
+
+      // 3. Setelah filter selesai, BARU terapkan order() dan limit()
+      final attResponse =
+          await query.order('created_at', ascending: false).limit(30);
 
       if (mounted) {
         setState(() {
@@ -579,14 +594,63 @@ class _AktivitasTabState extends State<AktivitasTab> {
       children: [
         Padding(
           padding: const EdgeInsets.all(8),
-          child: TextField(
-            decoration: const InputDecoration(
-              hintText: "Cari nama atau status...",
-              prefixIcon: Icon(Icons.search),
-              border: OutlineInputBorder(),
-              contentPadding: EdgeInsets.symmetric(vertical: 0),
-            ),
-            onChanged: (v) => setState(() => _search = v),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  decoration: const InputDecoration(
+                    hintText: "Cari nama/status...",
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(vertical: 0),
+                  ),
+                  onChanged: (v) => setState(() => _search = v),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.date_range, size: 18),
+                label: Text(
+                  _startDate == null
+                      ? "Filter Tgl"
+                      : "${DateFormat('dd/MM').format(_startDate!)} - ${DateFormat('dd/MM').format(_endDate!)}",
+                  style: const TextStyle(fontSize: 11),
+                ),
+                style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(5),
+                    )),
+                onPressed: () async {
+                  final picked = await showDateRangePicker(
+                    context: context,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2030),
+                    initialDateRange: _startDate != null
+                        ? DateTimeRange(start: _startDate!, end: _endDate!)
+                        : null,
+                  );
+                  if (picked != null) {
+                    setState(() {
+                      _startDate = picked.start;
+                      _endDate = picked.end;
+                    });
+                    _refreshData();
+                  }
+                },
+              ),
+              if (_startDate != null)
+                IconButton(
+                  icon: const Icon(Icons.clear, color: Colors.red, size: 20),
+                  onPressed: () {
+                    setState(() {
+                      _startDate = null;
+                      _endDate = null;
+                    });
+                    _refreshData();
+                  },
+                )
+            ],
           ),
         ),
         Expanded(
@@ -610,6 +674,7 @@ class _AktivitasTabState extends State<AktivitasTab> {
                   return const Center(child: Text("Tidak ada data aktivitas."));
                 }
 
+                // Filter nama/status pada sisi UI berdasarkan 30 baris yang di-fetch
                 final list = snapshot.data!.where((e) {
                   final empName = _getEmployeeName(e['employee_id']);
                   final status = e['status'] ?? '';
@@ -617,6 +682,11 @@ class _AktivitasTabState extends State<AktivitasTab> {
                   return empName.toLowerCase().contains(searchLower) ||
                       status.toString().toLowerCase().contains(searchLower);
                 }).toList();
+
+                if (list.isEmpty) {
+                  return const Center(
+                      child: Text("Data aktivitas tidak ditemukan."));
+                }
 
                 return ListView.builder(
                   itemCount: list.length,
@@ -692,7 +762,7 @@ class _AktivitasTabState extends State<AktivitasTab> {
 }
 
 // ==========================================
-// TAB 3: PENGAJUAN (DENGAN FITUR APPROVAL)
+// TAB 3: PENGAJUAN (DENGAN FITUR PENCARIAN NAMA & APPROVAL)
 // ==========================================
 class PengajuanTab extends StatelessWidget {
   const PengajuanTab({Key? key}) : super(key: key);
@@ -737,6 +807,7 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
   late Future<List<Map<String, dynamic>>> _requestFuture;
   List<Map<String, dynamic>> _employeeList = [];
   int? _adminEmployeeId;
+  String _searchName = ""; // Variabel pencarian pengajuan
 
   @override
   void initState() {
@@ -939,233 +1010,274 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: _refreshData,
-      child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _requestFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("Tidak ada data pengajuan."));
-          }
+    return Column(
+      children: [
+        // Fitur Filter Nama pada Tab Pengajuan
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: TextField(
+            decoration: const InputDecoration(
+              hintText: "Cari nama karyawan...",
+              prefixIcon: Icon(Icons.search),
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(vertical: 0),
+            ),
+            onChanged: (v) => setState(() => _searchName = v),
+          ),
+        ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _refreshData,
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _requestFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return const Center(child: Text("Tidak ada data pengajuan."));
+                }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(8),
-            itemCount: snapshot.data!.length,
-            itemBuilder: (context, i) {
-              final row = snapshot.data![i];
-              final namaKaryawan = _getEmployeeName(
-                row['employee_id'] ?? row['user_id'] ?? row['id'],
-              );
-              final rawStatus =
-                  (row['status'] ?? 'pending').toString().toLowerCase();
+                // Melakukan Filter Nama Di Sini
+                final list = snapshot.data!.where((row) {
+                  final namaKaryawan = _getEmployeeName(
+                    row['employee_id'] ?? row['user_id'] ?? row['id'],
+                  ).toLowerCase();
+                  return namaKaryawan.contains(_searchName.toLowerCase());
+                }).toList();
 
-              Color statusColor = Colors.orange;
-              String statusText = "PENDING";
-              if (rawStatus == 'approved' || rawStatus == 'disetujui') {
-                statusColor = Colors.green;
-                statusText = "APPROVED";
-              } else if (rawStatus == 'rejected' || rawStatus == 'ditolak') {
-                statusColor = Colors.red;
-                statusText = "REJECTED";
-              }
+                if (list.isEmpty) {
+                  return const Center(
+                      child: Text("Pengajuan tidak ditemukan."));
+                }
 
-              // MENAMPILKAN NAMA APPROVER
-              String approver = '';
-              if (row['approved_by'] != null) {
-                approver = _getEmployeeName(row['approved_by']);
-              }
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  itemCount: list.length,
+                  itemBuilder: (context, i) {
+                    final row = list[i];
+                    final namaKaryawan = _getEmployeeName(
+                      row['employee_id'] ?? row['user_id'] ?? row['id'],
+                    );
+                    final rawStatus =
+                        (row['status'] ?? 'pending').toString().toLowerCase();
 
-              String infoUtama = "-";
-              String keterangan = "-";
+                    Color statusColor = Colors.orange;
+                    String statusText = "PENDING";
+                    if (rawStatus == 'approved' || rawStatus == 'disetujui') {
+                      statusColor = Colors.green;
+                      statusText = "APPROVED";
+                    } else if (rawStatus == 'rejected' ||
+                        rawStatus == 'ditolak') {
+                      statusColor = Colors.red;
+                      statusText = "REJECTED";
+                    }
 
-              if (widget.tableName == 'leave_requests') {
-                infoUtama =
-                    "${row['leave_type'] ?? 'Cuti'} • ${_formatTanggalCantik(row['start_date'])} s/d ${_formatTanggalCantik(row['end_date'])}";
-                keterangan = "Alasan: ${row['reason'] ?? '-'}";
-              } else {
-                String tgl = _formatTanggalCantik(
-                  row['overtime_date'] ?? row['start_time'],
-                );
-                String jamMulai = _formatJam(row['start_time']?.toString());
-                String jamSelesai = _formatJam(row['end_time']?.toString());
-                String durasi = _hitungDurasi(
-                  row['start_time']?.toString(),
-                  row['end_time']?.toString(),
-                );
+                    // MENAMPILKAN NAMA APPROVER
+                    String approver = '';
+                    if (row['approved_by'] != null) {
+                      approver = _getEmployeeName(row['approved_by']);
+                    }
 
-                infoUtama =
-                    "Lembur • $tgl \n$jamMulai - $jamSelesai WIB $durasi";
-                keterangan =
-                    "Pekerjaan: ${row['reason'] ?? row['description'] ?? '-'}";
-              }
+                    String infoUtama = "-";
+                    String keterangan = "-";
 
-              return Card(
-                elevation: 0.5,
-                margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            namaKaryawan,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: statusColor),
-                            ),
-                            child: Text(
-                              statusText,
-                              style: TextStyle(
-                                color: statusColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 9,
-                              ),
-                            ),
-                          ),
-                        ],
+                    if (widget.tableName == 'leave_requests') {
+                      infoUtama =
+                          "${row['leave_type'] ?? 'Cuti'} • ${_formatTanggalCantik(row['start_date'])} s/d ${_formatTanggalCantik(row['end_date'])}";
+                      keterangan = "Alasan: ${row['reason'] ?? '-'}";
+                    } else {
+                      String tgl = _formatTanggalCantik(
+                        row['overtime_date'] ?? row['start_time'],
+                      );
+                      String jamMulai =
+                          _formatJam(row['start_time']?.toString());
+                      String jamSelesai =
+                          _formatJam(row['end_time']?.toString());
+                      String durasi = _hitungDurasi(
+                        row['start_time']?.toString(),
+                        row['end_time']?.toString(),
+                      );
+
+                      infoUtama =
+                          "Lembur • $tgl \n$jamMulai - $jamSelesai WIB $durasi";
+                      keterangan =
+                          "Pekerjaan: ${row['reason'] ?? row['description'] ?? '-'}";
+                    }
+
+                    return Card(
+                      elevation: 0.5,
+                      margin: const EdgeInsets.symmetric(
+                          vertical: 4, horizontal: 4),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        infoUtama,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        keterangan,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                      if (rawStatus != 'pending' &&
-                          approver.isNotEmpty &&
-                          approver != 'Karyawan') ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          "Approved by: $approver",
-                          style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.blue.shade800,
-                              fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                      if (rawStatus == 'pending') ...[
-                        const SizedBox(height: 10),
-                        Row(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () {
-                                  if (widget.tableName == 'leave_requests') {
-                                    _updateStatusCuti(
-                                      row['id'],
-                                      'rejected',
-                                      row['user_id']?.toString(),
-                                      row['start_date'],
-                                      row['end_date'],
-                                    );
-                                  } else {
-                                    _updateStatusLembur(
-                                      row['id'],
-                                      'rejected',
-                                      row['employee_id'],
-                                      double.tryParse(
-                                            row['duration_hours']?.toString() ??
-                                                '0',
-                                          ) ??
-                                          0.0,
-                                    );
-                                  }
-                                },
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                  side: const BorderSide(color: Colors.red),
-                                  minimumSize: const Size(0, 32),
-                                  padding: EdgeInsets.zero,
-                                ),
-                                child: const Text(
-                                  "Tolak",
-                                  style: TextStyle(
-                                    fontSize: 12,
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  namaKaryawan,
+                                  style: const TextStyle(
                                     fontWeight: FontWeight.bold,
+                                    fontSize: 13,
                                   ),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: () {
-                                  if (widget.tableName == 'leave_requests') {
-                                    _updateStatusCuti(
-                                      row['id'],
-                                      'approved',
-                                      row['user_id']?.toString(),
-                                      row['start_date'],
-                                      row['end_date'],
-                                    );
-                                  } else {
-                                    _updateStatusLembur(
-                                      row['id'],
-                                      'approved',
-                                      row['employee_id'],
-                                      double.tryParse(
-                                            row['duration_hours']?.toString() ??
-                                                '0',
-                                          ) ??
-                                          0.0,
-                                    );
-                                  }
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green,
-                                  foregroundColor: Colors.white,
-                                  minimumSize: const Size(0, 32),
-                                  padding: EdgeInsets.zero,
-                                ),
-                                child: const Text(
-                                  "Setujui",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: statusColor.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: statusColor),
+                                  ),
+                                  child: Text(
+                                    statusText,
+                                    style: TextStyle(
+                                      color: statusColor,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 9,
+                                    ),
                                   ),
                                 ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              infoUtama,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
+                            const SizedBox(height: 2),
+                            Text(
+                              keterangan,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                            if (rawStatus != 'pending' &&
+                                approver.isNotEmpty &&
+                                approver != 'Karyawan') ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                "Approved by: $approver",
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.blue.shade800,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                            if (rawStatus == 'pending') ...[
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: () {
+                                        if (widget.tableName ==
+                                            'leave_requests') {
+                                          _updateStatusCuti(
+                                            row['id'],
+                                            'rejected',
+                                            row['user_id']?.toString(),
+                                            row['start_date'],
+                                            row['end_date'],
+                                          );
+                                        } else {
+                                          _updateStatusLembur(
+                                            row['id'],
+                                            'rejected',
+                                            row['employee_id'],
+                                            double.tryParse(
+                                                  row['duration_hours']
+                                                          ?.toString() ??
+                                                      '0',
+                                                ) ??
+                                                0.0,
+                                          );
+                                        }
+                                      },
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: Colors.red,
+                                        side:
+                                            const BorderSide(color: Colors.red),
+                                        minimumSize: const Size(0, 32),
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                      child: const Text(
+                                        "Tolak",
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        if (widget.tableName ==
+                                            'leave_requests') {
+                                          _updateStatusCuti(
+                                            row['id'],
+                                            'approved',
+                                            row['user_id']?.toString(),
+                                            row['start_date'],
+                                            row['end_date'],
+                                          );
+                                        } else {
+                                          _updateStatusLembur(
+                                            row['id'],
+                                            'approved',
+                                            row['employee_id'],
+                                            double.tryParse(
+                                                  row['duration_hours']
+                                                          ?.toString() ??
+                                                      '0',
+                                                ) ??
+                                                0.0,
+                                          );
+                                        }
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green,
+                                        foregroundColor: Colors.white,
+                                        minimumSize: const Size(0, 32),
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                      child: const Text(
+                                        "Setujui",
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
-                      ],
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

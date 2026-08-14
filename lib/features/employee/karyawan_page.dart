@@ -187,14 +187,12 @@ class _KaryawanPageState extends State<KaryawanPage>
                       : null,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    // 1. TAMBAHKAN INI: Memaksa Column merentang ke seluruh lebar tab
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // --- GARIS GRADASI ATAS (INDICATOR ALA GOJEK) ---
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 250),
                         height: 3.5,
-                        // Margin ini sekarang akan menghitung presisi 14 pixel dari batas luar tab kiri & kanan
                         margin: const EdgeInsets.symmetric(horizontal: 0),
                         decoration: BoxDecoration(
                           gradient: isSelected
@@ -228,7 +226,6 @@ class _KaryawanPageState extends State<KaryawanPage>
                       // --- LABEL TEXT ---
                       Text(
                         item['label'],
-                        // 2. TAMBAHKAN INI: Memastikan teks tetap di posisi tengah
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 11,
@@ -502,16 +499,13 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
   Future<void> _absen(BuildContext context, String tipe) async {
     setState(() => _isLoading = true);
     try {
-      // --- PERBAIKAN VALIDASI DOUBLE ABSEN ---
-      // 1. Menggunakan .ilike agar tidak sensitif huruf besar/kecil
-      // 2. Memvalidasi tanggal di sisi lokal (Dart) untuk menghindari bug Timezone UTC vs WIB
       final existingAbsen = await Supabase.instance.client
           .from('attendance')
           .select('created_at, status')
           .eq('employee_id', userId)
           .ilike('status', tipe)
           .order('created_at', ascending: false)
-          .limit(5); // Tarik 5 data terakhir saja untuk dievaluasi
+          .limit(5);
 
       final now = DateTime.now();
       bool hasAbsenToday = false;
@@ -532,7 +526,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
       if (hasAbsenToday) {
         throw 'Anda sudah melakukan ${tipe.toUpperCase()} hari ini. Absen hanya dapat dilakukan 1 kali sehari.';
       }
-      // ----------------------------------------
 
       var cameraStatus = await Permission.camera.request();
       if (!cameraStatus.isGranted)
@@ -1245,55 +1238,8 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
         'status': 'pending',
       });
 
-      // --- LOGIKA TARGET NOTIFIKASI ATASAN BERDASARKAN HIERARKI & DIVISI ---
-      try {
-        final int deptId = widget.userData['department_id'];
-        final String senderRole =
-            (widget.userData['pos_name'] ?? '').toString().toLowerCase();
-
-        final employeesInDept = await Supabase.instance.client
-            .from('employees')
-            .select('id, position_id, fcm_token')
-            .eq('department_id', deptId);
-
-        final posData =
-            await Supabase.instance.client.from('positions').select('id, name');
-        Map<int, String> posMap = {};
-        for (var p in posData)
-          posMap[p['id']] = p['name'].toString().toLowerCase();
-
-        for (var emp in employeesInDept) {
-          if (emp['id'] == widget.userData['id'])
-            continue; // Jangan kirim ke diri sendiri
-
-          String targetRole = posMap[emp['position_id']] ?? '';
-          bool isTargetManager = targetRole.contains('manager');
-          bool isTargetSupervisor = targetRole.contains('supervisor');
-          bool isTargetAdmin = targetRole.contains('admin');
-
-          bool shouldNotify = false;
-
-          // Staff -> Supervisor & Manager
-          if (!senderRole.contains('supervisor') &&
-              !senderRole.contains('manager')) {
-            if (isTargetSupervisor || isTargetManager || isTargetAdmin) {
-              shouldNotify = true;
-            }
-          }
-          // Supervisor -> Manager
-          else if (senderRole.contains('supervisor')) {
-            if (isTargetManager || isTargetAdmin) {
-              shouldNotify = true;
-            }
-          }
-
-          if (shouldNotify && emp['fcm_token'] != null) {
-            debugPrint("Mengirim notifikasi cuti ke Atasan ID: ${emp['id']}");
-          }
-        }
-      } catch (notifErr) {
-        debugPrint("Gagal mengirim notifikasi ke atasan: $notifErr");
-      }
+      // --- LOGIKA NOTIFIKASI DIHAPUS DARI APLIKASI (FLUTTER) ---
+      // Karena telah ditangani oleh Webhook Database & Deno Edge Function
 
       await AppLogger.log(
         activity: 'Mengajukan $_selectedLeaveType ($_mode)',
@@ -1829,55 +1775,8 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
         'notes': null,
       });
 
-      // --- LOGIKA TARGET NOTIFIKASI ATASAN BERDASARKAN HIERARKI & DIVISI ---
-      try {
-        final int deptId = widget.userData['department_id'];
-        final String senderRole =
-            (widget.userData['pos_name'] ?? '').toString().toLowerCase();
-
-        final employeesInDept = await Supabase.instance.client
-            .from('employees')
-            .select('id, position_id, fcm_token')
-            .eq('department_id', deptId);
-
-        final posData =
-            await Supabase.instance.client.from('positions').select('id, name');
-        Map<int, String> posMap = {};
-        for (var p in posData)
-          posMap[p['id']] = p['name'].toString().toLowerCase();
-
-        for (var emp in employeesInDept) {
-          if (emp['id'] == widget.userData['id'])
-            continue; // Jangan kirim ke diri sendiri
-
-          String targetRole = posMap[emp['position_id']] ?? '';
-          bool isTargetManager = targetRole.contains('manager');
-          bool isTargetSupervisor = targetRole.contains('supervisor');
-          bool isTargetAdmin = targetRole.contains('admin');
-
-          bool shouldNotify = false;
-
-          // Staff -> Supervisor & Manager
-          if (!senderRole.contains('supervisor') &&
-              !senderRole.contains('manager')) {
-            if (isTargetSupervisor || isTargetManager || isTargetAdmin) {
-              shouldNotify = true;
-            }
-          }
-          // Supervisor -> Manager
-          else if (senderRole.contains('supervisor')) {
-            if (isTargetManager || isTargetAdmin) {
-              shouldNotify = true;
-            }
-          }
-
-          if (shouldNotify && emp['fcm_token'] != null) {
-            debugPrint("Mengirim notifikasi lembur ke Atasan ID: ${emp['id']}");
-          }
-        }
-      } catch (notifErr) {
-        debugPrint("Gagal mengirim notifikasi lembur ke atasan: $notifErr");
-      }
+      // --- PENGIRIMAN NOTIFIKASI KINI DITANGANI OLEH SUPABASE EDGE FUNCTION ---
+      // (Kode pencarian token dan role atasan dihilangkan dari sisi klien/Flutter)
 
       _reasonCtrl.clear();
       setState(() {
@@ -3065,7 +2964,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
   List<ChildInputData> _childrenInputs = [];
   String? _selectedReligion;
   String? _selectedEducation;
-  String? _selectedGender; // <-- VARIABEL TAMBAHAN UNTUK KELAMIN
+  String? _selectedGender;
   String _selectedStatus = 'Single';
   bool _isSaving = false;
 
@@ -3119,7 +3018,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
     _nameCtrl.text = widget.userData['full_name'] ?? '';
     _birthPlaceCtrl.text = widget.userData['birth_place'] ?? '';
     _religionCtrl_init();
-    _genderCtrl_init(); // <-- INISIALISASI KELAMIN
+    _genderCtrl_init();
 
     final edu = widget.userData['education'];
     if (['SMA/SMK', 'D3', 'S1', 'S2', 'S3'].contains(edu)) {
@@ -3188,7 +3087,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
     }
   }
 
-  // --- FUNGSI INISIALISASI KELAMIN ---
   void _genderCtrl_init() {
     final gender = widget.userData['gender'];
     if (['Laki-laki', 'Perempuan'].contains(gender)) {
@@ -3292,7 +3190,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
         'birth_date': _birthDate != null
             ? DateFormat('yyyy-MM-dd').format(_birthDate!)
             : null,
-        'gender': _selectedGender, // <-- MENYERTAKAN DATA KELAMIN KE DATABASE
+        'gender': _selectedGender,
         'religion': _selectedReligion,
         'marital_status': _selectedStatus,
         'ktp_number': _ktpCtrl.text,
@@ -3725,7 +3623,6 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                 setState(() => _birthDate = picked);
                             },
                           ),
-                          // --- DROPDOWN KELAMIN DITAMBAHKAN DI SINI ---
                           _buildDropdown(
                             "Jenis Kelamin",
                             _selectedGender,
