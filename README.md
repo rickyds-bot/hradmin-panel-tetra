@@ -30,7 +30,7 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
   - Pengajuan & Status Approval Cuti/Izin/Lembur → **push notification (FCM)**
 
 - Dashboard Admin: Monitoring Absensi seluruh Karyawan
-  - Manajemen Data Karyawan (Tambah/Edit/Hapus)
+  - Manajemen Data Karyawan (Tambah/Edit/Aktif & Non-Aktif)
   - Log Aktifitas Karyawan 
   - Form Input & Notifikasi Pemberitahun/Pengumuman
   - Sinkron Kalendar hari Libur & Tgl Merah IDN
