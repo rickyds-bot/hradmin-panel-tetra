@@ -306,10 +306,13 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
               : '-';
 
           String lateStr = '-';
-          DateTime limitTime = DateTime(
-              checkInDt.year, checkInDt.month, checkInDt.day, 8, 45, 0);
+
+          // --- BATAS TERLAMBAT DIHITUNG DARI JAM 09:00:00 ---
+          DateTime limitTime =
+              DateTime(checkInDt.year, checkInDt.month, checkInDt.day, 9, 0, 0);
 
           if (checkInDt.isAfter(limitTime)) {
+            // Hitungan telat dihitung langsung sebagai selisih dengan 09:00
             Duration diff = checkInDt.difference(limitTime);
             int hours = diff.inHours;
             int minutes = diff.inMinutes % 60;
@@ -353,7 +356,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'department': empDeptName,
             'day': dayName,
             'date': dateFormatted,
-            'work_hours': '08:30-17:30',
+            'work_hours': '09:00-18:00', // Update Work Hours jika diperlukan
             'check_in': checkInTime,
             'check_out': checkOutTime,
             'coordinate': coordinate,
@@ -387,7 +390,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'department': empDeptName,
             'day': dayName,
             'date': dateFormatted,
-            'work_hours': '08:30-17:30',
+            'work_hours': '09:00-18:00',
             'check_in': '-',
             'check_out': '-',
             'coordinate': '-',

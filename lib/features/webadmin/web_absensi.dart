@@ -771,6 +771,7 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                 if (isLeave) {
                                                   notes = 'Cuti/Izin';
                                                 } else if (isPublicHoliday) {
+                                                  // Jika absen di tanggal merah, ubah notes agar tidak dianggap terlambat biasa
                                                   notes =
                                                       'Masuk di Hari Libur ($publicHolidayName)';
                                                 } else {
@@ -781,16 +782,25 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                           .toLowerCase()
                                                           .contains('masuk');
 
+                                                  // Keterlambatan jika lewat dari jam 09:00:00
                                                   if (isCheckIn) {
-                                                    if (attDate.hour > 8 ||
-                                                        (attDate.hour == 8 &&
-                                                            attDate.minute >
-                                                                45)) {
+                                                    DateTime limitTime =
+                                                        DateTime(
+                                                            attDate.year,
+                                                            attDate.month,
+                                                            attDate.day,
+                                                            9,
+                                                            0,
+                                                            0);
+
+                                                    if (attDate
+                                                        .isAfter(limitTime)) {
                                                       notes = 'Terlambat';
                                                     }
                                                   }
                                                 }
 
+                                                // Cek apakah komplit in & out pada hari yang sama
                                                 bool hasCheckIn = false;
                                                 bool hasCheckOut = false;
                                                 DateTime dateOnly = DateTime(
@@ -836,6 +846,7 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                               if (notes.isEmpty ||
                                                   notes == 'null') notes = '-';
 
+                                              // Styling warna teks Notes
                                               Color noteColor = Colors.black87;
                                               if (notes.toLowerCase() ==
                                                   'terlambat') {

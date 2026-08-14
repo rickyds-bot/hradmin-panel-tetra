@@ -11,6 +11,7 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
   - Mobile app karyawan - Flutter (Android/iOS)
   - Mobile app admin - Flutter (Android)
   - Web admin dashboard - Flutter Web, di-hosting via **Cloudflare Pages/Worker**
+  - Firebase Console & Google Cloud Console
 - **Backend**: Supabase (Auth, Database, Storage, RLS)
 - **CI/CD mobile**: Codemagic (`codemagic.yaml`)
 - **Repo**: [rickyds-bot/hradmin-panel-tetra](https://github.com/rickyds-bot/hradmin-panel-tetra)
@@ -32,10 +33,10 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
   - Laporan absensi, cuti/izin, dan lembur → export **XLSX & PDF** (dari admin dashboard)
   - Karyawan bisa export **PDF laporan lembur** langsung dari aplikasi mobile
 - Dashboard admin: monitoring absensi seluruh karyawan
-- Manajemen data karyawan (tambah/edit/hapus)
-- Log Aktifitas Karyawan 
-- Form Notifikasi Pemberitahun/Pengumuman
-- Sinkron kalendar hari libur & tgl merah ID
+  - Manajemen data karyawan (tambah/edit/hapus)
+  - Log Aktifitas Karyawan 
+  - Form Notifikasi Pemberitahun/Pengumuman
+  - Sinkron kalendar hari libur & tgl merah ID
 
 ## Struktur Project
 
