@@ -29,14 +29,14 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
 - Notifikasi:
   - Check-in/check-out absen → **local notification**
   - Pengajuan & status approval cuti/izin/lembur → **push notification (FCM)**
-- Laporan & export:
-  - Laporan absensi, cuti/izin, dan lembur → export **XLSX & PDF** (dari admin dashboard)
-  - Karyawan bisa export **PDF laporan lembur** langsung dari aplikasi mobile
 - Dashboard admin: monitoring absensi seluruh karyawan
   - Manajemen data karyawan (tambah/edit/hapus)
   - Log Aktifitas Karyawan 
   - Form Notifikasi Pemberitahun/Pengumuman
   - Sinkron kalendar hari libur & tgl merah ID
+- Laporan & export:
+  - Laporan absensi, cuti/izin, dan lembur → export **XLSX & PDF** (dari admin dashboard)
+  - Karyawan bisa export **PDF laporan lembur** langsung dari aplikasi mobile
 
 ## Struktur Project
 
