@@ -45,7 +45,7 @@ class _AdminPageState extends State<AdminPage> {
             labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
             tabs: [
               Tab(text: "Karyawan"),
-              Tab(text: "Aktivitas"),
+              Tab(text: "Aktifitas"),
               Tab(text: "Pengajuan"),
               Tab(text: "Lokasi"),
             ],

@@ -469,7 +469,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       'Kordinat',
       'Nama Lokasi',
       'Terlambat',
-      'Aktivitas',
+      'Aktifitas',
       'Notes'
     ];
 
@@ -660,7 +660,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         'Kordinat',
         'Nama Lokasi',
         'Terlambat',
-        'Aktivitas',
+        'Aktifitas',
         'Notes'
       ];
       sheetObject.appendRow(headers.map((e) => TextCellValue(e)).toList());
@@ -1049,7 +1049,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                                             DataColumn(
                                                 label: Text('Terlambat')),
                                             DataColumn(
-                                                label: Text('Aktivitas')),
+                                                label: Text('Aktifitas')),
                                             DataColumn(label: Text('Notes')),
                                           ],
                                           rows: _flatAttendanceData.map((row) {
