@@ -336,8 +336,15 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             }
           }
 
+          // --- Deteksi Checkout Lebih Awal ---
           if (checkOutDt != null) {
-            aktifitas = 'Bekerja';
+            DateTime earlyLimit = DateTime(
+                checkOutDt.year, checkOutDt.month, checkOutDt.day, 17, 30, 0);
+            if (checkOutDt.isBefore(earlyLimit)) {
+              aktifitas = 'Check-out lbh awal';
+            } else {
+              aktifitas = 'Bekerja';
+            }
           } else {
             aktifitas = 'Belum Checkout';
           }
@@ -479,6 +486,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
       final pdfData = rows.map((row) {
         if (row['aktifitas'] == 'Bekerja' ||
+            row['aktifitas'] == 'Check-out lbh awal' ||
             row['aktifitas'] == 'Belum Checkout' ||
             (row['check_in'] != '-' && row['check_in'] != null)) {
           totalHariKerja++;
@@ -662,6 +670,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
       for (var row in rows) {
         if (row['aktifitas'] == 'Bekerja' ||
+            row['aktifitas'] == 'Check-out lbh awal' ||
             row['aktifitas'] == 'Belum Checkout' ||
             (row['check_in'] != '-' && row['check_in'] != null)) {
           totalHariKerja++;

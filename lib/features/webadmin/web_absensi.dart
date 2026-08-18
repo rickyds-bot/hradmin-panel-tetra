@@ -771,7 +771,6 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                 if (isLeave) {
                                                   notes = 'Cuti/Izin';
                                                 } else if (isPublicHoliday) {
-                                                  // Jika absen di tanggal merah, ubah notes agar tidak dianggap terlambat biasa
                                                   notes =
                                                       'Masuk di Hari Libur ($publicHolidayName)';
                                                 } else {
@@ -803,10 +802,12 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                 // Cek apakah komplit in & out pada hari yang sama
                                                 bool hasCheckIn = false;
                                                 bool hasCheckOut = false;
+                                                DateTime? actualCheckOutDt;
                                                 DateTime dateOnly = DateTime(
                                                     attDate.year,
                                                     attDate.month,
                                                     attDate.day);
+
                                                 for (var a in _absensiList) {
                                                   if (a['employee_id'] ==
                                                           empId &&
@@ -824,17 +825,41 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                               .toString()
                                                               .toLowerCase();
                                                       if (st.contains('in') ||
-                                                          st.contains('masuk'))
+                                                          st.contains(
+                                                              'masuk')) {
                                                         hasCheckIn = true;
+                                                      }
                                                       if (st.contains('out') ||
-                                                          st.contains('pulang'))
+                                                          st.contains(
+                                                              'pulang')) {
                                                         hasCheckOut = true;
+                                                        actualCheckOutDt = d;
+                                                      }
                                                     }
                                                   }
                                                 }
 
                                                 if (hasCheckIn && hasCheckOut) {
-                                                  aktifitas = 'Bekerja';
+                                                  if (actualCheckOutDt !=
+                                                      null) {
+                                                    DateTime earlyLimit =
+                                                        DateTime(
+                                                            dateOnly.year,
+                                                            dateOnly.month,
+                                                            dateOnly.day,
+                                                            17,
+                                                            30,
+                                                            0);
+                                                    if (actualCheckOutDt
+                                                        .isBefore(earlyLimit)) {
+                                                      aktifitas =
+                                                          'Check-out lbh awal';
+                                                    } else {
+                                                      aktifitas = 'Bekerja';
+                                                    }
+                                                  } else {
+                                                    aktifitas = 'Bekerja';
+                                                  }
                                                 } else if (hasCheckIn &&
                                                     !hasCheckOut) {
                                                   aktifitas = 'Belum Checkout';
@@ -846,7 +871,6 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                               if (notes.isEmpty ||
                                                   notes == 'null') notes = '-';
 
-                                              // Styling warna teks Notes
                                               Color noteColor = Colors.black87;
                                               if (notes.toLowerCase() ==
                                                   'terlambat') {
@@ -858,6 +882,17 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                   .toLowerCase()
                                                   .contains('hari libur')) {
                                                 noteColor = Colors.orange[800]!;
+                                              }
+
+                                              Color aktifitasColor =
+                                                  Colors.orange[800]!;
+                                              if (aktifitas == 'Bekerja') {
+                                                aktifitasColor =
+                                                    Colors.green[700]!;
+                                              } else if (aktifitas ==
+                                                  'Check-out lbh awal') {
+                                                aktifitasColor =
+                                                    Colors.blue[700]!;
                                               }
 
                                               return DataRow(
@@ -966,11 +1001,7 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                     Text(
                                                       aktifitas,
                                                       style: TextStyle(
-                                                        color: aktifitas ==
-                                                                'Bekerja'
-                                                            ? Colors.green[700]
-                                                            : Colors
-                                                                .orange[800],
+                                                        color: aktifitasColor,
                                                         fontWeight:
                                                             FontWeight.w600,
                                                       ),
