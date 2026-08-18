@@ -22,8 +22,7 @@ class _WebLogPageState extends State<WebLogPage> {
   int _rowsPerPage = 50;
   final List<int> _pageOptions = [50, 100, 200];
 
-  // Scroll controllers untuk tabel
-  final ScrollController _horizontalScroll = ScrollController();
+  // Scroll controllers untuk list terminal
   final ScrollController _verticalScroll = ScrollController();
 
   RealtimeChannel? _logSubscription;
@@ -38,7 +37,6 @@ class _WebLogPageState extends State<WebLogPage> {
   @override
   void dispose() {
     _searchNameCtrl.dispose();
-    _horizontalScroll.dispose();
     _verticalScroll.dispose();
     if (_logSubscription != null) {
       Supabase.instance.client.removeChannel(_logSubscription!);
@@ -184,11 +182,9 @@ class _WebLogPageState extends State<WebLogPage> {
     if (dateStr == null || dateStr.isEmpty) return '-';
     try {
       final dt = DateTime.parse(dateStr).toLocal();
-
-      // Hapus 'id_ID' agar tidak memicu error inisialisasi intl
-      return DateFormat('dd-MM-yyyy: HH:mm:ss').format(dt);
+      // Format ala terminal: Aug 18 16:36:14
+      return DateFormat('MMM dd HH:mm:ss').format(dt);
     } catch (e) {
-      // Tambahkan print log ini agar jika masih gagal, kita bisa tahu penyebab di console
       debugPrint("Gagal format tanggal: $e");
       return dateStr;
     }
@@ -396,174 +392,99 @@ class _WebLogPageState extends State<WebLogPage> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
 
+          // Terminal Log View
           Expanded(
-            child: Card(
-              elevation: 0,
-              color: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: BorderSide(color: Colors.grey[200]!),
+            child: Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(top: 16),
+              decoration: BoxDecoration(
+                color:
+                    const Color(0xFF0C0C0C), // Background hitam khas terminal
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade800),
               ),
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const Center(
+                      child:
+                          CircularProgressIndicator(color: Colors.greenAccent))
                   : _filteredList.isEmpty
                       ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.receipt_long,
-                                size: 42,
-                                color: Colors.grey[400],
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                'Belum ada data log aktivitas.',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
+                          child: Text(
+                            '> No log data found...',
+                            style: GoogleFonts.robotoMono(
+                              fontSize: 13,
+                              color: Colors.grey[500],
+                            ),
                           ),
                         )
-                      : LayoutBuilder(
-                          builder: (context, constraints) {
-                            return ScrollConfiguration(
-                              behavior:
-                                  ScrollConfiguration.of(context).copyWith(
-                                dragDevices: {
-                                  PointerDeviceKind.touch,
-                                  PointerDeviceKind.mouse,
-                                  PointerDeviceKind.trackpad,
-                                },
-                              ),
-                              child: Scrollbar(
-                                controller: _horizontalScroll,
-                                thumbVisibility: true,
-                                trackVisibility: true,
-                                child: SingleChildScrollView(
-                                  controller: _horizontalScroll,
-                                  scrollDirection: Axis.horizontal,
-                                  child: ConstrainedBox(
-                                    constraints: BoxConstraints(
-                                      minWidth: constraints.maxWidth,
-                                    ),
-                                    child: Scrollbar(
-                                      controller: _verticalScroll,
-                                      thumbVisibility: true,
-                                      child: SingleChildScrollView(
-                                        controller: _verticalScroll,
-                                        scrollDirection: Axis.vertical,
-                                        child: DataTable(
-                                          showCheckboxColumn: false,
-                                          headingRowColor:
-                                              WidgetStateProperty.all(
-                                            Colors.grey[50],
-                                          ),
-                                          dataRowMaxHeight: 48,
-                                          headingTextStyle:
-                                              GoogleFonts.plusJakartaSans(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.black87,
-                                          ),
-                                          dataTextStyle:
-                                              GoogleFonts.plusJakartaSans(
-                                            fontSize: 12,
-                                            color: Colors.black87,
-                                          ),
-                                          columns: const [
-                                            DataColumn(label: Text('No')),
-                                            DataColumn(
-                                                label: Text('Waktu Aktifitas')),
-                                            DataColumn(
-                                                label: Text('Nama Karyawan')),
-                                            DataColumn(
-                                                label: Text(
-                                                    'Aktifitas / Keterangan')),
-                                            DataColumn(
-                                                label: Text('Modul / Menu')),
-                                          ],
-                                          rows: List<DataRow>.generate(
-                                            _filteredList.length > _rowsPerPage
-                                                ? _rowsPerPage
-                                                : _filteredList.length,
-                                            (index) {
-                                              final item = _filteredList[index];
-                                              final String empName =
-                                                  item['employees']
-                                                          ?['full_name'] ??
-                                                      'Sistem';
+                      : Scrollbar(
+                          controller: _verticalScroll,
+                          thumbVisibility: true,
+                          child: ListView.builder(
+                            controller: _verticalScroll,
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _filteredList.length > _rowsPerPage
+                                ? _rowsPerPage
+                                : _filteredList.length,
+                            itemBuilder: (context, index) {
+                              final item = _filteredList[index];
 
-                                              return DataRow(
-                                                cells: [
-                                                  DataCell(
-                                                      Text('${index + 1}')),
-                                                  DataCell(
-                                                    Text(
-                                                      _formatTanggalWaktu(
-                                                          item['created_at']),
-                                                    ),
-                                                  ),
-                                                  DataCell(
-                                                    Text(
-                                                      empName,
-                                                      style: const TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  DataCell(
-                                                    Text(
-                                                      item['activity'] ??
-                                                          item['description'] ??
-                                                          '-',
-                                                    ),
-                                                  ),
-                                                  DataCell(
-                                                    Container(
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                        horizontal: 8,
-                                                        vertical: 2,
-                                                      ),
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.blue
-                                                            .withOpacity(0.1),
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(4),
-                                                      ),
-                                                      child: Text(
-                                                        item['module'] ??
-                                                            item[
-                                                                'action_type'] ??
-                                                            'Umum',
-                                                        style: const TextStyle(
-                                                          color: Colors.blue,
-                                                          fontSize: 10,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                      ),
+                              final String time =
+                                  _formatTanggalWaktu(item['created_at']);
+                              final String module = (item['module'] ??
+                                      item['action_type'] ??
+                                      'system')
+                                  .toString()
+                                  .toLowerCase();
+                              final String empName =
+                                  item['employees']?['full_name'] ?? 'root';
+                              final String activity = item['activity'] ??
+                                  item['description'] ??
+                                  '-';
+
+                              // Merakit susunan log seperti:
+                              // Aug 18 16:36:14 absensi[Budi]: Melakukan check-in
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 2.5),
+                                child: SelectableText.rich(
+                                  TextSpan(
+                                    style: GoogleFonts.robotoMono(
+                                      fontSize: 13,
+                                      height: 1.3,
                                     ),
+                                    children: [
+                                      TextSpan(
+                                        text: '$time ',
+                                        style: const TextStyle(
+                                            color: Color(
+                                                0xFFE5C07B)), // Warna kuning/gold untuk waktu
+                                      ),
+                                      TextSpan(
+                                        text: '$module',
+                                        style: const TextStyle(
+                                            color: Color(
+                                                0xFF98C379)), // Warna hijau untuk modul
+                                      ),
+                                      TextSpan(
+                                        text: '[$empName]: ',
+                                        style: const TextStyle(
+                                            color: Color(
+                                                0xFF61AFEF)), // Warna biru untuk user/PID
+                                      ),
+                                      TextSpan(
+                                        text: activity,
+                                        style: const TextStyle(
+                                            color: Color(
+                                                0xFFABB2BF)), // Warna putih/abu terang untuk pesan
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
             ),
           ),
