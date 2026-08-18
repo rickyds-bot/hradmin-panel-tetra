@@ -45,7 +45,7 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
   - Laporan Absensi, Cuti/Izin, dan Lembur → Export **XLSX & PDF** (dari Admin Dashboard)
   
 ## Preview 
-<p align="center"> <img src="./screenshots/beranda.png" width="250" alt="Halaman Beranda" /> <img src="./screenshots/profile.png" width="250" alt="Halaman Profil" /> </p>
+<p align="center"> <img src="./screenshots/beranda.jpeg" width="250" alt="Halaman Beranda" /> <img src="./screenshots/profile.jpeg" width="250" alt="Halaman Profil" /> </p>
 
 ## Struktur Project
 
