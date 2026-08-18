@@ -262,12 +262,39 @@ class _DetailKaryawanDialogState extends State<_DetailKaryawanDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // --- PERBAIKAN FORMAT DATA ANAK ---
     String childrenStr = '-';
-    if (widget.karyawan['children_data'] != null) {
-      if (widget.karyawan['children_data'] is String) {
-        childrenStr = widget.karyawan['children_data'];
-      } else {
-        childrenStr = jsonEncode(widget.karyawan['children_data']);
+    final rawChildrenData = widget.karyawan['children_data'];
+
+    if (rawChildrenData != null &&
+        rawChildrenData.toString().trim().isNotEmpty) {
+      try {
+        List<dynamic> childrenList = [];
+
+        // Cek apakah data berupa String JSON atau sudah berupa List (JSONB dari Supabase)
+        if (rawChildrenData is String) {
+          childrenList = jsonDecode(rawChildrenData);
+        } else if (rawChildrenData is List) {
+          childrenList = rawChildrenData;
+        }
+
+        if (childrenList.isNotEmpty) {
+          List<String> formattedList = [];
+          for (int i = 0; i < childrenList.length; i++) {
+            final child = childrenList[i];
+            final name = child['name'] ?? 'Tanpa Nama';
+            // Bisa menggunakan fungsi _formatDate yang sudah ada agar format tanggal seragam
+            final birthDate = child['birth_date'] != null
+                ? _formatDate(child['birth_date'])
+                : '-';
+
+            formattedList.add('${i + 1}. $name ($birthDate)');
+          }
+          childrenStr = formattedList.join('\n');
+        }
+      } catch (e) {
+        // Jika gagal parse JSON (data tidak valid), kembalikan ke teks aslinya
+        childrenStr = rawChildrenData.toString();
       }
     }
 
