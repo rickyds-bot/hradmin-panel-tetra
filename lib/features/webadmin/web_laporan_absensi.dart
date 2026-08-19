@@ -363,7 +363,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'department': empDeptName,
             'day': dayName,
             'date': dateFormatted,
-            'work_hours': '09:00-18:00', // Update Work Hours jika diperlukan
+            'work_hours': '08:30-17:30', // Berubah menjadi 08:30-17:30
             'check_in': checkInTime,
             'check_out': checkOutTime,
             'coordinate': coordinate,
@@ -397,7 +397,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'department': empDeptName,
             'day': dayName,
             'date': dateFormatted,
-            'work_hours': '09:00-18:00',
+            'work_hours': '08:30-17:30', // Berubah menjadi 08:30-17:30
             'check_in': '-',
             'check_out': '-',
             'coordinate': '-',
