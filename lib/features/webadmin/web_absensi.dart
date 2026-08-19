@@ -781,15 +781,15 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                           .toLowerCase()
                                                           .contains('masuk');
 
-                                                  // Keterlambatan jika lewat dari jam 09:00:00
+                                                  // Keterlambatan jika lewat dari jam 08:45:00
                                                   if (isCheckIn) {
                                                     DateTime limitTime =
                                                         DateTime(
                                                             attDate.year,
                                                             attDate.month,
                                                             attDate.day,
-                                                            9,
-                                                            0,
+                                                            8,
+                                                            45,
                                                             0);
 
                                                     if (attDate
