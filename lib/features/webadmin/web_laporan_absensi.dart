@@ -125,7 +125,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         }
       }
 
-      // 2. Ambil data hari libur nasional / cuti bersama dari tabel hari_libur
+      // Ambil data hari libur nasional / cuti bersama dari tabel hari_libur
       final holidaysResponse = await Supabase.instance.client
           .from('hari_libur')
           .select('holiday_date, description')
@@ -135,7 +135,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       _holidaysMap.clear();
       for (var h in holidaysResponse) {
         if (h['holiday_date'] != null) {
-          // Konversi nilai date dari Supabase menjadi string 'yyyy-MM-dd' dengan aman
           String rawDate = h['holiday_date'].toString();
           String dateKey = rawDate.contains('T')
               ? rawDate.split('T')[0]
@@ -307,12 +306,12 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
           String lateStr = '-';
 
-          // --- BATAS TERLAMBAT DIHITUNG DARI JAM 09:00:00 ---
-          DateTime limitTime =
-              DateTime(checkInDt.year, checkInDt.month, checkInDt.day, 9, 0, 0);
+          // --- BATAS TERLAMBAT DIHITUNG DARI JAM 08:45:00 ---
+          DateTime limitTime = DateTime(
+              checkInDt.year, checkInDt.month, checkInDt.day, 8, 45, 0);
 
           if (checkInDt.isAfter(limitTime)) {
-            // Hitungan telat dihitung langsung sebagai selisih dengan 09:00
+            // Hitungan telat dihitung langsung sebagai selisih dengan 08:45
             Duration diff = checkInDt.difference(limitTime);
             int hours = diff.inHours;
             int minutes = diff.inMinutes % 60;
@@ -363,7 +362,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'department': empDeptName,
             'day': dayName,
             'date': dateFormatted,
-            'work_hours': '08:30-17:30', // Berubah menjadi 08:30-17:30
+            'work_hours': '08:30-17:30',
             'check_in': checkInTime,
             'check_out': checkOutTime,
             'coordinate': coordinate,
@@ -397,7 +396,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'department': empDeptName,
             'day': dayName,
             'date': dateFormatted,
-            'work_hours': '08:30-17:30', // Berubah menjadi 08:30-17:30
+            'work_hours': '08:30-17:30',
             'check_in': '-',
             'check_out': '-',
             'coordinate': '-',
