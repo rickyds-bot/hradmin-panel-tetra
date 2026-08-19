@@ -253,6 +253,9 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       final empJabatan = emp['jabatan_name'] ?? '-';
       final empDeptName = _getDepartmentName(emp['department_id']);
 
+      // Mengambil status absen bebas dari data master karyawan
+      final bool isFreeLocation = emp['is_free_location'] ?? false;
+
       List<Map<String, dynamic>> empRows = [];
       DateTime curr = _startDate;
 
@@ -351,8 +354,11 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           String coordinate =
               '${firstPunch['latitude'] ?? '-'}, ${firstPunch['longitude'] ?? '-'}';
 
-          String locationName = _matchLocationName(
-              firstPunch['latitude'], firstPunch['longitude']);
+          // --- Penentuan Nama Lokasi berdasarkan opsi Absen Bebas ---
+          String locationName = isFreeLocation
+              ? 'Absen Bebas'
+              : _matchLocationName(
+                  firstPunch['latitude'], firstPunch['longitude']);
 
           var row = {
             'employee_id': empIdStr,
