@@ -27,7 +27,6 @@ android {
         }
     }
 
-    // --- PASTIKAN SEMUA BAGIAN INI BERADA DI DALAM BLOK android {} ---
     defaultConfig {
         applicationId = "com.tetra.absensi"
         minSdk = flutter.minSdkVersion
@@ -58,9 +57,6 @@ android {
     }
 }
         
-   
-
-
 flutter {
     source = "../.."
 }
@@ -68,4 +64,18 @@ flutter {
 dependencies {
     implementation(platform("com.google.firebase:firebase-bom:34.16.0"))
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    implementation("androidx.concurrent:concurrent-futures:1.2.0")
+}
+
+// --- PERBAIKAN: Menggunakan sintaks Kotlin DSL (untuk file .kts) ---
+// Menyuntikkan dependency yang hilang secara paksa ke dalam plugin camera_android_camerax
+rootProject.subprojects {
+    afterEvaluate {
+        if (name == "camera_android_camerax") {
+            dependencies {
+                add("implementation", "androidx.concurrent:concurrent-futures:1.2.0")
+                add("implementation", "com.google.guava:guava:31.1-android")
+            }
+        }
+    }
 }

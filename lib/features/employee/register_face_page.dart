@@ -35,6 +35,13 @@ class RegisterFacePage extends StatefulWidget {
 class _RegisterFacePageState extends State<RegisterFacePage> {
   static const double _turnThreshold = 12.0;
 
+  static const _deviceOrientations = <DeviceOrientation, int>{
+    DeviceOrientation.portraitUp: 0,
+    DeviceOrientation.landscapeLeft: 90,
+    DeviceOrientation.portraitDown: 180,
+    DeviceOrientation.landscapeRight: 270,
+  };
+
   late final CameraController _controller;
   late final FaceDetector _faceDetector;
 
@@ -44,6 +51,13 @@ class _RegisterFacePageState extends State<RegisterFacePage> {
 
   DateTime? _lastProcessedAt;
   double? _firstTurnDirection;
+
+  // Frame wajah lurus (tepat setelah kedip berhasil, sebelum menoleh) —
+  // dipakai sebagai sumber embedding, supaya posenya konsisten dengan
+  // kondisi verifikasi harian di halaman absen (yang juga wajah lurus).
+  CameraImage? _straightFaceImage;
+  Face? _straightFaceCapture;
+  int? _straightFaceRotation;
 
   LivenessStep _currentStep = LivenessStep.lookStraight;
   String _instructionText = 'Posisikan wajah Anda di dalam bingkai';
@@ -126,10 +140,10 @@ class _RegisterFacePageState extends State<RegisterFacePage> {
 
   Future<void> _processCameraImage(CameraImage image) async {
     try {
-      final inputImage = _convertCameraImageToInputImage(image);
-      if (inputImage == null) return;
+      final frameInput = _convertCameraImageToInputImage(image);
+      if (frameInput == null) return;
 
-      final faces = await _faceDetector.processImage(inputImage);
+      final faces = await _faceDetector.processImage(frameInput.inputImage);
 
       if (faces.isEmpty) {
         _updateInstruction('Wajah tidak terdeteksi');
@@ -143,13 +157,25 @@ class _RegisterFacePageState extends State<RegisterFacePage> {
 
       final face = faces.first;
 
-      if (face.boundingBox.width < image.width * 0.25 ||
-          face.boundingBox.height < image.height * 0.25) {
+      // face.boundingBox berada di koordinat SETELAH rotasi (ML Kit).
+      // Kalau rotasi 90/270, width & height gambar raw tertukar
+      // dibanding tampilan tegak — sesuaikan sebelum dibandingkan.
+      final isSideways =
+          frameInput.rotationDegrees == 90 || frameInput.rotationDegrees == 270;
+      final effectiveWidth = isSideways ? image.height : image.width;
+      final effectiveHeight = isSideways ? image.width : image.height;
+
+      if (face.boundingBox.width < effectiveWidth * 0.25 ||
+          face.boundingBox.height < effectiveHeight * 0.25) {
         _updateInstruction('Dekatkan wajah ke dalam bingkai');
         return;
       }
 
-      await _checkLiveness(face, image);
+      await _checkLiveness(
+        face,
+        image,
+        rotationDegrees: frameInput.rotationDegrees,
+      );
     } catch (e, stackTrace) {
       debugPrint('Face detector error: $e');
       debugPrintStack(stackTrace: stackTrace);
@@ -160,7 +186,11 @@ class _RegisterFacePageState extends State<RegisterFacePage> {
     }
   }
 
-  Future<void> _checkLiveness(Face face, CameraImage image) async {
+  Future<void> _checkLiveness(
+    Face face,
+    CameraImage image, {
+    required int rotationDegrees,
+  }) async {
     final eulerY = face.headEulerAngleY;
     final leftEye = face.leftEyeOpenProbability;
     final rightEye = face.rightEyeOpenProbability;
@@ -187,6 +217,12 @@ class _RegisterFacePageState extends State<RegisterFacePage> {
           _hasBlinkedClosed = true;
           _updateInstruction('Bagus, sekarang buka mata kembali');
         } else if (_hasBlinkedClosed && leftEye > 0.75 && rightEye > 0.75) {
+          // Simpan frame di sini: wajah masih lurus & mata baru terbuka —
+          // ini pose yang dipakai sebagai embedding terdaftar.
+          _straightFaceImage = image;
+          _straightFaceCapture = face;
+          _straightFaceRotation = rotationDegrees;
+
           // --- getar 1 (Kedip Berhasil) ---
           if (await Vibration.hasVibrator() ?? false) {
             Vibration.vibrate(
@@ -204,11 +240,7 @@ class _RegisterFacePageState extends State<RegisterFacePage> {
 
       case LivenessStep.turnFirstSide:
       case LivenessStep.turnOppositeSide:
-        await _checkTurnDirection(
-          image: image,
-          face: face,
-          eulerY: eulerY,
-        );
+        await _checkTurnDirection(eulerY: eulerY);
         break;
 
       case LivenessStep.extracting:
@@ -218,8 +250,6 @@ class _RegisterFacePageState extends State<RegisterFacePage> {
   }
 
   Future<void> _checkTurnDirection({
-    required CameraImage image,
-    required Face face,
     required double? eulerY,
   }) async {
     if (eulerY == null) {
@@ -259,12 +289,27 @@ class _RegisterFacePageState extends State<RegisterFacePage> {
     final hasTurnedToOppositeSide = eulerY * direction <= -_turnThreshold;
 
     if (hasTurnedToOppositeSide) {
+      final straightImage = _straightFaceImage;
+      final straightFace = _straightFaceCapture;
+      final straightRotation = _straightFaceRotation;
+
+      if (straightImage == null ||
+          straightFace == null ||
+          straightRotation == null) {
+        _resetLiveness('Data wajah lurus tidak ditemukan. Silakan ulangi.');
+        return;
+      }
+
       // --- Getar 3 (Toleh Sisi Kedua Berhasil) ---
       if (await Vibration.hasVibrator() ?? false) {
         Vibration.vibrate(
             duration: 200, amplitude: 128); // Getar tegas selama 0.2 detik
       }
-      await _extractAndSaveFaceEmbedding(image, face);
+      await _extractAndSaveFaceEmbedding(
+        straightImage,
+        straightFace,
+        rotationDegrees: straightRotation,
+      );
     } else {
       _updateInstruction('Sekarang toleh ke sisi sebaliknya');
     }
@@ -272,8 +317,9 @@ class _RegisterFacePageState extends State<RegisterFacePage> {
 
   Future<void> _extractAndSaveFaceEmbedding(
     CameraImage image,
-    Face face,
-  ) async {
+    Face face, {
+    required int rotationDegrees,
+  }) async {
     if (_isSaving) return;
 
     setState(() {
@@ -286,7 +332,7 @@ class _RegisterFacePageState extends State<RegisterFacePage> {
       final embedding = await FaceNetService().getFaceEmbedding(
         image,
         face,
-        rotationDegrees: widget.camera.sensorOrientation,
+        rotationDegrees: rotationDegrees,
       );
 
       if (embedding.isEmpty || embedding.any((value) => !value.isFinite)) {
@@ -364,6 +410,9 @@ class _RegisterFacePageState extends State<RegisterFacePage> {
       _isSaving = false;
       _hasBlinkedClosed = false;
       _firstTurnDirection = null;
+      _straightFaceImage = null;
+      _straightFaceCapture = null;
+      _straightFaceRotation = null;
       _currentStep = LivenessStep.lookStraight;
       _instructionText = instruction;
     });
@@ -377,7 +426,7 @@ class _RegisterFacePageState extends State<RegisterFacePage> {
     });
   }
 
-  InputImage? _convertCameraImageToInputImage(CameraImage image) {
+  _FrameInput? _convertCameraImageToInputImage(CameraImage image) {
     try {
       // NV21 Android dan BGRA iOS masing-masing memakai satu plane.
       if (image.planes.length != 1) {
@@ -388,14 +437,14 @@ class _RegisterFacePageState extends State<RegisterFacePage> {
         return null;
       }
 
-      final rotation = InputImageRotationValue.fromRawValue(
-        widget.camera.sensorOrientation,
-      );
+      final rotationDegrees = _getRotationDegrees();
+      if (rotationDegrees == null) return null;
+
+      final rotation = InputImageRotationValue.fromRawValue(rotationDegrees);
 
       if (rotation == null) {
         debugPrint(
-          'Orientasi kamera tidak didukung: '
-          '${widget.camera.sensorOrientation}',
+          'Orientasi kamera tidak didukung: $rotationDegrees',
         );
         return null;
       }
@@ -406,23 +455,50 @@ class _RegisterFacePageState extends State<RegisterFacePage> {
 
       final Uint8List bytes = image.planes.first.bytes;
 
-      return InputImage.fromBytes(
-        bytes: bytes,
-        metadata: InputImageMetadata(
-          size: Size(
-            image.width.toDouble(),
-            image.height.toDouble(),
+      return _FrameInput(
+        inputImage: InputImage.fromBytes(
+          bytes: bytes,
+          metadata: InputImageMetadata(
+            size: Size(
+              image.width.toDouble(),
+              image.height.toDouble(),
+            ),
+            rotation: rotation,
+            format: format,
+            bytesPerRow: image.planes.first.bytesPerRow,
           ),
-          rotation: rotation,
-          format: format,
-          bytesPerRow: image.planes.first.bytesPerRow,
         ),
+        rotationDegrees: rotationDegrees,
       );
     } catch (e, stackTrace) {
       debugPrint('Gagal mengonversi frame kamera: $e');
       debugPrintStack(stackTrace: stackTrace);
       return null;
     }
+  }
+
+  // Sama dengan kamera_absen_page.dart: sensorOrientation dikombinasikan
+  // dengan orientasi device SAAT INI, bukan cuma sensorOrientation statis.
+  // Ini krusial supaya rotasi yang dipakai utk crop wajah (embedding)
+  // konsisten dgn rotasi yang dipakai ML Kit utk deteksi, dan konsisten
+  // dgn cara kamera_absen_page menghitungnya saat verifikasi nanti.
+  int? _getRotationDegrees() {
+    final sensorOrientation = widget.camera.sensorOrientation;
+
+    if (Platform.isIOS) {
+      return sensorOrientation;
+    }
+
+    final deviceOrientation =
+        _deviceOrientations[_controller.value.deviceOrientation];
+
+    if (deviceOrientation == null) return null;
+
+    if (widget.camera.lensDirection == CameraLensDirection.front) {
+      return (sensorOrientation + deviceOrientation) % 360;
+    }
+
+    return (sensorOrientation - deviceOrientation + 360) % 360;
   }
 
   @override
@@ -565,4 +641,14 @@ class OvalClipper extends CustomClipper<Path> {
 
   @override
   bool shouldReclip(CustomClipper<Path> oldClipper) => false;
+}
+
+class _FrameInput {
+  final InputImage inputImage;
+  final int rotationDegrees;
+
+  const _FrameInput({
+    required this.inputImage,
+    required this.rotationDegrees,
+  });
 }

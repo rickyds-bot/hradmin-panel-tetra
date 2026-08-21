@@ -37,6 +37,11 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
   bool _isVerifying = false;
   bool _isMatched = false;
 
+  // Liveness kedip mata — wajib lolos sebelum embedding diverifikasi,
+  // supaya tidak bisa ditembus pakai foto diam.
+  bool _hasBlinkedClosed = false;
+  bool _blinkConfirmed = false;
+
   DateTime? _lastProcessedAt;
 
   String _statusText = 'Posisikan wajah Anda di dalam bingkai';
@@ -49,7 +54,7 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
     _faceDetector = FaceDetector(
       options: FaceDetectorOptions(
         enableClassification:
-            false, // Dimatikan karena tidak perlu cek kedip mata
+            true, // Dibutuhkan utk baca leftEyeOpenProbability/rightEyeOpenProbability (liveness kedip)
         enableTracking: true,
         performanceMode: FaceDetectorMode.accurate,
       ),
@@ -123,6 +128,7 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
       final faces = await _faceDetector.processImage(frameInput.inputImage);
 
       if (faces.isEmpty) {
+        _resetBlinkState();
         _updateStatus('Mencari wajah...', Colors.blue);
         return;
       }
@@ -136,6 +142,11 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
 
       if (min(face.boundingBox.width, face.boundingBox.height) < 100) {
         _updateStatus('Dekatkan wajah ke kamera', Colors.orange);
+        return;
+      }
+
+      if (!_blinkConfirmed) {
+        _checkBlink(face);
         return;
       }
 
@@ -214,8 +225,45 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
     }
   }
 
+  /// Liveness check ringan: wajib kedip sekali sebelum verifikasi wajah
+  /// dijalankan. Menutup celah orang absen pakai foto/tampilan wajah diam.
+  void _checkBlink(Face face) {
+    final leftEye = face.leftEyeOpenProbability;
+    final rightEye = face.rightEyeOpenProbability;
+
+    if (leftEye == null || rightEye == null) {
+      _updateStatus(
+        'Pastikan wajah terlihat jelas & cukup terang',
+        Colors.orange,
+      );
+      return;
+    }
+
+    if (!_hasBlinkedClosed) {
+      if (leftEye < 0.25 && rightEye < 0.25) {
+        _hasBlinkedClosed = true;
+        _updateStatus('Bagus, buka mata kembali', Colors.blue);
+      } else {
+        _updateStatus('Silakan berkedip untuk verifikasi', Colors.blue);
+      }
+      return;
+    }
+
+    if (leftEye > 0.75 && rightEye > 0.75) {
+      _blinkConfirmed = true;
+      _updateStatus('Memverifikasi wajah...', Colors.amber);
+    }
+  }
+
+  void _resetBlinkState() {
+    _hasBlinkedClosed = false;
+    _blinkConfirmed = false;
+  }
+
   void _resetState(String message) {
     if (!mounted) return;
+
+    _resetBlinkState();
 
     setState(() {
       _statusText = message;
