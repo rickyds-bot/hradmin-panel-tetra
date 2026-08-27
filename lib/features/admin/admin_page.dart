@@ -13,6 +13,172 @@ class AdminPage extends StatefulWidget {
 }
 
 class _AdminPageState extends State<AdminPage> {
+  bool _isLoadingStats = true;
+
+  int _totalKaryawan = 0;
+  int _totalTetap = 0;
+  int _totalKontrak = 0;
+  int _totalHadirHariIni = 0;
+  int _totalCutiHariIni = 0;
+  int _totalPendingLembur = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchStats();
+  }
+
+  Future<void> _fetchStats() async {
+    setState(() => _isLoadingStats = true);
+    try {
+      // 1. Ambil data karyawan (Filter non-admin)
+      final karyawanRes = await Supabase.instance.client
+          .from('employees')
+          .select('id, employee_status, role');
+
+      int tetap = 0, kontrak = 0;
+      List<dynamic> nonAdminIds = [];
+
+      for (var emp in karyawanRes) {
+        final role = (emp['role'] ?? '').toString().trim().toLowerCase();
+        if (role == 'admin') continue;
+
+        nonAdminIds.add(emp['id']);
+
+        final empStatus =
+            (emp['employee_status'] ?? '').toString().trim().toLowerCase();
+        if (empStatus == 'tetap') {
+          tetap++;
+        } else if (empStatus == 'kontrak') {
+          kontrak++;
+        }
+      }
+
+      final todayStr = DateTime.now().toIso8601String().split('T')[0];
+
+      // 2. Absen Hari Ini (Check-In)
+      final absensiRes = await Supabase.instance.client
+          .from('attendance')
+          .select('employee_id')
+          .gte('created_at', '$todayStr 00:00:00');
+
+      Set uniqueHadir = absensiRes
+          .map((e) => e['employee_id'])
+          .where((id) => nonAdminIds.contains(id))
+          .toSet();
+
+      // 3. Cuti Hari Ini (Approved & Sedang Aktif)
+      final cutiRes = await Supabase.instance.client
+          .from('leave_requests')
+          .select('employee_id')
+          .eq('status', 'approved')
+          .lte('start_date', todayStr)
+          .gte('end_date', todayStr);
+
+      // 4. Lembur Pending
+      final lemburRes = await Supabase.instance.client
+          .from('overtime_requests')
+          .select('employee_id')
+          .eq('status', 'pending');
+
+      if (mounted) {
+        setState(() {
+          _totalKaryawan = nonAdminIds.length;
+          _totalTetap = tetap;
+          _totalKontrak = kontrak;
+          _totalHadirHariIni = uniqueHadir.length;
+          _totalCutiHariIni = cutiRes
+              .where((e) => nonAdminIds.contains(e['employee_id']))
+              .length;
+          _totalPendingLembur = lemburRes
+              .where((e) => nonAdminIds.contains(e['employee_id']))
+              .length;
+          _isLoadingStats = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching stats: $e');
+      if (mounted) setState(() => _isLoadingStats = false);
+    }
+  }
+
+  Widget _buildStatCard(
+      String title, String value, IconData icon, Color color) {
+    return Container(
+      width: 130,
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            title,
+            style: TextStyle(
+                fontSize: 10,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsHeader() {
+    if (_isLoadingStats) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 30),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        children: [
+          _buildStatCard('Total Karyawan', _totalKaryawan.toString(),
+              Icons.people_outline, Colors.blue),
+          _buildStatCard('Karyawan Tetap', _totalTetap.toString(),
+              Icons.verified_user_outlined, Colors.indigo),
+          _buildStatCard('Karyawan Kontrak', _totalKontrak.toString(),
+              Icons.assignment_ind_outlined, Colors.teal),
+          _buildStatCard('Hadir Hari Ini', _totalHadirHariIni.toString(),
+              Icons.how_to_reg_outlined, Colors.green),
+          _buildStatCard('Cuti / Izin Aktif', _totalCutiHariIni.toString(),
+              Icons.event_busy_outlined, Colors.orange),
+          _buildStatCard('Lembur Pending', _totalPendingLembur.toString(),
+              Icons.timer_outlined, Colors.purple),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -29,6 +195,11 @@ class _AdminPageState extends State<AdminPage> {
           automaticallyImplyLeading: false,
           actions: [
             IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _fetchStats,
+              tooltip: "Refresh Data",
+            ),
+            IconButton(
               icon: const Icon(Icons.logout),
               onPressed: () async {
                 await Supabase.instance.client.auth.signOut();
@@ -36,27 +207,44 @@ class _AdminPageState extends State<AdminPage> {
               },
             ),
           ],
-          bottom: const TabBar(
-            isScrollable: false,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white60,
-            indicatorColor: Colors.white,
-            labelPadding: EdgeInsets.symmetric(horizontal: 4),
-            labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-            tabs: [
-              Tab(text: "Karyawan"),
-              Tab(text: "Aktifitas"),
-              Tab(text: "Pengajuan"),
-              Tab(text: "Lokasi"),
-            ],
-          ),
         ),
-        body: const TabBarView(
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            KaryawanTab(),
-            AktivitasTab(),
-            PengajuanTab(),
-            LokasiTab(),
+            // Statistik Karyawan di bagian atas
+            _buildStatsHeader(),
+
+            // TabBar Menu yang dipindahkan dari AppBar
+            Container(
+              color: Colors.black,
+              child: const TabBar(
+                isScrollable: false,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white60,
+                indicatorColor: Colors.white,
+                labelPadding: EdgeInsets.symmetric(horizontal: 4),
+                labelStyle:
+                    TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                tabs: [
+                  Tab(text: "Karyawan"),
+                  Tab(text: "Aktifitas"),
+                  Tab(text: "Pengajuan"),
+                  Tab(text: "Lokasi"),
+                ],
+              ),
+            ),
+
+            // TabBar View
+            const Expanded(
+              child: TabBarView(
+                children: [
+                  KaryawanTab(),
+                  AktivitasTab(),
+                  PengajuanTab(),
+                  LokasiTab(),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -262,7 +450,6 @@ class _DetailKaryawanDialogState extends State<_DetailKaryawanDialog> {
 
   @override
   Widget build(BuildContext context) {
-    // --- PERBAIKAN FORMAT DATA ANAK ---
     String childrenStr = '-';
     final rawChildrenData = widget.karyawan['children_data'];
 
@@ -271,7 +458,6 @@ class _DetailKaryawanDialogState extends State<_DetailKaryawanDialog> {
       try {
         List<dynamic> childrenList = [];
 
-        // Cek apakah data berupa String JSON atau sudah berupa List (JSONB dari Supabase)
         if (rawChildrenData is String) {
           childrenList = jsonDecode(rawChildrenData);
         } else if (rawChildrenData is List) {
@@ -283,7 +469,6 @@ class _DetailKaryawanDialogState extends State<_DetailKaryawanDialog> {
           for (int i = 0; i < childrenList.length; i++) {
             final child = childrenList[i];
             final name = child['name'] ?? 'Tanpa Nama';
-            // Bisa menggunakan fungsi _formatDate yang sudah ada agar format tanggal seragam
             final birthDate = child['birth_date'] != null
                 ? _formatDate(child['birth_date'])
                 : '-';
@@ -293,7 +478,6 @@ class _DetailKaryawanDialogState extends State<_DetailKaryawanDialog> {
           childrenStr = formattedList.join('\n');
         }
       } catch (e) {
-        // Jika gagal parse JSON (data tidak valid), kembalikan ke teks aslinya
         childrenStr = rawChildrenData.toString();
       }
     }
@@ -574,10 +758,8 @@ class _AktivitasTabState extends State<AktivitasTab> {
           .from('employees')
           .select('id, full_name');
 
-      // 1. Inisialisasi query dasar tanpa order()
       var query = Supabase.instance.client.from('attendance').select();
 
-      // 2. Masukkan filter tanggal TERLEBIH DAHULU (jika ada)
       if (_startDate != null && _endDate != null) {
         final startStr = DateFormat('yyyy-MM-dd').format(_startDate!);
         final endStr = DateFormat('yyyy-MM-dd').format(_endDate!);
@@ -586,7 +768,6 @@ class _AktivitasTabState extends State<AktivitasTab> {
             .lte('created_at', '${endStr}T23:59:59');
       }
 
-      // 3. Setelah filter selesai, BARU terapkan order() dan limit()
       final attResponse =
           await query.order('created_at', ascending: false).limit(30);
 
@@ -701,7 +882,6 @@ class _AktivitasTabState extends State<AktivitasTab> {
                   return const Center(child: Text("Tidak ada data aktivitas."));
                 }
 
-                // Filter nama/status pada sisi UI berdasarkan 30 baris yang di-fetch
                 final list = snapshot.data!.where((e) {
                   final empName = _getEmployeeName(e['employee_id']);
                   final status = e['status'] ?? '';
@@ -834,7 +1014,7 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
   late Future<List<Map<String, dynamic>>> _requestFuture;
   List<Map<String, dynamic>> _employeeList = [];
   int? _adminEmployeeId;
-  String _searchName = ""; // Variabel pencarian pengajuan
+  String _searchName = "";
 
   @override
   void initState() {
@@ -1039,7 +1219,6 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Fitur Filter Nama pada Tab Pengajuan
         Padding(
           padding: const EdgeInsets.all(8.0),
           child: TextField(
@@ -1065,7 +1244,6 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
                   return const Center(child: Text("Tidak ada data pengajuan."));
                 }
 
-                // Melakukan Filter Nama Di Sini
                 final list = snapshot.data!.where((row) {
                   final namaKaryawan = _getEmployeeName(
                     row['employee_id'] ?? row['user_id'] ?? row['id'],
@@ -1100,7 +1278,6 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
                       statusText = "REJECTED";
                     }
 
-                    // MENAMPILKAN NAMA APPROVER
                     String approver = '';
                     if (row['approved_by'] != null) {
                       approver = _getEmployeeName(row['approved_by']);
