@@ -34,7 +34,7 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
 - Dashboard Admin: Monitoring Absensi, Cuti/Izin & Lembur seluruh Karyawan
   - Manajemen Data Karyawan (Tambah/Edit/Aktif & Non-Aktif)
   - Approval Cuti/Izin & Lembur
-  - Update saldo Cuti
+  - Update Saldo Cuti
   - Form Input & Notifikasi Pemberitahun/Pengumuman
   - Sinkron dgn Kalendar Hari Libur/Tgl Merah IDN
   - Konfigurasi/Penambahan Lokasi Absensi dilakukan lewat **Admin Dashboard**
