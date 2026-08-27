@@ -19,7 +19,7 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
 ## Fitur Utama
 
 - Register Karyawan konfirmasi by Email 
-- Register Data Wajah kebutuhan Face Detection
+- Register Data Wajah kebutuhan Face Detection + Liveness
 - Absen Check-in/Check-out dengan validasi **GPS + Foto Selfie**, dilengkapi **Face Detection**
 - Absen Check-in/Check-out hanya bs dilakukan 1x (1 hari)
 - Riwayat Absensi, Cuti/Izin & Lembur Karyawan
