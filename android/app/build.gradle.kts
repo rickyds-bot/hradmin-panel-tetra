@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("com.google.gms.google-services") // Tanpa version & apply false di level app
-    id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
