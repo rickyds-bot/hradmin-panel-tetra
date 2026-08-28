@@ -242,7 +242,7 @@ class NotificationService {
         17,
         30,
         "Waktunya Check-out!",
-        "Kerjaan selesai? Yuk absen pulang!",
+        "Kerjaan selesai? silahkan absen pulang!",
         skipToday: skipEvening && isToday,
       );
     }
