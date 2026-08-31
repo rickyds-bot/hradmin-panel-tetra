@@ -111,37 +111,46 @@ class _KaryawanPageState extends State<KaryawanPage>
     if (currentUser == null) return;
 
     try {
-      final data = await Supabase.instance.client
+      // 1. Ambil data karyawan utama terlebih dahulu
+      final response = await Supabase.instance.client
           .from('employees')
           .select('*')
           .eq('email', currentUser.email!)
           .single();
 
-      final dept = await Supabase.instance.client
-          .from('departments')
-          .select('name')
-          .eq('id', data['department_id'])
-          .maybeSingle();
+      // 2. Wajib: Buat salinan (copy) dari response agar bisa ditambahkan data baru
+      final Map<String, dynamic> data = Map<String, dynamic>.from(response);
 
-      final pos = await Supabase.instance.client
-          .from('positions')
-          .select('name')
-          .eq('id', data['position_id'])
-          .maybeSingle();
+      // 3. Tarik data relasi secara BERSAMAAN (Paralel) menggunakan Future.wait
+      // Ini jauh lebih cepat daripada menunggu satu-satu (sekuensial)
+      final results = await Future.wait([
+        Supabase.instance.client
+            .from('departments')
+            .select('name')
+            .eq('id', data['department_id'] ?? 0)
+            .maybeSingle(),
+        Supabase.instance.client
+            .from('positions')
+            .select('name')
+            .eq('id', data['position_id'] ?? 0)
+            .maybeSingle(),
+        Supabase.instance.client
+            .from('locations')
+            .select('name')
+            .eq('id', data['location_id'] ?? 0)
+            .maybeSingle(),
+      ]);
 
-      final loc = await Supabase.instance.client
-          .from('locations')
-          .select('name')
-          .eq('id', data['location_id'])
-          .maybeSingle();
+      // 4. Masukkan hasil tarikan paralel ke dalam map
+      data['dept_name'] = results[0]?['name'] ?? '-';
+      data['pos_name'] = results[1]?['name'] ?? '-';
+      data['loc_name'] = results[2]?['name'] ?? '-';
 
-      data['dept_name'] = dept?['name'] ?? '-';
-      data['pos_name'] = pos?['name'] ?? '-';
-      data['loc_name'] = loc?['name'] ?? '-';
-
-      setState(() {
-        userData = data;
-      });
+      if (mounted) {
+        setState(() {
+          userData = data;
+        });
+      }
     } catch (e) {
       debugPrint("Error fetching data: $e");
     }
@@ -473,15 +482,34 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
       if (!serviceEnabled) throw 'GPS tidak aktif.';
 
       LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied)
+      if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
+      }
 
+      // 1. Tampilkan lokasi terakhir yang tersimpan di memori HP agar Map langsung muncul
+      Position? lastPosition = await Geolocator.getLastKnownPosition();
+      if (lastPosition != null && mounted) {
+        setState(() {
+          _currentPosition = lastPosition;
+          _markers.add(
+            Marker(
+              markerId: const MarkerId('me'),
+              position: LatLng(lastPosition.latitude, lastPosition.longitude),
+            ),
+          );
+          _isLoadingMap = false; // Map langsung terbuka tanpa lag
+        });
+      }
+
+      // 2. Ambil lokasi real-time dengan akurasi medium (lebih cepat dari high)
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        desiredAccuracy: LocationAccuracy.medium,
       );
+
       if (mounted) {
         setState(() {
           _currentPosition = position;
+          _markers.clear();
           _markers.add(
             Marker(
               markerId: const MarkerId('me'),
