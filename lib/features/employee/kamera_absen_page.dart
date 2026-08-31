@@ -240,7 +240,7 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
     }
 
     if (!_hasBlinkedClosed) {
-      if (leftEye < 0.25 && rightEye < 0.25) {
+      if (leftEye < 0.35 && rightEye < 0.35) {
         _hasBlinkedClosed = true;
         _updateStatus('Bagus, buka mata kembali', Colors.blue);
       } else {
@@ -249,7 +249,7 @@ class _KameraAbsenPageState extends State<KameraAbsenPage> {
       return;
     }
 
-    if (leftEye > 0.75 && rightEye > 0.75) {
+    if (leftEye > 0.50 && rightEye > 0.50) {
       _blinkConfirmed = true;
       _updateStatus('Memverifikasi wajah...', Colors.amber);
     }
