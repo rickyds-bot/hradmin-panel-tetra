@@ -221,6 +221,7 @@ class NotificationService {
   // LOGIKA: Hanya jam 08:30 (Check-in) dan jam 17:30 (Check-out)
   Future<void> setupAbsensiNotifications(
       {bool skipMorning = false, bool skipEvening = false}) async {
+    await flutterLocalNotificationsPlugin.cancelAll();
     for (int i = 1; i <= 5; i++) {
       bool isToday = DateTime.now().weekday == i;
 
