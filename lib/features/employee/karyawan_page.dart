@@ -702,8 +702,19 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
     return Stack(
       children: [
         Container(
-          height: 330,
-          color: Colors.blue.shade900,
+          height: 420,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.blue.shade900,
+                Colors.blue.shade400,
+                Colors.grey.shade100,
+              ],
+              stops: const [0.0, 0.45, 1.0],
+            ),
+          ),
         ),
         Column(
           children: [
@@ -1319,231 +1330,259 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
 
     final List<String> currentOptions = _mode == 'Cuti' ? opsiCuti : opsiIzin;
 
-    return Column(
+    return Stack(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Card(
-            color: Colors.teal.shade50,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: Colors.teal.shade200),
-            ),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.info_outline, color: Colors.teal),
-                  title: const Text("Jumlah Cuti Tahunan"),
-                  trailing: Text(
-                    "$_remainingLeave Hari",
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Colors.teal,
-                    ),
-                  ),
-                ),
-                if (_nextResetDate != null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: Text(
-                      "Sisa cuti akan reset pada: ${DateFormat('dd-MM-yyyy').format(_nextResetDate!)}",
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.teal,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+        Container(
+          height: 420,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.blue.shade900,
+                Colors.blue.shade400,
+                Colors.grey.shade100,
               ],
+              stops: const [0.0, 0.45, 1.0],
             ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Padding(
+        Column(
+          children: [
+            Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Form Pengajuan",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: RadioListTile<String>(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text(
-                            "Cuti",
-                            style: TextStyle(fontSize: 14),
-                          ),
-                          value: "Cuti",
-                          groupValue: _mode,
-                          onChanged: (val) {
-                            setState(() {
-                              _mode = val!;
-                              _selectedLeaveType = null;
-                              _lampiran = null;
-                              _dateRange = null;
-                            });
-                          },
+              child: Card(
+                color: Colors.teal.shade50,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.teal.shade200),
+                ),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading:
+                          const Icon(Icons.info_outline, color: Colors.teal),
+                      title: const Text("Jumlah Cuti Tahunan"),
+                      trailing: Text(
+                        "$_remainingLeave Hari",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Colors.teal,
                         ),
                       ),
-                      Expanded(
-                        child: RadioListTile<String>(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text(
-                            "Izin/Sakit",
-                            style: TextStyle(fontSize: 14),
+                    ),
+                    if (_nextResetDate != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: Text(
+                          "Sisa cuti akan reset pada: ${DateFormat('dd-MM-yyyy').format(_nextResetDate!)}",
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.teal,
+                            fontWeight: FontWeight.bold,
                           ),
-                          value: "Izin",
-                          groupValue: _mode,
-                          onChanged: (val) {
-                            setState(() {
-                              _mode = val!;
-                              _selectedLeaveType = null;
-                              _dateRange = null;
-                            });
-                          },
+                          textAlign: TextAlign.center,
                         ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Form Pengajuan",
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: RadioListTile<String>(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text(
+                                "Cuti",
+                                style: TextStyle(fontSize: 14),
+                              ),
+                              value: "Cuti",
+                              groupValue: _mode,
+                              onChanged: (val) {
+                                setState(() {
+                                  _mode = val!;
+                                  _selectedLeaveType = null;
+                                  _lampiran = null;
+                                  _dateRange = null;
+                                });
+                              },
+                            ),
+                          ),
+                          Expanded(
+                            child: RadioListTile<String>(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text(
+                                "Izin/Sakit",
+                                style: TextStyle(fontSize: 14),
+                              ),
+                              value: "Izin",
+                              groupValue: _mode,
+                              onChanged: (val) {
+                                setState(() {
+                                  _mode = val!;
+                                  _selectedLeaveType = null;
+                                  _dateRange = null;
+                                });
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      DropdownButtonFormField<String>(
+                        value: _selectedLeaveType,
+                        decoration: InputDecoration(
+                          labelText:
+                              _mode == 'Cuti' ? "Jenis Cuti" : "Kategori Izin",
+                          border: const OutlineInputBorder(),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                        ),
+                        items: currentOptions
+                            .map(
+                              (type) => DropdownMenuItem(
+                                  value: type, child: Text(type)),
+                            )
+                            .toList(),
+                        onChanged: (val) =>
+                            setState(() => _selectedLeaveType = val),
+                      ),
+                      const SizedBox(height: 15),
+                      if (_selectedLeaveType == 'Izin Sakit') ...[
+                        OutlinedButton.icon(
+                          onPressed: _pickLampiran,
+                          icon: Icon(
+                            _lampiran == null
+                                ? Icons.upload_file
+                                : Icons.check_circle,
+                            color:
+                                _lampiran == null ? Colors.blue : Colors.green,
+                          ),
+                          label: Text(
+                            _lampiran == null
+                                ? "Unggah Surat Dokter (Wajib)"
+                                : "Surat Dokter Dilampirkan",
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 45),
+                            side: BorderSide(
+                              color: _lampiran == null
+                                  ? Colors.blue
+                                  : Colors.green,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                      ],
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          DateTime firstAllowedDate = _mode == 'Cuti'
+                              ? DateTime.now().add(const Duration(days: 7))
+                              : DateTime.now()
+                                  .subtract(const Duration(days: 14));
+
+                          final picked = await showDateRangePicker(
+                            context: context,
+                            firstDate: firstAllowedDate,
+                            lastDate:
+                                DateTime.now().add(const Duration(days: 365)),
+                          );
+                          if (picked != null)
+                            setState(() => _dateRange = picked);
+                        },
+                        icon: const Icon(Icons.calendar_today),
+                        label: Text(
+                          _dateRange == null
+                              ? "Pilih Rentang Tanggal"
+                              : "${DateFormat('dd-MM-yyyy').format(_dateRange!.start)} s/d ${DateFormat('dd-MM-yyyy').format(_dateRange!.end)}",
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 45),
+                        ),
+                      ),
+                      if (_mode == 'Cuti')
+                        const Padding(
+                          padding: EdgeInsets.only(top: 4),
+                          child: Center(
+                            child: Text(
+                              "*Pengajuan cuti tahunan minimal 7 hari sebelumnya",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.red,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 15),
+                      TextField(
+                        controller: _reasonCtrl,
+                        decoration: const InputDecoration(
+                          labelText: "Keterangan/Alasan",
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                        ),
+                        maxLines: 1,
+                      ),
+                      const SizedBox(height: 15),
+                      SizedBox(
+                        width: double.infinity,
+                        child: _isSubmitting
+                            ? const Center(child: CircularProgressIndicator())
+                            : ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.teal.shade700,
+                                  foregroundColor: Colors.white,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                                onPressed: () => _ajukanCuti(context),
+                                child: const Text(
+                                  "Kirim Pengajuan",
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 5),
-                  DropdownButtonFormField<String>(
-                    value: _selectedLeaveType,
-                    decoration: InputDecoration(
-                      labelText:
-                          _mode == 'Cuti' ? "Jenis Cuti" : "Kategori Izin",
-                      border: const OutlineInputBorder(),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 12,
-                      ),
-                    ),
-                    items: currentOptions
-                        .map(
-                          (type) =>
-                              DropdownMenuItem(value: type, child: Text(type)),
-                        )
-                        .toList(),
-                    onChanged: (val) =>
-                        setState(() => _selectedLeaveType = val),
-                  ),
-                  const SizedBox(height: 15),
-                  if (_selectedLeaveType == 'Izin Sakit') ...[
-                    OutlinedButton.icon(
-                      onPressed: _pickLampiran,
-                      icon: Icon(
-                        _lampiran == null
-                            ? Icons.upload_file
-                            : Icons.check_circle,
-                        color: _lampiran == null ? Colors.blue : Colors.green,
-                      ),
-                      label: Text(
-                        _lampiran == null
-                            ? "Unggah Surat Dokter (Wajib)"
-                            : "Surat Dokter Dilampirkan",
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 45),
-                        side: BorderSide(
-                          color: _lampiran == null ? Colors.blue : Colors.green,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 15),
-                  ],
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      DateTime firstAllowedDate = _mode == 'Cuti'
-                          ? DateTime.now().add(const Duration(days: 7))
-                          : DateTime.now().subtract(const Duration(days: 14));
-
-                      final picked = await showDateRangePicker(
-                        context: context,
-                        firstDate: firstAllowedDate,
-                        lastDate: DateTime.now().add(const Duration(days: 365)),
-                      );
-                      if (picked != null) setState(() => _dateRange = picked);
-                    },
-                    icon: const Icon(Icons.calendar_today),
-                    label: Text(
-                      _dateRange == null
-                          ? "Pilih Rentang Tanggal"
-                          : "${DateFormat('dd-MM-yyyy').format(_dateRange!.start)} s/d ${DateFormat('dd-MM-yyyy').format(_dateRange!.end)}",
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 45),
-                    ),
-                  ),
-                  if (_mode == 'Cuti')
-                    const Padding(
-                      padding: EdgeInsets.only(top: 4),
-                      child: Center(
-                        child: Text(
-                          "*Pengajuan cuti tahunan minimal 7 hari sebelumnya",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.red,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 15),
-                  TextField(
-                    controller: _reasonCtrl,
-                    decoration: const InputDecoration(
-                      labelText: "Keterangan/Alasan",
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 12,
-                      ),
-                    ),
-                    maxLines: 1,
-                  ),
-                  const SizedBox(height: 15),
-                  SizedBox(
-                    width: double.infinity,
-                    child: _isSubmitting
-                        ? const Center(child: CircularProgressIndicator())
-                        : ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.teal.shade700,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            onPressed: () => _ajukanCuti(context),
-                            child: const Text(
-                              "Kirim Pengajuan",
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Expanded(
-          child: RiwayatCutiList(
-            key: _riwayatKey,
-            userId: Supabase.instance.client.auth.currentUser!.id,
-          ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: RiwayatCutiList(
+                key: _riwayatKey,
+                userId: Supabase.instance.client.auth.currentUser!.id,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -1839,124 +1878,146 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Stack(
       children: [
-        // --- FORM PENGAJUAN LEMBUR (TETAP SEPERTI ASLINYA) ---
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Form Pengajuan Lembur",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  const SizedBox(height: 15),
-                  ElevatedButton.icon(
-                    onPressed: _pickDate,
-                    icon: const Icon(Icons.calendar_today),
-                    label: Text(
-                      _selectedDate == null
-                          ? "Pilih Tanggal Mulai Lembur"
-                          : DateFormat('dd-MM-yyyy').format(_selectedDate!),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 45),
-                      backgroundColor: Colors.blue.shade50,
-                      foregroundColor: Colors.blue.shade900,
-                      elevation: 0,
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _pickTime(isStart: true),
-                          icon: const Icon(Icons.access_time, size: 18),
-                          label: Text(
-                            _startTime == null
-                                ? "Jam Mulai"
-                                : "${_startTime!.hour.toString().padLeft(2, '0')}:${_startTime!.minute.toString().padLeft(2, '0')}",
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue.shade50,
-                            foregroundColor: Colors.blue.shade900,
-                            elevation: 0,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _pickTime(isStart: false),
-                          icon: const Icon(Icons.access_time_filled, size: 18),
-                          label: Text(
-                            _endTime == null
-                                ? "Jam Selesai"
-                                : "${_endTime!.hour.toString().padLeft(2, '0')}:${_endTime!.minute.toString().padLeft(2, '0')}",
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange.shade50,
-                            foregroundColor: Colors.orange.shade900,
-                            elevation: 0,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 15),
-                  TextField(
-                    controller: _reasonCtrl,
-                    decoration: const InputDecoration(
-                      labelText: "Detail Pekerjaan Lembur",
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 12,
-                      ),
-                    ),
-                    maxLines: 2,
-                  ),
-                  const SizedBox(height: 15),
-                  SizedBox(
-                    width: double.infinity,
-                    child: _isSubmitting
-                        ? const Center(child: CircularProgressIndicator())
-                        : ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue.shade800,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            onPressed: () => _ajukanLembur(context),
-                            child: const Text(
-                              "Kirim Pengajuan Lembur",
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                  ),
-                ],
-              ),
+        Container(
+          height: 420,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.blue.shade900,
+                Colors.blue.shade400,
+                Colors.grey.shade100,
+              ],
+              stops: const [0.0, 0.45, 1.0],
             ),
           ),
         ),
-        const SizedBox(height: 5),
+        Column(
+          children: [
+            // --- FORM PENGAJUAN LEMBUR (TETAP SEPERTI ASLINYA) ---
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Form Pengajuan Lembur",
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      const SizedBox(height: 15),
+                      ElevatedButton.icon(
+                        onPressed: _pickDate,
+                        icon: const Icon(Icons.calendar_today),
+                        label: Text(
+                          _selectedDate == null
+                              ? "Pilih Tanggal Mulai Lembur"
+                              : DateFormat('dd-MM-yyyy').format(_selectedDate!),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 45),
+                          backgroundColor: Colors.blue.shade50,
+                          foregroundColor: Colors.blue.shade900,
+                          elevation: 0,
+                        ),
+                      ),
+                      const SizedBox(height: 15),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => _pickTime(isStart: true),
+                              icon: const Icon(Icons.access_time, size: 18),
+                              label: Text(
+                                _startTime == null
+                                    ? "Jam Mulai"
+                                    : "${_startTime!.hour.toString().padLeft(2, '0')}:${_startTime!.minute.toString().padLeft(2, '0')}",
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue.shade50,
+                                foregroundColor: Colors.blue.shade900,
+                                elevation: 0,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => _pickTime(isStart: false),
+                              icon: const Icon(Icons.access_time_filled,
+                                  size: 18),
+                              label: Text(
+                                _endTime == null
+                                    ? "Jam Selesai"
+                                    : "${_endTime!.hour.toString().padLeft(2, '0')}:${_endTime!.minute.toString().padLeft(2, '0')}",
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange.shade50,
+                                foregroundColor: Colors.orange.shade900,
+                                elevation: 0,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 15),
+                      TextField(
+                        controller: _reasonCtrl,
+                        decoration: const InputDecoration(
+                          labelText: "Detail Pekerjaan Lembur",
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                        ),
+                        maxLines: 2,
+                      ),
+                      const SizedBox(height: 15),
+                      SizedBox(
+                        width: double.infinity,
+                        child: _isSubmitting
+                            ? const Center(child: CircularProgressIndicator())
+                            : ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue.shade800,
+                                  foregroundColor: Colors.white,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                                onPressed: () => _ajukanLembur(context),
+                                child: const Text(
+                                  "Kirim Pengajuan Lembur",
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 5),
 
-        // --- RIWAYAT LEMBUR & FITUR LAPORAN ---
-        Expanded(
-          child: RiwayatLemburList(
-            key: _riwayatKey,
-            userId: Supabase.instance.client.auth.currentUser!.id,
-            userData: widget.userData, // Pass userData untuk nama di PDF
-          ),
+            // --- RIWAYAT LEMBUR & FITUR LAPORAN ---
+            Expanded(
+              child: RiwayatLemburList(
+                key: _riwayatKey,
+                userId: Supabase.instance.client.auth.currentUser!.id,
+                userData: widget.userData, // Pass userData untuk nama di PDF
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -3404,8 +3465,19 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
       child: Stack(
         children: [
           Container(
-            height: 180,
-            color: const Color(0xFF0D47A1),
+            height: 420,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xFF0D47A1),
+                  const Color(0xFF1E88E5),
+                  Colors.grey.shade100,
+                ],
+                stops: const [0.0, 0.45, 1.0],
+              ),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.all(16.0),
