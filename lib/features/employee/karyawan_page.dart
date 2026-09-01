@@ -699,13 +699,21 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Stack(
       children: [
-        _buildHeader(),
-        _buildQuickMetrics(),
-        _buildMapSection(),
-        _buildActionButtons(),
-        _buildHistoryList(),
+        Container(
+          height: 330,
+          color: Colors.blue.shade900,
+        ),
+        Column(
+          children: [
+            _buildHeader(),
+            _buildQuickMetrics(),
+            _buildMapSection(),
+            _buildActionButtons(),
+            _buildHistoryList(),
+          ],
+        ),
       ],
     );
   }
@@ -731,11 +739,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
           MediaQuery.of(context).padding.top + 15,
           20,
           25,
-        ),
-        decoration: BoxDecoration(
-          color: Colors.blue.shade900,
-          borderRadius:
-              const BorderRadius.vertical(bottom: Radius.circular(30)),
         ),
         child: Row(
           children: [
@@ -3402,13 +3405,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
         children: [
           Container(
             height: 180,
-            decoration: const BoxDecoration(
-              color: Color(0xFF0D47A1),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(30),
-                bottomRight: Radius.circular(30),
-              ),
-            ),
+            color: const Color(0xFF0D47A1),
           ),
           Padding(
             padding: const EdgeInsets.all(16.0),

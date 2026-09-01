@@ -125,7 +125,7 @@ class NotificationService {
               importance: Importance.max,
               priority: Priority.high,
               channelShowBadge: true,
-              icon: '@mipmap/ic_launcher',
+              icon: 'ic_notification',
             ),
           ),
         );
@@ -200,7 +200,7 @@ class NotificationService {
             channelDescription: 'Pengingat otomatis waktu absen',
             importance: Importance.max,
             priority: Priority.high,
-            icon: '@mipmap/ic_launcher',
+            icon: 'ic_notification',
             enableVibration: true,
             playSound: true,
           ),
@@ -232,7 +232,7 @@ class NotificationService {
         8,
         30,
         "Waktunya Check-in!",
-        "Sudah jam 08:30, jangan lupa absen pagi sekarang!",
+        "Sudah jam 08:30, jangan lupa absen pagi!",
         skipToday: skipMorning && isToday,
       );
 
