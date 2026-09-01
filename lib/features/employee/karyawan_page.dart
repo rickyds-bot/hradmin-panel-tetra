@@ -875,6 +875,11 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
 
   Widget _metricCard(String t, String v, IconData i, Color c) => Expanded(
         child: Card(
+          elevation: 6,
+          shadowColor: Colors.black.withOpacity(0.3),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(15),
             child: Row(
@@ -1393,7 +1398,8 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Card(
-                elevation: 2,
+                elevation: 8,
+                shadowColor: Colors.black.withOpacity(0.3),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(15),
                 ),
@@ -1901,7 +1907,8 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Card(
-                elevation: 2,
+                elevation: 8,
+                shadowColor: Colors.black.withOpacity(0.3),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(15),
                 ),
@@ -2994,22 +3001,62 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Column(
-        children: [
-          const TabBar(
-              labelColor: Colors.blue,
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: Colors.blue,
-              tabs: [Tab(text: "Approval Cuti"), Tab(text: "Approval Lembur")]),
-          Expanded(
-              child: TabBarView(children: [
-            _buildDaftarPersetujuanCuti(),
-            _buildDaftarPersetujuanLembur()
-          ])),
-        ],
-      ),
+    return Stack(
+      children: [
+        Container(
+          height: 420,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.blue.shade900,
+                Colors.blue.shade400,
+                Colors.grey.shade100,
+              ],
+              stops: const [0.0, 0.45, 1.0],
+            ),
+          ),
+        ),
+        DefaultTabController(
+          length: 2,
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const TabBar(
+                    labelColor: Colors.blue,
+                    unselectedLabelColor: Colors.grey,
+                    indicatorColor: Colors.blue,
+                    tabs: [
+                      Tab(text: "Approval Cuti"),
+                      Tab(text: "Approval Lembur"),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                  child: TabBarView(children: [
+                _buildDaftarPersetujuanCuti(),
+                _buildDaftarPersetujuanLembur()
+              ])),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -3485,7 +3532,8 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
               children: [
                 const SizedBox(height: 20),
                 Card(
-                  elevation: 4,
+                  elevation: 10,
+                  shadowColor: Colors.black.withOpacity(0.3),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(15),
                   ),
