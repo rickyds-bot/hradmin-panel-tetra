@@ -38,7 +38,7 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
   - Form Input & Notifikasi Pemberitahun/Pengumuman
   - Sinkron dgn Kalendar Hari Libur/Tgl Merah IDN
   - Konfigurasi/Penambahan Lokasi Absensi dilakukan lewat **Admin Dashboard**
-  - Set Titik/Radius Lokasi Absen
+  - Set Titik/Radius Lokasi Absen (Multi lokasi)
   - Bisa mengaktifkan Mode **"Absen Bebas Lokasi"** (tanpa validasi GPS) per kebutuhan
   - Log Aktifitas Karyawan
 - Laporan & Export:
