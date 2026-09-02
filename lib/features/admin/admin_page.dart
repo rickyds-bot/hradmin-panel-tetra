@@ -187,24 +187,34 @@ class _AdminPageState extends State<AdminPage> {
       );
     }
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Row(
-        children: [
-          _buildStatCard('Total Karyawan', _totalKaryawan.toString(),
-              Icons.people_outline, Colors.blue),
-          _buildStatCard('Karyawan Tetap', _totalTetap.toString(),
-              Icons.verified_user_outlined, Colors.indigo),
-          _buildStatCard('Karyawan Kontrak', _totalKontrak.toString(),
-              Icons.assignment_ind_outlined, Colors.teal),
-          _buildStatCard('Hadir Hari Ini', _totalHadirHariIni.toString(),
-              Icons.how_to_reg_outlined, Colors.green),
-          _buildStatCard('Cuti / Izin Aktif', _totalCutiHariIni.toString(),
-              Icons.event_busy_outlined, Colors.orange),
-          _buildStatCard('Lembur Pending', _totalPendingLembur.toString(),
-              Icons.timer_outlined, Colors.purple),
-        ],
+    return Container(
+      decoration: const BoxDecoration(
+        // Background gradasi hitam ke abu-abu gelap
+        gradient: LinearGradient(
+          colors: [Colors.black, Color(0xFF2C2C2C)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Row(
+          children: [
+            _buildStatCard('Total Karyawan', _totalKaryawan.toString(),
+                Icons.people_outline, Colors.blue),
+            _buildStatCard('Karyawan Tetap', _totalTetap.toString(),
+                Icons.verified_user_outlined, Colors.indigo),
+            _buildStatCard('Karyawan Kontrak', _totalKontrak.toString(),
+                Icons.assignment_ind_outlined, Colors.teal),
+            _buildStatCard('Hadir Hari Ini', _totalHadirHariIni.toString(),
+                Icons.how_to_reg_outlined, Colors.green),
+            _buildStatCard('Cuti / Izin Aktif', _totalCutiHariIni.toString(),
+                Icons.event_busy_outlined, Colors.orange),
+            _buildStatCard('Lembur Pending', _totalPendingLembur.toString(),
+                Icons.timer_outlined, Colors.purple),
+          ],
+        ),
       ),
     );
   }
@@ -241,7 +251,7 @@ class _AdminPageState extends State<AdminPage> {
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Statistik Karyawan di bagian atas
+            // Statistik Karyawan di bagian atas (Gradasi Hitam)
             _buildStatsHeader(),
 
             // TabBar Menu yang dipindahkan dari AppBar

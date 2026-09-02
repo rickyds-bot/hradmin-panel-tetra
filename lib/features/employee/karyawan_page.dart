@@ -369,7 +369,8 @@ class _KaryawanPageState extends State<KaryawanPage>
 
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
-      appBar: safeIndex == 0
+      // --- UPDATE: Menghilangkan AppBar untuk Beranda DAN Profil ---
+      appBar: (safeIndex == 0 || safeIndex == activePages.length - 1)
           ? null
           : AppBar(
               title: Text(
@@ -3506,667 +3507,715 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
     );
   }
 
+  // --- UPDATE: Mengubah struktur dari SingleChildScrollView -> Stack > Column ---
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: Stack(
-        children: [
-          Container(
-            height: 420,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  const Color(0xFF0D47A1),
-                  const Color(0xFF1E88E5),
-                  Colors.grey.shade100,
-                ],
-                stops: const [0.0, 0.45, 1.0],
-              ),
+    return Stack(
+      children: [
+        Container(
+          height: 420,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                const Color(0xFF0D47A1),
+                const Color(0xFF1E88E5),
+                Colors.grey.shade100,
+              ],
+              stops: const [0.0, 0.45, 1.0],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                const SizedBox(height: 20),
-                Card(
-                  elevation: 10,
-                  shadowColor: Colors.black.withOpacity(0.3),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      children: [
-                        Stack(
-                          alignment: Alignment.bottomRight,
-                          children: [
-                            CircleAvatar(
-                              key: ValueKey(_profileImageUrl),
-                              radius: 50,
-                              backgroundColor: Colors.grey.shade300,
-                              backgroundImage: _profileImageUrl != null
-                                  ? NetworkImage(_profileImageUrl!)
-                                  : null,
-                              child: _profileImageUrl == null
-                                  ? const Icon(
-                                      Icons.person,
-                                      size: 38,
-                                      color: Colors.white,
-                                    )
-                                  : null,
-                            ),
-                            if (_isUploadingPhoto)
-                              const Positioned.fill(
-                                child: CircularProgressIndicator(),
-                              ),
-                            Positioned(
-                              bottom: 0,
-                              right: 0,
-                              child: GestureDetector(
-                                onTap: _isUploadingPhoto
-                                    ? null
-                                    : _uploadFotoProfil,
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: const BoxDecoration(
-                                    color: Colors.blue,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.camera_alt,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 15),
-                        Text(
-                          _isEditing
-                              ? "Mode Edit Profil"
-                              : (widget.userData['full_name'] ?? '-'),
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: _isEditing
-                                ? Colors.orange.shade800
-                                : Colors.black,
-                          ),
-                        ),
-                        if (!_isEditing)
-                          Text(
-                            widget.userData['nik'] ?? '-',
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 15,
-                            ),
-                          ),
-                        const Divider(height: 30, thickness: 1),
-                        Builder(
-                          builder: (context) {
-                            String divisi =
-                                widget.userData['dept_name']?.toString() ?? '-';
-                            String jabatan =
-                                widget.userData['jabatan_name']?.toString() ??
-                                    '-';
-
-                            String rawJoinDate =
-                                widget.userData['join_date']?.toString() ?? '';
-                            String joinDateFormatted = "-";
-
-                            if (rawJoinDate.isNotEmpty &&
-                                rawJoinDate != 'null') {
-                              try {
-                                String datePart = rawJoinDate.contains('T')
-                                    ? rawJoinDate.split('T')[0]
-                                    : rawJoinDate.split(' ')[0];
-                                DateTime dt = DateTime.parse(datePart);
-                                joinDateFormatted =
-                                    DateFormat('dd MMM yyyy', 'id_ID')
-                                        .format(dt);
-                              } catch (e) {
-                                joinDateFormatted = rawJoinDate;
-                              }
-                            }
-
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 8.0,
-                              ),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      children: [
-                                        Text(
-                                          "Divisi",
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade500,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          divisi,
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade800,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Container(
-                                    height: 25,
-                                    width: 1,
-                                    color: Colors.grey.shade300,
-                                  ),
-                                  Expanded(
-                                    child: Column(
-                                      children: [
-                                        Text(
-                                          "Jabatan",
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade500,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          jabatan,
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade800,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Container(
-                                    height: 25,
-                                    width: 1,
-                                    color: Colors.grey.shade300,
-                                  ),
-                                  Expanded(
-                                    child: Column(
-                                      children: [
-                                        Text(
-                                          "Join Date",
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade500,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          joinDateFormatted,
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade800,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
+        ),
+        Column(
+          children: [
+            Container(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                MediaQuery.of(context).padding.top + 15,
+                20,
+                15,
+              ),
+              alignment: Alignment.centerLeft,
+              child: const Text(
+                "Profil Karyawan",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  letterSpacing: 1,
                 ),
-                const SizedBox(height: 20),
-                Card(
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16.0, vertical: 8.0),
                   child: Column(
                     children: [
-                      ExpansionTile(
-                        leading: const Icon(
-                          Icons.person_outline,
-                          color: Colors.blue,
+                      Card(
+                        elevation: 10,
+                        shadowColor: Colors.black.withOpacity(0.3),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
                         ),
-                        title: const Text(
-                          "Data Diri",
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        maintainState: true,
-                        childrenPadding: const EdgeInsets.all(16),
-                        children: [
-                          _buildField("Nama Lengkap", _nameCtrl),
-                          _buildField("Tempat Lahir", _birthPlaceCtrl),
-                          _buildDatePickerField(
-                            "Tanggal Lahir",
-                            _birthDate,
-                            () async {
-                              final picked = await _pickDate(_birthDate);
-                              if (picked != null)
-                                setState(() => _birthDate = picked);
-                            },
-                          ),
-                          _buildDropdown(
-                            "Jenis Kelamin",
-                            _selectedGender,
-                            ['Laki-laki', 'Perempuan'],
-                            (val) => setState(() => _selectedGender = val),
-                          ),
-                          _buildDropdown(
-                            "Agama",
-                            _selectedReligion,
-                            [
-                              'Islam',
-                              'Kristen Protestan',
-                              'Kristen Katolik',
-                              'Hindu',
-                              'Budha',
-                              'Konghucu',
-                              'Lainnya',
-                            ],
-                            (val) => setState(() => _selectedReligion = val),
-                          ),
-                          _buildField("Nomor KTP", _ktpCtrl),
-                          _buildField("Nomor NPWP", _npwpCtrl),
-                          _buildField(
-                            "Alamat Sesuai KTP",
-                            _addrKtpCtrl,
-                            maxLines: 2,
-                          ),
-                          _buildField(
-                            "Alamat Domisili",
-                            _addrNowCtrl,
-                            maxLines: 2,
-                          ),
-                          _buildField("Nomor HP", _phoneCtrl),
-                          _buildDropdown(
-                            "Pendidikan Terakhir",
-                            _selectedEducation,
-                            ['SMA/SMK', 'D3', 'S1', 'S2', 'S3'],
-                            (val) => setState(() => _selectedEducation = val),
-                          ),
-                        ],
-                      ),
-                      const Divider(height: 1),
-                      ExpansionTile(
-                        leading: const Icon(
-                          Icons.family_restroom,
-                          color: Colors.blue,
-                        ),
-                        title: const Text(
-                          "Data Keluarga",
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        maintainState: true,
-                        childrenPadding: const EdgeInsets.all(16),
-                        children: [
-                          _buildDropdown(
-                            "Status Pernikahan",
-                            _selectedStatus,
-                            ['Single', 'Menikah', 'Bercerai'],
-                            (val) => setState(() => _selectedStatus = val!),
-                          ),
-                          if (_selectedStatus != 'Single') ...[
-                            _buildField("Nama Suami/Istri", _spouseCtrl),
-                            _buildDatePickerField(
-                              "Tanggal Lahir Suami/Istri",
-                              _spouseBirthDate,
-                              () async {
-                                final picked = await _pickDate(
-                                  _spouseBirthDate,
-                                );
-                                if (picked != null)
-                                  setState(() => _spouseBirthDate = picked);
-                              },
-                            ),
-                          ],
-                          const Divider(),
-                          const Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              "Data Anak",
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          if (!_isEditing && _childrenInputs.isEmpty)
-                            const Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                "- Tidak ada data anak -",
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ),
-                          ...List.generate(_childrenInputs.length, (index) {
-                            return Card(
-                              color: Colors.grey.shade50,
-                              margin: const EdgeInsets.only(bottom: 10),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          "Anak ke-${index + 1}",
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.blue,
-                                          ),
-                                        ),
-                                        if (_isEditing)
-                                          InkWell(
-                                            onTap: () => setState(
-                                              () => _childrenInputs.removeAt(
-                                                index,
-                                              ),
-                                            ),
-                                            child: const Icon(
-                                              Icons.remove_circle,
-                                              color: Colors.red,
-                                              size: 20,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 10),
-                                    _buildField(
-                                      "Nama Anak",
-                                      _childrenInputs[index].nameCtrl,
-                                    ),
-                                    _buildDatePickerField(
-                                      "Tanggal Lahir",
-                                      _childrenInputs[index].birthDate,
-                                      () async {
-                                        final picked = await _pickDate(
-                                          _childrenInputs[index].birthDate,
-                                        );
-                                        if (picked != null)
-                                          setState(
-                                            () => _childrenInputs[index]
-                                                .birthDate = picked,
-                                          );
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }),
-                          if (_isEditing && _childrenInputs.length < 5)
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                icon: const Icon(Icons.add_circle_outline),
-                                label: const Text("Tambah Data Anak"),
-                                onPressed: () => setState(
-                                  () => _childrenInputs.add(ChildInputData()),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      ExpansionTile(
-                        leading: const Icon(
-                          Icons.contact_emergency_outlined,
-                          color: Colors.blue,
-                        ),
-                        title: const Text(
-                          "Kontak Darurat",
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        childrenPadding: const EdgeInsets.all(16),
-                        children: [
-                          _buildField("Nama Kontak", _emerNameCtrl),
-                          _buildField("Nomor HP", _emerPhoneCtrl),
-                        ],
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: _buildActionButtons(),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                if (!_isEditing)
-                  Builder(builder: (context) {
-                    bool isFaceRegistered =
-                        widget.userData['is_face_registered'] == true;
-
-                    return Card(
-                      elevation: 1,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                      child: ListTile(
-                        leading: Icon(
-                          isFaceRegistered
-                              ? Icons.face_retouching_natural
-                              : Icons.face,
-                          color:
-                              isFaceRegistered ? Colors.green : Colors.orange,
-                        ),
-                        title: Text(
-                          isFaceRegistered
-                              ? "Update Data Wajah"
-                              : "Daftarkan Wajah (Wajib)",
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: isFaceRegistered
-                                ? Colors.green
-                                : Colors.orange.shade900,
-                          ),
-                        ),
-                        subtitle: isFaceRegistered
-                            ? const Text("Data wajah sudah tersimpan",
-                                style:
-                                    TextStyle(fontSize: 10, color: Colors.grey))
-                            : const Text(
-                                "Daftarkan wajah untuk keperluan absensi",
-                                style:
-                                    TextStyle(fontSize: 10, color: Colors.red)),
-                        trailing:
-                            const Icon(Icons.chevron_right, color: Colors.grey),
-                        onTap: () async {
-                          var cameraStatus = await Permission.camera.request();
-                          if (!cameraStatus.isGranted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text('Izin kamera diperlukan!')));
-                            return;
-                          }
-
-                          final cameras = await availableCameras();
-                          final frontCamera = cameras.firstWhere(
-                            (cam) =>
-                                cam.lensDirection == CameraLensDirection.front,
-                            orElse: () => cameras.first,
-                          );
-
-                          final bool? isRegistered = await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  RegisterFacePage(camera: frontCamera),
-                            ),
-                          );
-
-                          if (isRegistered == true) {
-                            setState(() {});
-                            widget.onProfileUpdated();
-                          }
-                        },
-                      ),
-                    );
-                  }),
-                if (!_isEditing) const SizedBox(height: 10),
-                if (!_isEditing)
-                  Card(
-                    elevation: 1,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: ListTile(
-                      leading: const Icon(
-                        Icons.lock_outline,
-                        color: Colors.red,
-                      ),
-                      title: const Text(
-                        "Ubah Password",
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.red,
-                        ),
-                      ),
-                      trailing: const Icon(
-                        Icons.chevron_right,
-                        color: Colors.grey,
-                      ),
-                      onTap: () {
-                        _showChangePasswordDialog();
-                      },
-                    ),
-                  ),
-                if (!_isEditing) const SizedBox(height: 10),
-                if (!_isEditing)
-                  Card(
-                    elevation: 1,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: ListTile(
-                      leading: const Icon(Icons.logout, color: Colors.red),
-                      title: const Text(
-                        "Logout",
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.red,
-                        ),
-                      ),
-                      trailing: const Icon(
-                        Icons.chevron_right,
-                        color: Colors.grey,
-                      ),
-                      onTap: () {
-                        showDialog(
-                          context: context,
-                          builder: (BuildContext dialogContext) {
-                            return AlertDialog(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              title: const Row(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20.0),
+                          child: Column(
+                            children: [
+                              Stack(
+                                alignment: Alignment.bottomRight,
                                 children: [
-                                  Icon(
-                                    Icons.warning_amber_rounded,
-                                    color: Colors.orange,
-                                    size: 28,
+                                  CircleAvatar(
+                                    key: ValueKey(_profileImageUrl),
+                                    radius: 50,
+                                    backgroundColor: Colors.grey.shade300,
+                                    backgroundImage: _profileImageUrl != null
+                                        ? NetworkImage(_profileImageUrl!)
+                                        : null,
+                                    child: _profileImageUrl == null
+                                        ? const Icon(
+                                            Icons.person,
+                                            size: 38,
+                                            color: Colors.white,
+                                          )
+                                        : null,
                                   ),
-                                  SizedBox(width: 10),
-                                  Text("Konfirmasi"),
+                                  if (_isUploadingPhoto)
+                                    const Positioned.fill(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  Positioned(
+                                    bottom: 0,
+                                    right: 0,
+                                    child: GestureDetector(
+                                      onTap: _isUploadingPhoto
+                                          ? null
+                                          : _uploadFotoProfil,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.blue,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.camera_alt,
+                                          color: Colors.white,
+                                          size: 20,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               ),
-                              content: const Text(
-                                "Apakah Anda yakin ingin keluar dari aplikasi?",
+                              const SizedBox(height: 15),
+                              Text(
+                                _isEditing
+                                    ? "Mode Edit Profil"
+                                    : (widget.userData['full_name'] ?? '-'),
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: _isEditing
+                                      ? Colors.orange.shade800
+                                      : Colors.black,
+                                ),
                               ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.pop(dialogContext);
+                              if (!_isEditing)
+                                Text(
+                                  widget.userData['nik'] ?? '-',
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              const Divider(height: 30, thickness: 1),
+                              Builder(
+                                builder: (context) {
+                                  String divisi = widget.userData['dept_name']
+                                          ?.toString() ??
+                                      '-';
+                                  String jabatan = widget
+                                          .userData['jabatan_name']
+                                          ?.toString() ??
+                                      '-';
+
+                                  String rawJoinDate = widget
+                                          .userData['join_date']
+                                          ?.toString() ??
+                                      '';
+                                  String joinDateFormatted = "-";
+
+                                  if (rawJoinDate.isNotEmpty &&
+                                      rawJoinDate != 'null') {
+                                    try {
+                                      String datePart =
+                                          rawJoinDate.contains('T')
+                                              ? rawJoinDate.split('T')[0]
+                                              : rawJoinDate.split(' ')[0];
+                                      DateTime dt = DateTime.parse(datePart);
+                                      joinDateFormatted =
+                                          DateFormat('dd MMM yyyy', 'id_ID')
+                                              .format(dt);
+                                    } catch (e) {
+                                      joinDateFormatted = rawJoinDate;
+                                    }
+                                  }
+
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 8.0,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceEvenly,
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            children: [
+                                              Text(
+                                                "Divisi",
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey.shade500,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                divisi,
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey.shade800,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Container(
+                                          height: 25,
+                                          width: 1,
+                                          color: Colors.grey.shade300,
+                                        ),
+                                        Expanded(
+                                          child: Column(
+                                            children: [
+                                              Text(
+                                                "Jabatan",
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey.shade500,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                jabatan,
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey.shade800,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Container(
+                                          height: 25,
+                                          width: 1,
+                                          color: Colors.grey.shade300,
+                                        ),
+                                        Expanded(
+                                          child: Column(
+                                            children: [
+                                              Text(
+                                                "Join Date",
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey.shade500,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                joinDateFormatted,
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey.shade800,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Card(
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Column(
+                          children: [
+                            ExpansionTile(
+                              leading: const Icon(
+                                Icons.person_outline,
+                                color: Colors.blue,
+                              ),
+                              title: const Text(
+                                "Data Diri",
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              maintainState: true,
+                              childrenPadding: const EdgeInsets.all(16),
+                              children: [
+                                _buildField("Nama Lengkap", _nameCtrl),
+                                _buildField("Tempat Lahir", _birthPlaceCtrl),
+                                _buildDatePickerField(
+                                  "Tanggal Lahir",
+                                  _birthDate,
+                                  () async {
+                                    final picked = await _pickDate(_birthDate);
+                                    if (picked != null)
+                                      setState(() => _birthDate = picked);
                                   },
-                                  child: const Text(
-                                    "Batal",
+                                ),
+                                _buildDropdown(
+                                  "Jenis Kelamin",
+                                  _selectedGender,
+                                  ['Laki-laki', 'Perempuan'],
+                                  (val) =>
+                                      setState(() => _selectedGender = val),
+                                ),
+                                _buildDropdown(
+                                  "Agama",
+                                  _selectedReligion,
+                                  [
+                                    'Islam',
+                                    'Kristen Protestan',
+                                    'Kristen Katolik',
+                                    'Hindu',
+                                    'Budha',
+                                    'Konghucu',
+                                    'Lainnya',
+                                  ],
+                                  (val) =>
+                                      setState(() => _selectedReligion = val),
+                                ),
+                                _buildField("Nomor KTP", _ktpCtrl),
+                                _buildField("Nomor NPWP", _npwpCtrl),
+                                _buildField(
+                                  "Alamat Sesuai KTP",
+                                  _addrKtpCtrl,
+                                  maxLines: 2,
+                                ),
+                                _buildField(
+                                  "Alamat Domisili",
+                                  _addrNowCtrl,
+                                  maxLines: 2,
+                                ),
+                                _buildField("Nomor HP", _phoneCtrl),
+                                _buildDropdown(
+                                  "Pendidikan Terakhir",
+                                  _selectedEducation,
+                                  ['SMA/SMK', 'D3', 'S1', 'S2', 'S3'],
+                                  (val) =>
+                                      setState(() => _selectedEducation = val),
+                                ),
+                              ],
+                            ),
+                            const Divider(height: 1),
+                            ExpansionTile(
+                              leading: const Icon(
+                                Icons.family_restroom,
+                                color: Colors.blue,
+                              ),
+                              title: const Text(
+                                "Data Keluarga",
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              maintainState: true,
+                              childrenPadding: const EdgeInsets.all(16),
+                              children: [
+                                _buildDropdown(
+                                  "Status Pernikahan",
+                                  _selectedStatus,
+                                  ['Single', 'Menikah', 'Bercerai'],
+                                  (val) =>
+                                      setState(() => _selectedStatus = val!),
+                                ),
+                                if (_selectedStatus != 'Single') ...[
+                                  _buildField("Nama Suami/Istri", _spouseCtrl),
+                                  _buildDatePickerField(
+                                    "Tanggal Lahir Suami/Istri",
+                                    _spouseBirthDate,
+                                    () async {
+                                      final picked = await _pickDate(
+                                        _spouseBirthDate,
+                                      );
+                                      if (picked != null)
+                                        setState(
+                                            () => _spouseBirthDate = picked);
+                                    },
+                                  ),
+                                ],
+                                const Divider(),
+                                const Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    "Data Anak",
                                     style: TextStyle(
-                                      color: Colors.grey,
+                                      fontSize: 13,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                 ),
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
+                                const SizedBox(height: 8),
+                                if (!_isEditing && _childrenInputs.isEmpty)
+                                  const Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      "- Tidak ada data anak -",
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                        fontStyle: FontStyle.italic,
+                                      ),
                                     ),
                                   ),
-                                  onPressed: () async {
-                                    Navigator.pop(dialogContext);
-
-                                    // Bersihkan fcm_token saat logout agar tidak bertabrakan
-                                    try {
-                                      await Supabase.instance.client
-                                          .from('employees')
-                                          .update({'fcm_token': null}).eq(
-                                              'id', widget.userData['id']);
-                                    } catch (e) {
-                                      debugPrint("Gagal reset token: $e");
-                                    }
-
-                                    await Supabase.instance.client.auth
-                                        .signOut();
-                                    if (mounted) {
-                                      Navigator.pushReplacementNamed(
-                                        context,
-                                        '/login',
-                                      );
-                                    }
-                                  },
-                                  child: const Text("Ya, Keluar"),
-                                ),
+                                ...List.generate(_childrenInputs.length,
+                                    (index) {
+                                  return Card(
+                                    color: Colors.grey.shade50,
+                                    margin: const EdgeInsets.only(bottom: 10),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: Column(
+                                        children: [
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text(
+                                                "Anak ke-${index + 1}",
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.blue,
+                                                ),
+                                              ),
+                                              if (_isEditing)
+                                                InkWell(
+                                                  onTap: () => setState(
+                                                    () => _childrenInputs
+                                                        .removeAt(
+                                                      index,
+                                                    ),
+                                                  ),
+                                                  child: const Icon(
+                                                    Icons.remove_circle,
+                                                    color: Colors.red,
+                                                    size: 20,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 10),
+                                          _buildField(
+                                            "Nama Anak",
+                                            _childrenInputs[index].nameCtrl,
+                                          ),
+                                          _buildDatePickerField(
+                                            "Tanggal Lahir",
+                                            _childrenInputs[index].birthDate,
+                                            () async {
+                                              final picked = await _pickDate(
+                                                _childrenInputs[index]
+                                                    .birthDate,
+                                              );
+                                              if (picked != null)
+                                                setState(
+                                                  () => _childrenInputs[index]
+                                                      .birthDate = picked,
+                                                );
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }),
+                                if (_isEditing && _childrenInputs.length < 5)
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: TextButton.icon(
+                                      icon:
+                                          const Icon(Icons.add_circle_outline),
+                                      label: const Text("Tambah Data Anak"),
+                                      onPressed: () => setState(
+                                        () => _childrenInputs
+                                            .add(ChildInputData()),
+                                      ),
+                                    ),
+                                  ),
                               ],
-                            );
-                          },
-                        );
-                      },
-                    ),
+                            ),
+                            ExpansionTile(
+                              leading: const Icon(
+                                Icons.contact_emergency_outlined,
+                                color: Colors.blue,
+                              ),
+                              title: const Text(
+                                "Kontak Darurat",
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              childrenPadding: const EdgeInsets.all(16),
+                              children: [
+                                _buildField("Nama Kontak", _emerNameCtrl),
+                                _buildField("Nomor HP", _emerPhoneCtrl),
+                              ],
+                            ),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              child: _buildActionButtons(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      if (!_isEditing)
+                        Builder(builder: (context) {
+                          bool isFaceRegistered =
+                              widget.userData['is_face_registered'] == true;
+
+                          return Card(
+                            elevation: 1,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            child: ListTile(
+                              leading: Icon(
+                                isFaceRegistered
+                                    ? Icons.face_retouching_natural
+                                    : Icons.face,
+                                color: isFaceRegistered
+                                    ? Colors.green
+                                    : Colors.orange,
+                              ),
+                              title: Text(
+                                isFaceRegistered
+                                    ? "Update Data Wajah"
+                                    : "Daftarkan Wajah (Wajib)",
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: isFaceRegistered
+                                      ? Colors.green
+                                      : Colors.orange.shade900,
+                                ),
+                              ),
+                              subtitle: isFaceRegistered
+                                  ? const Text("Data wajah sudah tersimpan",
+                                      style: TextStyle(
+                                          fontSize: 10, color: Colors.grey))
+                                  : const Text(
+                                      "Daftarkan wajah untuk keperluan absensi",
+                                      style: TextStyle(
+                                          fontSize: 10, color: Colors.red)),
+                              trailing: const Icon(Icons.chevron_right,
+                                  color: Colors.grey),
+                              onTap: () async {
+                                var cameraStatus =
+                                    await Permission.camera.request();
+                                if (!cameraStatus.isGranted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content:
+                                              Text('Izin kamera diperlukan!')));
+                                  return;
+                                }
+
+                                final cameras = await availableCameras();
+                                final frontCamera = cameras.firstWhere(
+                                  (cam) =>
+                                      cam.lensDirection ==
+                                      CameraLensDirection.front,
+                                  orElse: () => cameras.first,
+                                );
+
+                                final bool? isRegistered = await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        RegisterFacePage(camera: frontCamera),
+                                  ),
+                                );
+
+                                if (isRegistered == true) {
+                                  setState(() {});
+                                  widget.onProfileUpdated();
+                                }
+                              },
+                            ),
+                          );
+                        }),
+                      if (!_isEditing) const SizedBox(height: 10),
+                      if (!_isEditing)
+                        Card(
+                          elevation: 1,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: ListTile(
+                            leading: const Icon(
+                              Icons.lock_outline,
+                              color: Colors.red,
+                            ),
+                            title: const Text(
+                              "Ubah Password",
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red,
+                              ),
+                            ),
+                            trailing: const Icon(
+                              Icons.chevron_right,
+                              color: Colors.grey,
+                            ),
+                            onTap: () {
+                              _showChangePasswordDialog();
+                            },
+                          ),
+                        ),
+                      if (!_isEditing) const SizedBox(height: 10),
+                      if (!_isEditing)
+                        Card(
+                          elevation: 1,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: ListTile(
+                            leading:
+                                const Icon(Icons.logout, color: Colors.red),
+                            title: const Text(
+                              "Logout",
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red,
+                              ),
+                            ),
+                            trailing: const Icon(
+                              Icons.chevron_right,
+                              color: Colors.grey,
+                            ),
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (BuildContext dialogContext) {
+                                  return AlertDialog(
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(15),
+                                    ),
+                                    title: const Row(
+                                      children: [
+                                        Icon(
+                                          Icons.warning_amber_rounded,
+                                          color: Colors.orange,
+                                          size: 28,
+                                        ),
+                                        SizedBox(width: 10),
+                                        Text("Konfirmasi"),
+                                      ],
+                                    ),
+                                    content: const Text(
+                                      "Apakah Anda yakin ingin keluar dari aplikasi?",
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () {
+                                          Navigator.pop(dialogContext);
+                                        },
+                                        child: const Text(
+                                          "Batal",
+                                          style: TextStyle(
+                                            color: Colors.grey,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.red,
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                        onPressed: () async {
+                                          Navigator.pop(dialogContext);
+
+                                          // Bersihkan fcm_token saat logout agar tidak bertabrakan
+                                          try {
+                                            await Supabase.instance.client
+                                                .from('employees')
+                                                .update({'fcm_token': null}).eq(
+                                                    'id',
+                                                    widget.userData['id']);
+                                          } catch (e) {
+                                            debugPrint("Gagal reset token: $e");
+                                          }
+
+                                          await Supabase.instance.client.auth
+                                              .signOut();
+                                          if (mounted) {
+                                            Navigator.pushReplacementNamed(
+                                              context,
+                                              '/login',
+                                            );
+                                          }
+                                        },
+                                        child: const Text("Ya, Keluar"),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      const SizedBox(height: 30),
+                    ],
                   ),
-                const SizedBox(height: 30),
-              ],
+                ),
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 
