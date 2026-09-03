@@ -38,6 +38,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
   // Variabel untuk Karyawan Paling Tepat Waktu
   List<Map<String, dynamic>> _topEmployees = [];
+  String _topEmployeesPeriod = '';
 
   @override
   void initState() {
@@ -145,28 +146,39 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       await _fetchChartData(nonAdminIds);
 
       // 7. Karyawan Paling Tepat Waktu (Top 10)
-      // Cek data bulan berjalan, jika kosong/belum ada, otomatis fallback ke bulan Agustus (Bulan Lalu)
+      // Selalu tampilkan rekap BULAN LALU secara penuh (data sudah final/tidak berubah lagi).
+      // Baru berpindah ke bulan berikutnya begitu bulan itu berganti (mis. tetap Agustus
+      // sepanjang September, baru ganti ke September begitu masuk Oktober).
       DateTime now = DateTime.now();
-      String startDate =
-          DateTime(now.year, now.month, 1).toIso8601String().split('T')[0];
-      String endDate = now.toIso8601String().split('T')[0];
+      DateTime firstDayPrevMonth = DateTime(now.year, now.month - 1, 1);
+      DateTime lastDayPrevMonth = DateTime(
+          now.year, now.month, 0); // hari ke-0 bulan ini = akhir bulan lalu
 
-      var allAttRes = await Supabase.instance.client
+      String startDate = firstDayPrevMonth.toIso8601String().split('T')[0];
+      String endDate = lastDayPrevMonth.toIso8601String().split('T')[0];
+
+      const List<String> _namaBulan = [
+        'Januari',
+        'Februari',
+        'Maret',
+        'April',
+        'Mei',
+        'Juni',
+        'Juli',
+        'Agustus',
+        'September',
+        'Oktober',
+        'November',
+        'Desember',
+      ];
+      _topEmployeesPeriod =
+          '${_namaBulan[firstDayPrevMonth.month - 1]} ${firstDayPrevMonth.year}';
+
+      final allAttRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id, created_at')
-          .gte('created_at', '$startDate 00:00:00');
-
-      // Jika data bulan ini kosong, otomatis tarik rekap bulan Agustus secara penuh
-      if (allAttRes.isEmpty) {
-        startDate = '2026-08-01';
-        endDate = '2026-08-31';
-
-        allAttRes = await Supabase.instance.client
-            .from('attendance')
-            .select('employee_id, created_at')
-            .gte('created_at', '$startDate 00:00:00')
-            .lte('created_at', '$endDate 23:59:59');
-      }
+          .gte('created_at', '$startDate 00:00:00')
+          .lte('created_at', '$endDate 23:59:59');
 
       Map<String, int> onTimeCounts = {};
 
@@ -819,7 +831,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Batas Masuk 08:30 (Toleransi s/d 08:45)',
+            'Periode: $_topEmployeesPeriod • Batas Masuk 08:30 (Toleransi s/d 08:45)',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               color: Colors.grey[500],
