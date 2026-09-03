@@ -36,6 +36,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   DateTime? _selectedDay;
   final Map<String, String> _holidaysMap = {};
 
+  // Variabel baru untuk Karyawan Terajin
+  List<Map<String, dynamic>> _topEmployees = [];
+
   @override
   void initState() {
     super.initState();
@@ -141,6 +144,54 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       // 6. Data Grafik Kehadiran 7 Hari Terakhir
       await _fetchChartData(nonAdminIds);
+
+      // 7. Karyawan Terajin (Top 3 Hadir Bulan Ini)
+      final startOfMonth = DateTime(DateTime.now().year, DateTime.now().month, 1)
+          .toIso8601String()
+          .split('T')[0];
+      
+      final allAttRes = await Supabase.instance.client
+          .from('attendance')
+          .select('employee_id')
+          .gte('created_at', '$startOfMonth 00:00:00');
+
+      Map<String, int> empCounts = {};
+      for (var r in allAttRes) {
+        final eId = r['employee_id'];
+        if (nonAdminIds.contains(eId)) {
+          empCounts[eId.toString()] = (empCounts[eId.toString()] ?? 0) + 1;
+        }
+      }
+
+      var sortedKeys = empCounts.keys.toList()
+        ..sort((a, b) => empCounts[b]!.compareTo(empCounts[a]!));
+      var top3Keys = sortedKeys.take(3).toList();
+
+      if (top3Keys.isNotEmpty) {
+        final topEmpData = await Supabase.instance.client
+            .from('employees')
+            .select('id, full_name, photo_url, photo, jabatan_name')
+            .inFilter('id', top3Keys);
+
+        List<Map<String, dynamic>> tempTop = [];
+        for (var key in top3Keys) {
+          var emp = topEmpData.firstWhere(
+              (e) => e['id'].toString() == key,
+              orElse: () => <String, dynamic>{});
+          if (emp.isNotEmpty) {
+            tempTop.add({
+              'name': emp['full_name'] ?? 'Karyawan',
+              'photo': emp['photo_url'] ?? emp['photo'],
+              'jabatan': emp['jabatan_name'] ?? '-',
+              'count': empCounts[key]
+            });
+          }
+        }
+        _topEmployees = tempTop;
+      } else {
+        _topEmployees = [];
+      }
+
     } catch (e) {
       debugPrint('Error fetching dashboard stats: $e');
     } finally {
@@ -195,8 +246,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             BarChartRodData(
               toY: count,
               color: Colors.blue[600]!,
-              width: 40, // <-- NILAI DIPERBESAR AGAR BAR LEBIH GEMUK
-              borderRadius: BorderRadius.circular(6), // <-- Disesuaikan sedikit
+              width: 40,
+              borderRadius: BorderRadius.circular(6),
               backDrawRodData: BackgroundBarChartRodData(
                 show: true,
                 toY: _totalKaryawan.toDouble() > 0
@@ -344,7 +395,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 ),
                 const SizedBox(height: 24),
 
-                // Baris Grafik dan Kalender
+                // Baris Grafik dan Kalender & Top Employees
                 LayoutBuilder(
                   builder: (context, constraints) {
                     bool isWide = constraints.maxWidth > 900;
@@ -383,47 +434,55 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                         if (isWide) const SizedBox(width: 16),
                         if (!isWide) const SizedBox(height: 16),
 
-                        // Bagian Kalender
+                        // Bagian Kalender dan Top Employees
                         Expanded(
                           flex: isWide ? 1 : 0,
-                          child: Container(
-                            width: isWide ? null : constraints.maxWidth,
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey[200]!),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildCalendar(),
-                                if (_selectedDay != null &&
-                                    _getHolidayDescription(_selectedDay!) !=
-                                        null)
-                                  Padding(
-                                    padding: const EdgeInsets.all(12.0),
-                                    child: Container(
-                                      width: double.infinity,
-                                      padding: const EdgeInsets.all(10),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red[50],
-                                        borderRadius: BorderRadius.circular(8),
-                                        border:
-                                            Border.all(color: Colors.red[200]!),
-                                      ),
-                                      child: Text(
-                                        'Libur: ${_getHolidayDescription(_selectedDay!)}',
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.red[800],
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: isWide ? null : constraints.maxWidth,
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.grey[200]!),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildCalendar(),
+                                    if (_selectedDay != null &&
+                                        _getHolidayDescription(_selectedDay!) !=
+                                            null)
+                                      Padding(
+                                        padding: const EdgeInsets.all(12.0),
+                                        child: Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: Colors.red[50],
+                                            borderRadius: BorderRadius.circular(8),
+                                            border:
+                                                Border.all(color: Colors.red[200]!),
+                                          ),
+                                          child: Text(
+                                            'Libur: ${_getHolidayDescription(_selectedDay!)}',
+                                            style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.red[800],
+                                            ),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ),
-                              ],
-                            ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16), // Jarak antara kalender dan card
+                              // Masukkan Card Karyawan Terajin di sini
+                              _buildTopEmployeesCard(),
+                            ],
                           ),
                         ),
                       ],
@@ -693,6 +752,117 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // Widget baru untuk daftar Top 3 Karyawan Terajin
+  Widget _buildTopEmployeesCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Paling Rajin Bulan Ini',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 24),
+          if (_topEmployees.isEmpty)
+            Text(
+              'Belum ada data kehadiran bulan ini.',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12,
+                color: Colors.grey,
+              ),
+            )
+          else
+            ..._topEmployees.map((emp) {
+              final photoUrl = emp['photo'];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: Colors.blue[50],
+                      backgroundImage: (photoUrl != null && photoUrl.toString().isNotEmpty)
+                          ? NetworkImage(photoUrl.toString())
+                          : null,
+                      child: (photoUrl == null || photoUrl.toString().isEmpty)
+                          ? const Icon(Icons.person, size: 20, color: Colors.blue)
+                          : null,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            emp['name'],
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF1E293B),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            emp['jabatan'],
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 11,
+                              color: Colors.grey[600],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green[50],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${emp['count']}x Hadir',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green[700],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
       ),
     );
   }
