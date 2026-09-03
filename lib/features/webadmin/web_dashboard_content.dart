@@ -145,11 +145,12 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       // 6. Data Grafik Kehadiran 7 Hari Terakhir
       await _fetchChartData(nonAdminIds);
 
-      // 7. Karyawan Terajin (Top 3 Hadir Bulan Ini)
-      final startOfMonth = DateTime(DateTime.now().year, DateTime.now().month, 1)
-          .toIso8601String()
-          .split('T')[0];
-      
+      // 7. Karyawan Terajin (Top 10 Hadir Bulan Ini)
+      final startOfMonth =
+          DateTime(DateTime.now().year, DateTime.now().month, 1)
+              .toIso8601String()
+              .split('T')[0];
+
       final allAttRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id')
@@ -165,18 +166,19 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       var sortedKeys = empCounts.keys.toList()
         ..sort((a, b) => empCounts[b]!.compareTo(empCounts[a]!));
-      var top3Keys = sortedKeys.take(3).toList();
 
-      if (top3Keys.isNotEmpty) {
+      // MENGAMBIL TOP 10 KARYAWAN
+      var top10Keys = sortedKeys.take(10).toList();
+
+      if (top10Keys.isNotEmpty) {
         final topEmpData = await Supabase.instance.client
             .from('employees')
             .select('id, full_name, photo_url, photo, jabatan_name')
-            .inFilter('id', top3Keys);
+            .inFilter('id', top10Keys);
 
         List<Map<String, dynamic>> tempTop = [];
-        for (var key in top3Keys) {
-          var emp = topEmpData.firstWhere(
-              (e) => e['id'].toString() == key,
+        for (var key in top10Keys) {
+          var emp = topEmpData.firstWhere((e) => e['id'].toString() == key,
               orElse: () => <String, dynamic>{});
           if (emp.isNotEmpty) {
             tempTop.add({
@@ -191,7 +193,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       } else {
         _topEmployees = [];
       }
-
     } catch (e) {
       debugPrint('Error fetching dashboard stats: $e');
     } finally {
@@ -462,9 +463,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                           padding: const EdgeInsets.all(10),
                                           decoration: BoxDecoration(
                                             color: Colors.red[50],
-                                            borderRadius: BorderRadius.circular(8),
-                                            border:
-                                                Border.all(color: Colors.red[200]!),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            border: Border.all(
+                                                color: Colors.red[200]!),
                                           ),
                                           child: Text(
                                             'Libur: ${_getHolidayDescription(_selectedDay!)}',
@@ -479,8 +481,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                   ],
                                 ),
                               ),
-                              const SizedBox(height: 16), // Jarak antara kalender dan card
-                              // Masukkan Card Karyawan Terajin di sini
+                              const SizedBox(height: 16),
+                              // Card Karyawan Terajin
                               _buildTopEmployeesCard(),
                             ],
                           ),
@@ -495,7 +497,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Komponen Grafik (fl_chart) dengan Font Konsisten
+  // Komponen Grafik (fl_chart)
   Widget _buildAttendanceChart() {
     return BarChart(
       BarChartData(
@@ -589,7 +591,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Komponen Kalender (table_calendar) dengan Sinkronisasi Hari Libur & Font Konsisten
+  // Komponen Kalender
   Widget _buildCalendar() {
     return TableCalendar(
       firstDay: DateTime.utc(2020, 1, 1),
@@ -678,7 +680,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        // Menambahkan bayangan tipis agar card lebih pop-up seperti desain UI modern
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -688,13 +689,12 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         ],
         border: Border.all(color: Colors.grey.shade100),
       ),
-      // ClipRRect digunakan agar garis warna di kiri melengkung mengikuti borderRadius
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: Container(
           decoration: BoxDecoration(
             border: Border(
-              left: BorderSide(color: color, width: 5.0), // Garis warna di sebelah kiri
+              left: BorderSide(color: color, width: 5.0),
             ),
           ),
           padding: const EdgeInsets.all(16),
@@ -740,7 +740,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 ),
               ),
               const SizedBox(width: 8),
-              // Icon di sebelah kanan atas
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
@@ -756,7 +755,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Widget baru untuk daftar Top 3 Karyawan Terajin
+  // Widget daftar Top 10 Karyawan Terajin dengan penambahan nomor urut
   Widget _buildTopEmployeesCard() {
     return Container(
       width: double.infinity,
@@ -781,7 +780,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
               const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
               const SizedBox(width: 8),
               Text(
-                'Paling Rajin Bulan Ini',
+                'Top 10 Paling Rajin Bulan Ini',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -800,23 +799,49 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
               ),
             )
           else
-            ..._topEmployees.map((emp) {
+            // asMap digunakan untuk mendapatkan index berurutan dari 0 sampai 9
+            ..._topEmployees.asMap().entries.map((entry) {
+              final int index = entry.key;
+              final emp = entry.value;
               final photoUrl = emp['photo'];
+
+              // Variasi warna teks peringkat (Emas untuk peringkat 1, dsb)
+              Color rankColor = Colors.grey[600]!;
+              if (index == 0) rankColor = Colors.amber[700]!;
+              if (index == 1) rankColor = Colors.blueGrey[400]!;
+              if (index == 2) rankColor = Colors.brown[400]!;
+
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12.0),
                 child: Row(
                   children: [
+                    // Nomor Urut
+                    SizedBox(
+                      width: 28,
+                      child: Text(
+                        '#${index + 1}',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: rankColor,
+                        ),
+                      ),
+                    ),
+                    // Foto Profil
                     CircleAvatar(
                       radius: 20,
                       backgroundColor: Colors.blue[50],
-                      backgroundImage: (photoUrl != null && photoUrl.toString().isNotEmpty)
-                          ? NetworkImage(photoUrl.toString())
-                          : null,
+                      backgroundImage:
+                          (photoUrl != null && photoUrl.toString().isNotEmpty)
+                              ? NetworkImage(photoUrl.toString())
+                              : null,
                       child: (photoUrl == null || photoUrl.toString().isEmpty)
-                          ? const Icon(Icons.person, size: 20, color: Colors.blue)
+                          ? const Icon(Icons.person,
+                              size: 20, color: Colors.blue)
                           : null,
                     ),
                     const SizedBox(width: 12),
+                    // Nama & Jabatan
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -843,8 +868,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                         ],
                       ),
                     ),
+                    // Counter Absen
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
                         color: Colors.green[50],
                         borderRadius: BorderRadius.circular(12),
