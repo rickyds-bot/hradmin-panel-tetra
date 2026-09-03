@@ -213,7 +213,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       if (top10Keys.isNotEmpty) {
         final topEmpData = await Supabase.instance.client
             .from('employees')
-            .select('id, full_name, photo_url, photo, jabatan_name')
+            .select('id, full_name, photo_url, jabatan_name')
             .inFilter('id', top10Keys);
 
         List<Map<String, dynamic>> tempTop = [];
@@ -223,7 +223,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           if (emp.isNotEmpty) {
             tempTop.add({
               'name': emp['full_name'] ?? 'Karyawan',
-              'photo': emp['photo_url'] ?? emp['photo'],
+              'photo': emp['photo_url'],
               'jabatan': emp['jabatan_name'] ?? '-',
               'count': '${onTimeCounts[key]} Tepat Waktu'
             });
