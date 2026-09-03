@@ -145,29 +145,27 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       await _fetchChartData(nonAdminIds);
 
       // 7. Karyawan Paling Tepat Waktu (Top 10)
-      // Cek data bulan berjalan, jika kosong/belum ada, tarik data bulan sebelumnya (Agustus)
+      // Cek data bulan berjalan, jika kosong/belum ada, otomatis fallback ke bulan Agustus (Bulan Lalu)
       DateTime now = DateTime.now();
-      String startOfMonth =
+      String startDate =
           DateTime(now.year, now.month, 1).toIso8601String().split('T')[0];
+      String endDate = now.toIso8601String().split('T')[0];
 
       var allAttRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id, created_at')
-          .gte('created_at', '$startOfMonth 00:00:00');
+          .gte('created_at', '$startDate 00:00:00');
 
+      // Jika data bulan ini kosong, otomatis tarik rekap bulan Agustus secara penuh
       if (allAttRes.isEmpty) {
-        DateTime lastMonth = DateTime(now.year, now.month - 1, 1);
-        DateTime endOfLastMonth = DateTime(now.year, now.month, 0);
-
-        startOfMonth = lastMonth.toIso8601String().split('T')[0];
-        final endOfLastMonthStr =
-            endOfLastMonth.toIso8601String().split('T')[0];
+        startDate = '2026-08-01';
+        endDate = '2026-08-31';
 
         allAttRes = await Supabase.instance.client
             .from('attendance')
             .select('employee_id, created_at')
-            .gte('created_at', '$startOfMonth 00:00:00')
-            .lte('created_at', '$endOfLastMonthStr 23:59:59');
+            .gte('created_at', '$startDate 00:00:00')
+            .lte('created_at', '$endDate 23:59:59');
       }
 
       Map<String, int> onTimeCounts = {};
@@ -426,7 +424,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 ),
                 const SizedBox(height: 24),
 
-                // Baris Grafik, Kalender & Top Employees
+                // Baris Utama: Grafik & Kalender, serta Card Paling Tepat Waktu di bawah Grafik
                 LayoutBuilder(
                   builder: (context, constraints) {
                     bool isWide = constraints.maxWidth > 900;
@@ -434,46 +432,16 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                       direction: isWide ? Axis.horizontal : Axis.vertical,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Bagian Grafik
+                        // Kolom Kiri: Grafik Kehadiran & Card Top 10 Paling Tepat Waktu di bawahnya
                         Expanded(
                           flex: isWide ? 2 : 0,
-                          child: Container(
-                            width: isWide ? null : constraints.maxWidth,
-                            height: 400,
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey[200]!),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Grafik Kehadiran (7 Hari Terakhir)',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 13,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                                const SizedBox(height: 24),
-                                Expanded(child: _buildAttendanceChart()),
-                              ],
-                            ),
-                          ),
-                        ),
-                        if (isWide) const SizedBox(width: 16),
-                        if (!isWide) const SizedBox(height: 16),
-
-                        // Bagian Kalender dan Top Employees Paling Tepat Waktu
-                        Expanded(
-                          flex: isWide ? 1 : 0,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Container(
                                 width: isWide ? null : constraints.maxWidth,
-                                padding: const EdgeInsets.all(8),
+                                height: 400,
+                                padding: const EdgeInsets.all(20),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(12),
@@ -482,39 +450,68 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    _buildCalendar(),
-                                    if (_selectedDay != null &&
-                                        _getHolidayDescription(_selectedDay!) !=
-                                            null)
-                                      Padding(
-                                        padding: const EdgeInsets.all(12.0),
-                                        child: Container(
-                                          width: double.infinity,
-                                          padding: const EdgeInsets.all(10),
-                                          decoration: BoxDecoration(
-                                            color: Colors.red[50],
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                            border: Border.all(
-                                                color: Colors.red[200]!),
-                                          ),
-                                          child: Text(
-                                            'Libur: ${_getHolidayDescription(_selectedDay!)}',
-                                            style: GoogleFonts.plusJakartaSans(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.red[800],
-                                            ),
-                                          ),
-                                        ),
+                                    Text(
+                                      'Grafik Kehadiran (7 Hari Terakhir)',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 13,
+                                        color: Colors.black87,
                                       ),
+                                    ),
+                                    const SizedBox(height: 24),
+                                    Expanded(child: _buildAttendanceChart()),
                                   ],
                                 ),
                               ),
                               const SizedBox(height: 16),
-                              // Card Top 10 Paling Tepat Waktu
+                              // Card Top 10 Paling Tepat Waktu diposisikan di bawah grafik
                               _buildTopEmployeesCard(),
                             ],
+                          ),
+                        ),
+                        if (isWide) const SizedBox(width: 16),
+                        if (!isWide) const SizedBox(height: 16),
+
+                        // Kolom Kanan: Kalender
+                        Expanded(
+                          flex: isWide ? 1 : 0,
+                          child: Container(
+                            width: isWide ? null : constraints.maxWidth,
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey[200]!),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildCalendar(),
+                                if (_selectedDay != null &&
+                                    _getHolidayDescription(_selectedDay!) !=
+                                        null)
+                                  Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red[50],
+                                        borderRadius: BorderRadius.circular(8),
+                                        border:
+                                            Border.all(color: Colors.red[200]!),
+                                      ),
+                                      child: Text(
+                                        'Libur: ${_getHolidayDescription(_selectedDay!)}',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.red[800],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -831,7 +828,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           const Divider(height: 20),
           if (_topEmployees.isEmpty)
             Text(
-              'Belum ada data kedisiplinan bulan ini.',
+              'Belum ada data kedisiplinan.',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 12,
                 color: Colors.grey,
