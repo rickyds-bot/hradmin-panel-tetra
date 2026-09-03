@@ -223,9 +223,10 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                         setStateDialog(() => isSaving = true);
                         try {
                           await Supabase.instance.client.rpc(
-                            'admin_update_user_password',
+                            'admin_update_user_password_by_email',
                             params: {
-                              'target_user_id': karyawan['user_id'],
+                              'target_email':
+                                  karyawan['email'], // <-- Gunakan email
                               'new_password': passCtrl.text,
                             },
                           );

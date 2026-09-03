@@ -189,12 +189,8 @@ class _AdminPageState extends State<AdminPage> {
 
     return Container(
       decoration: const BoxDecoration(
-        // Background gradasi hitam ke abu-abu gelap
-        gradient: LinearGradient(
-          colors: [Colors.black, Color(0xFF2C2C2C)],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
+        // Background transparan
+        color: Colors.transparent,
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -251,7 +247,7 @@ class _AdminPageState extends State<AdminPage> {
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Statistik Karyawan di bagian atas (Gradasi Hitam)
+            // Statistik Karyawan di bagian atas (Transparan)
             _buildStatsHeader(),
 
             // TabBar Menu yang dipindahkan dari AppBar
