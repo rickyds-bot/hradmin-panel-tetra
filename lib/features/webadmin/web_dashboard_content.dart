@@ -144,17 +144,31 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       // 6. Data Grafik Kehadiran 7 Hari Terakhir
       await _fetchChartData(nonAdminIds);
 
-      // 7. Karyawan Paling Tepat Waktu (Top 10 Bulan Ini)
-      // Aturan: Masuk 08:30, toleransi s/d 08:45. Di atas 08:45 dihitung terlambat.
-      final startOfMonth =
-          DateTime(DateTime.now().year, DateTime.now().month, 1)
-              .toIso8601String()
-              .split('T')[0];
+      // 7. Karyawan Paling Tepat Waktu (Top 10)
+      // Cek data bulan berjalan, jika kosong/belum ada, tarik data bulan sebelumnya (Agustus)
+      DateTime now = DateTime.now();
+      String startOfMonth =
+          DateTime(now.year, now.month, 1).toIso8601String().split('T')[0];
 
-      final allAttRes = await Supabase.instance.client
+      var allAttRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id, created_at')
           .gte('created_at', '$startOfMonth 00:00:00');
+
+      if (allAttRes.isEmpty) {
+        DateTime lastMonth = DateTime(now.year, now.month - 1, 1);
+        DateTime endOfLastMonth = DateTime(now.year, now.month, 0);
+
+        startOfMonth = lastMonth.toIso8601String().split('T')[0];
+        final endOfLastMonthStr =
+            endOfLastMonth.toIso8601String().split('T')[0];
+
+        allAttRes = await Supabase.instance.client
+            .from('attendance')
+            .select('employee_id, created_at')
+            .gte('created_at', '$startOfMonth 00:00:00')
+            .lte('created_at', '$endOfLastMonthStr 23:59:59');
+      }
 
       Map<String, int> onTimeCounts = {};
 
