@@ -455,101 +455,114 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 ),
                 const SizedBox(height: 24),
 
-                // Baris Utama: Grafik & Kalender, serta Card Top 10 & Kontrak di bawahnya (Posisi awal)
+                // Layout Utama: Baris 1 (Grafik & Kalender), Baris 2 (Top 10 & Kontrak Berakhir presisi sejajar lebar grafik)
                 LayoutBuilder(
                   builder: (context, constraints) {
                     bool isWide = constraints.maxWidth > 900;
-                    return Flex(
-                      direction: isWide ? Axis.horizontal : Axis.vertical,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Kolom Kiri: Grafik Kehadiran & Card Informasi di bawahnya
-                        Expanded(
-                          flex: isWide ? 2 : 0,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: isWide ? null : constraints.maxWidth,
-                                height: 400,
-                                padding: const EdgeInsets.all(20),
+
+                    Widget chartSection = Container(
+                      width: isWide ? null : constraints.maxWidth,
+                      height: 400,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey[200]!),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Grafik Kehadiran (7 Hari Terakhir)',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 13,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          Expanded(child: _buildAttendanceChart()),
+                        ],
+                      ),
+                    );
+
+                    Widget calendarSection = Container(
+                      width: isWide ? null : constraints.maxWidth,
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey[200]!),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildCalendar(),
+                          if (_selectedDay != null &&
+                              _getHolidayDescription(_selectedDay!) != null)
+                            Padding(
+                              padding: const EdgeInsets.all(12.0),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: Colors.grey[200]!),
+                                  color: Colors.red[50],
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.red[200]!),
                                 ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Grafik Kehadiran (7 Hari Terakhir)',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 13,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 24),
-                                    Expanded(child: _buildAttendanceChart()),
-                                  ],
+                                child: Text(
+                                  'Libur: ${_getHolidayDescription(_selectedDay!)}',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.red[800],
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 16),
-                              // Card Top 10 Paling Tepat Waktu di bawah grafik
-                              _buildTopEmployeesCard(),
-                              const SizedBox(height: 16),
-                              // Card Kontrak Akan Berakhir di bawah Top 10
-                              _buildExpiringContractsCard(),
+                            ),
+                        ],
+                      ),
+                    );
+
+                    if (isWide) {
+                      return Column(
+                        children: [
+                          // Baris 1: Grafik Kehadiran (fleksibel mengikuti lebar kolom kiri) & Kalender
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(flex: 2, child: chartSection),
+                              const SizedBox(width: 16),
+                              Expanded(flex: 1, child: calendarSection),
                             ],
                           ),
-                        ),
-                        if (isWide) const SizedBox(width: 16),
-                        if (!isWide) const SizedBox(height: 16),
-
-                        // Kolom Kanan: Kalender
-                        Expanded(
-                          flex: isWide ? 1 : 0,
-                          child: Container(
-                            width: isWide ? null : constraints.maxWidth,
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey[200]!),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildCalendar(),
-                                if (_selectedDay != null &&
-                                    _getHolidayDescription(_selectedDay!) !=
-                                        null)
-                                  Padding(
-                                    padding: const EdgeInsets.all(12.0),
-                                    child: Container(
-                                      width: double.infinity,
-                                      padding: const EdgeInsets.all(10),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red[50],
-                                        borderRadius: BorderRadius.circular(8),
-                                        border:
-                                            Border.all(color: Colors.red[200]!),
-                                      ),
-                                      child: Text(
-                                        'Libur: ${_getHolidayDescription(_selectedDay!)}',
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.red[800],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
+                          const SizedBox(height: 16),
+                          // Baris 2: Top 10 (Lebar persis sejajar kolom grafik di atasnya) & Card Kontrak di sebelah kanannya
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                  flex: 2, child: _buildTopEmployeesCard()),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                  flex: 1,
+                                  child: _buildExpiringContractsCard()),
+                            ],
                           ),
-                        ),
-                      ],
-                    );
+                        ],
+                      );
+                    } else {
+                      return Column(
+                        children: [
+                          chartSection,
+                          const SizedBox(height: 16),
+                          calendarSection,
+                          const SizedBox(height: 16),
+                          _buildTopEmployeesCard(),
+                          const SizedBox(height: 16),
+                          _buildExpiringContractsCard(),
+                        ],
+                      );
+                    }
                   },
                 ),
                 const SizedBox(height: 40),
@@ -1028,7 +1041,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 bgColor = Colors.orange[50]!;
               } else {
                 statusColor = Colors.amber[800]!;
-                bgColor = Colors.amber[50]!;
+                bgColor = Colors.amber[50]!.withOpacity(0.5);
               }
 
               String formattedDate = '-';
