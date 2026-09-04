@@ -69,14 +69,13 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       }
 
       // 2. Ambil data karyawan (Filter non-admin + Ambil data kontrak)
-      final karyawanRes = await Supabase.instance.client
-          .from('employees')
-          .select('id, full_name, gender, employee_status, role, contract_number, contract_end');
+      final karyawanRes = await Supabase.instance.client.from('employees').select(
+          'id, full_name, gender, employee_status, role, contract_number, contract_end');
 
       int l = 0, p = 0, tetap = 0, kontrak = 0, magang = 0;
       List<dynamic> nonAdminIds = [];
       List<Map<String, dynamic>> tempExpiring = [];
-      
+
       final DateTime now = DateTime.now();
       final DateTime today = DateTime(now.year, now.month, now.day);
 
@@ -101,12 +100,13 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           tetap++;
         } else if (empStatus == 'kontrak') {
           kontrak++;
-          
+
           // Cek masa berlaku kontrak (Seminggu sebelum atau sudah lewat)
           if (emp['contract_end'] != null) {
             try {
               DateTime endDate = DateTime.parse(emp['contract_end'].toString());
-              DateTime endDay = DateTime(endDate.year, endDate.month, endDate.day);
+              DateTime endDay =
+                  DateTime(endDate.year, endDate.month, endDate.day);
               int diffDays = endDay.difference(today).inDays;
 
               if (diffDays <= 7) {
@@ -123,7 +123,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           magang++;
         }
       }
-      
+
       // Urutkan dari yang paling mendesak (minus / terlewat paling atas)
       tempExpiring.sort((a, b) => a['diff_days'].compareTo(b['diff_days']));
       _expiringContracts = tempExpiring;
@@ -174,16 +174,27 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       // 7. Karyawan Paling Tepat Waktu (Top 10)
       DateTime firstDayPrevMonth = DateTime(now.year, now.month - 1, 1);
-      DateTime lastDayPrevMonth = DateTime(now.year, now.month, 0); 
+      DateTime lastDayPrevMonth = DateTime(now.year, now.month, 0);
 
       String startDate = firstDayPrevMonth.toIso8601String().split('T')[0];
       String endDate = lastDayPrevMonth.toIso8601String().split('T')[0];
 
       const List<String> _namaBulan = [
-        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+        'Januari',
+        'Februari',
+        'Maret',
+        'April',
+        'Mei',
+        'Juni',
+        'Juli',
+        'Agustus',
+        'September',
+        'Oktober',
+        'November',
+        'Desember'
       ];
-      _topEmployeesPeriod = '${_namaBulan[firstDayPrevMonth.month - 1]} ${firstDayPrevMonth.year}';
+      _topEmployeesPeriod =
+          '${_namaBulan[firstDayPrevMonth.month - 1]} ${firstDayPrevMonth.year}';
 
       final allAttRes = await Supabase.instance.client
           .from('attendance')
@@ -483,15 +494,19 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                 ),
                               ),
                               const SizedBox(height: 16),
-                              
+
                               // Row Top 10 dan Kontrak Expired (Sejajar jika isWide)
                               isWide
                                   ? Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Expanded(child: _buildTopEmployeesCard()),
+                                        Expanded(
+                                            child: _buildTopEmployeesCard()),
                                         const SizedBox(width: 16),
-                                        Expanded(child: _buildExpiringContractsCard()),
+                                        Expanded(
+                                            child:
+                                                _buildExpiringContractsCard()),
                                       ],
                                     )
                                   : Column(
@@ -840,7 +855,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         children: [
           Row(
             children: [
-              const Icon(Icons.verified_rounded, color: Colors.indigo, size: 20),
+              const Icon(Icons.verified_rounded,
+                  color: Colors.indigo, size: 20),
               const SizedBox(width: 8),
               Text(
                 'Top 10 Paling Tepat Waktu',
@@ -854,7 +870,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Periode: $_topEmployeesPeriod • Batas Masuk 08:30 (Toleransi s/d 08:45)',
+            'Periode: $_topEmployeesPeriod • Jam Masuk 08:30 (Toleransi s/d 08:45)',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               color: Colors.grey[500],
@@ -903,7 +919,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                               ? NetworkImage(photoUrl.toString())
                               : null,
                       child: (photoUrl == null || photoUrl.toString().isEmpty)
-                          ? const Icon(Icons.person, size: 20, color: Colors.indigo)
+                          ? const Icon(Icons.person,
+                              size: 20, color: Colors.indigo)
                           : null,
                     ),
                     const SizedBox(width: 12),
@@ -934,7 +951,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
                         color: Colors.indigo[50],
                         borderRadius: BorderRadius.circular(12),
@@ -982,7 +1000,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.amber[600], size: 20),
+                  Icon(Icons.warning_amber_rounded,
+                      color: Colors.amber[600], size: 20),
                   const SizedBox(width: 8),
                   Text(
                     'Kontrak Akan Berakhir',
@@ -1024,11 +1043,13 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           else
             ..._expiringContracts.map((emp) {
               int diff = emp['diff_days'];
-              String statusText = diff < 0 ? 'Lewat ${diff.abs()} hari' : (diff == 0 ? 'Hari ini' : '$diff hari lagi');
-              
+              String statusText = diff < 0
+                  ? 'Lewat ${diff.abs()} hari'
+                  : (diff == 0 ? 'Hari ini' : '$diff hari lagi');
+
               Color statusColor;
               Color bgColor;
-              
+
               if (diff < 0) {
                 statusColor = Colors.red[700]!;
                 bgColor = Colors.red[50]!;
@@ -1039,7 +1060,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 statusColor = Colors.amber[800]!;
                 bgColor = Colors.amber[50]!;
               }
-              
+
               String formattedDate = '-';
               try {
                 DateTime dt = DateTime.parse(emp['end_date'].toString());
@@ -1048,7 +1069,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: bgColor,
                   borderRadius: BorderRadius.circular(6),
