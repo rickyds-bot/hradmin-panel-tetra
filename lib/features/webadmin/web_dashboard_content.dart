@@ -984,7 +984,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                   color: Colors.amber[600], size: 20),
               const SizedBox(width: 8),
               Text(
-                'Kontrak Akan Berakhir',
+                'Kontrak yg Akan Berakhir (Karyawan Kontrak)',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
