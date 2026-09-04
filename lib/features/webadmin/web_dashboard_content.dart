@@ -36,9 +36,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   DateTime? _selectedDay;
   final Map<String, String> _holidaysMap = {};
 
-  // Variabel untuk Karyawan Paling Tepat Waktu
+  // Variabel untuk Karyawan Paling Tepat Waktu & Kontrak
   List<Map<String, dynamic>> _topEmployees = [];
   String _topEmployeesPeriod = '';
+  List<Map<String, dynamic>> _expiringContracts = [];
 
   @override
   void initState() {
@@ -67,13 +68,17 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         }
       }
 
-      // 2. Ambil data karyawan (Filter non-admin)
+      // 2. Ambil data karyawan (Filter non-admin + Ambil data kontrak)
       final karyawanRes = await Supabase.instance.client
           .from('employees')
-          .select('id, gender, employee_status, role');
+          .select('id, full_name, gender, employee_status, role, contract_number, contract_end');
 
       int l = 0, p = 0, tetap = 0, kontrak = 0, magang = 0;
       List<dynamic> nonAdminIds = [];
+      List<Map<String, dynamic>> tempExpiring = [];
+      
+      final DateTime now = DateTime.now();
+      final DateTime today = DateTime(now.year, now.month, now.day);
 
       for (var emp in karyawanRes) {
         final role = (emp['role'] ?? '').toString().trim().toLowerCase();
@@ -96,10 +101,32 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           tetap++;
         } else if (empStatus == 'kontrak') {
           kontrak++;
+          
+          // Cek masa berlaku kontrak (Seminggu sebelum atau sudah lewat)
+          if (emp['contract_end'] != null) {
+            try {
+              DateTime endDate = DateTime.parse(emp['contract_end'].toString());
+              DateTime endDay = DateTime(endDate.year, endDate.month, endDate.day);
+              int diffDays = endDay.difference(today).inDays;
+
+              if (diffDays <= 7) {
+                tempExpiring.add({
+                  'name': emp['full_name'] ?? 'Tanpa Nama',
+                  'contract_number': emp['contract_number'] ?? '-',
+                  'end_date': emp['contract_end'],
+                  'diff_days': diffDays,
+                });
+              }
+            } catch (_) {}
+          }
         } else if (empStatus == 'magang') {
           magang++;
         }
       }
+      
+      // Urutkan dari yang paling mendesak (minus / terlewat paling atas)
+      tempExpiring.sort((a, b) => a['diff_days'].compareTo(b['diff_days']));
+      _expiringContracts = tempExpiring;
 
       _totalKaryawan = nonAdminIds.length;
       _totalLakiLaki = l;
@@ -108,7 +135,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       _totalKontrak = kontrak;
       _totalMagang = magang;
 
-      final todayStr = DateTime.now().toIso8601String().split('T')[0];
+      final todayStr = today.toIso8601String().split('T')[0];
 
       // 3. Absen Hari Ini (Check-In)
       final absensiRes = await Supabase.instance.client
@@ -146,33 +173,17 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       await _fetchChartData(nonAdminIds);
 
       // 7. Karyawan Paling Tepat Waktu (Top 10)
-      // Selalu tampilkan rekap BULAN LALU secara penuh (data sudah final/tidak berubah lagi).
-      // Baru berpindah ke bulan berikutnya begitu bulan itu berganti (mis. tetap Agustus
-      // sepanjang September, baru ganti ke September begitu masuk Oktober).
-      DateTime now = DateTime.now();
       DateTime firstDayPrevMonth = DateTime(now.year, now.month - 1, 1);
-      DateTime lastDayPrevMonth = DateTime(
-          now.year, now.month, 0); // hari ke-0 bulan ini = akhir bulan lalu
+      DateTime lastDayPrevMonth = DateTime(now.year, now.month, 0); 
 
       String startDate = firstDayPrevMonth.toIso8601String().split('T')[0];
       String endDate = lastDayPrevMonth.toIso8601String().split('T')[0];
 
       const List<String> _namaBulan = [
-        'Januari',
-        'Februari',
-        'Maret',
-        'April',
-        'Mei',
-        'Juni',
-        'Juli',
-        'Agustus',
-        'September',
-        'Oktober',
-        'November',
-        'Desember',
+        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
       ];
-      _topEmployeesPeriod =
-          '${_namaBulan[firstDayPrevMonth.month - 1]} ${firstDayPrevMonth.year}';
+      _topEmployeesPeriod = '${_namaBulan[firstDayPrevMonth.month - 1]} ${firstDayPrevMonth.year}';
 
       final allAttRes = await Supabase.instance.client
           .from('attendance')
@@ -191,12 +202,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           if (createdAtStr != null) {
             try {
               DateTime checkInTime = DateTime.parse(createdAtStr.toString());
-
-              // Batas akhir tepat waktu / toleransi: Jam 08:45:00
               int totalMinutes = checkInTime.hour * 60 + checkInTime.minute;
-              const int limitMinutes = 8 * 60 + 45; // 08:45 dalam satuan menit
+              const int limitMinutes = 8 * 60 + 45; // 08:45
 
-              // Jika waktu check-in kurang dari atau sama dengan 08:45, dihitung tepat waktu
               if (totalMinutes <= limitMinutes) {
                 onTimeCounts[eIdStr] = (onTimeCounts[eIdStr] ?? 0) + 1;
               }
@@ -436,7 +444,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 ),
                 const SizedBox(height: 24),
 
-                // Baris Utama: Grafik & Kalender, serta Card Paling Tepat Waktu di bawah Grafik
+                // Baris Utama: Grafik, Top 10, Kontrak & Kalender
                 LayoutBuilder(
                   builder: (context, constraints) {
                     bool isWide = constraints.maxWidth > 900;
@@ -444,7 +452,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                       direction: isWide ? Axis.horizontal : Axis.vertical,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Kolom Kiri: Grafik Kehadiran & Card Top 10 Paling Tepat Waktu di bawahnya
+                        // Kolom Kiri: Grafik Kehadiran & 2 Card Informasi di bawahnya
                         Expanded(
                           flex: isWide ? 2 : 0,
                           child: Column(
@@ -475,8 +483,24 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                 ),
                               ),
                               const SizedBox(height: 16),
-                              // Card Top 10 Paling Tepat Waktu diposisikan di bawah grafik
-                              _buildTopEmployeesCard(),
+                              
+                              // Row Top 10 dan Kontrak Expired (Sejajar jika isWide)
+                              isWide
+                                  ? Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(child: _buildTopEmployeesCard()),
+                                        const SizedBox(width: 16),
+                                        Expanded(child: _buildExpiringContractsCard()),
+                                      ],
+                                    )
+                                  : Column(
+                                      children: [
+                                        _buildTopEmployeesCard(),
+                                        const SizedBox(height: 16),
+                                        _buildExpiringContractsCard(),
+                                      ],
+                                    ),
                             ],
                           ),
                         ),
@@ -816,8 +840,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         children: [
           Row(
             children: [
-              const Icon(Icons.verified_rounded,
-                  color: Colors.indigo, size: 20),
+              const Icon(Icons.verified_rounded, color: Colors.indigo, size: 20),
               const SizedBox(width: 8),
               Text(
                 'Top 10 Paling Tepat Waktu',
@@ -861,7 +884,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 padding: const EdgeInsets.only(bottom: 12.0),
                 child: Row(
                   children: [
-                    // Nomor Urut Peringkat
                     SizedBox(
                       width: 28,
                       child: Text(
@@ -873,7 +895,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                         ),
                       ),
                     ),
-                    // Foto Profil
                     CircleAvatar(
                       radius: 20,
                       backgroundColor: Colors.indigo[50],
@@ -882,12 +903,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                               ? NetworkImage(photoUrl.toString())
                               : null,
                       child: (photoUrl == null || photoUrl.toString().isEmpty)
-                          ? const Icon(Icons.person,
-                              size: 20, color: Colors.indigo)
+                          ? const Icon(Icons.person, size: 20, color: Colors.indigo)
                           : null,
                     ),
                     const SizedBox(width: 12),
-                    // Nama & Jabatan
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -914,10 +933,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                         ],
                       ),
                     ),
-                    // Counter Tepat Waktu
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
                         color: Colors.indigo[50],
                         borderRadius: BorderRadius.circular(12),
@@ -929,6 +946,148 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                           fontWeight: FontWeight.bold,
                           color: Colors.indigo[700],
                         ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  // Widget daftar Karyawan Kontrak Akan Berakhir
+  Widget _buildExpiringContractsCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.amber[600], size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Kontrak Akan Berakhir',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                'Perpanjang kontrak →',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 11,
+                  color: Colors.indigo,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Batas toleransi: 7 Hari',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 11,
+              color: Colors.grey[500],
+            ),
+          ),
+          const Divider(height: 20),
+          if (_expiringContracts.isEmpty)
+            Text(
+              'Tidak ada kontrak yang akan berakhir dalam 7 hari ke depan.',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12,
+                color: Colors.grey,
+              ),
+            )
+          else
+            ..._expiringContracts.map((emp) {
+              int diff = emp['diff_days'];
+              String statusText = diff < 0 ? 'Lewat ${diff.abs()} hari' : (diff == 0 ? 'Hari ini' : '$diff hari lagi');
+              
+              Color statusColor;
+              Color bgColor;
+              
+              if (diff < 0) {
+                statusColor = Colors.red[700]!;
+                bgColor = Colors.red[50]!;
+              } else if (diff <= 3) {
+                statusColor = Colors.orange[800]!;
+                bgColor = Colors.orange[50]!;
+              } else {
+                statusColor = Colors.amber[800]!;
+                bgColor = Colors.amber[50]!;
+              }
+              
+              String formattedDate = '-';
+              try {
+                DateTime dt = DateTime.parse(emp['end_date'].toString());
+                formattedDate = DateFormat('yyyy-MM-dd').format(dt);
+              } catch (_) {}
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: RichText(
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        text: TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '${emp['name']} ',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            TextSpan(
+                              text: 'No: ${emp['contract_number']}',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 11,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '$statusText ($formattedDate)',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: statusColor,
                       ),
                     ),
                   ],
