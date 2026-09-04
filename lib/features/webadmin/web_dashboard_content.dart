@@ -51,7 +51,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   Future<void> _fetchDashboardData() async {
     setState(() => _isLoading = true);
     try {
-      // 1. Ambil data hari libur dari Supabase (tabel hari_libur)
+      // 1. Ambil data hari libur dari Supabase (tabel hari_libur)[cite: 10]
       final holidaysRes = await Supabase.instance.client
           .from('hari_libur')
           .select('holiday_date, description');
@@ -68,7 +68,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         }
       }
 
-      // 2. Ambil data karyawan (Filter non-admin + Ambil data kontrak)
+      // 2. Ambil data karyawan (Filter non-admin + Ambil data kontrak)[cite: 10]
       final karyawanRes = await Supabase.instance.client.from('employees').select(
           'id, full_name, gender, employee_status, role, contract_number, contract_end');
 
@@ -137,7 +137,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       final todayStr = today.toIso8601String().split('T')[0];
 
-      // 3. Absen Hari Ini (Check-In)
+      // 3. Absen Hari Ini (Check-In)[cite: 10]
       final absensiRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id')
@@ -149,7 +149,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           .toSet();
       _totalHadirHariIni = uniqueHadir.length;
 
-      // 4. Cuti Hari Ini
+      // 4. Cuti Hari Ini[cite: 10]
       final cutiRes = await Supabase.instance.client
           .from('leave_requests')
           .select('employee_id')
@@ -160,7 +160,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       _totalCutiHariIni =
           cutiRes.where((e) => nonAdminIds.contains(e['employee_id'])).length;
 
-      // 5. Lembur Pending
+      // 5. Lembur Pending[cite: 10]
       final lemburRes = await Supabase.instance.client
           .from('overtime_requests')
           .select('employee_id')
@@ -169,10 +169,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       _totalPendingLembur =
           lemburRes.where((e) => nonAdminIds.contains(e['employee_id'])).length;
 
-      // 6. Data Grafik Kehadiran 7 Hari Terakhir
+      // 6. Data Grafik Kehadiran 7 Hari Terakhir[cite: 10]
       await _fetchChartData(nonAdminIds);
 
-      // 7. Karyawan Paling Tepat Waktu (Top 10)
+      // 7. Karyawan Paling Tepat Waktu (Top 10)[cite: 10]
       DateTime firstDayPrevMonth = DateTime(now.year, now.month - 1, 1);
       DateTime lastDayPrevMonth = DateTime(now.year, now.month, 0);
 
@@ -214,7 +214,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             try {
               DateTime checkInTime = DateTime.parse(createdAtStr.toString());
               int totalMinutes = checkInTime.hour * 60 + checkInTime.minute;
-              const int limitMinutes = 8 * 60 + 45; // 08:45
+              const int limitMinutes = 8 * 60 + 45; // 08:45[cite: 10]
 
               if (totalMinutes <= limitMinutes) {
                 onTimeCounts[eIdStr] = (onTimeCounts[eIdStr] ?? 0) + 1;
@@ -243,7 +243,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             tempTop.add({
               'name': emp['full_name'] ?? 'Karyawan',
               'photo': emp['photo_url'],
-              'jabatan': emp['jabatan_name'] ?? '-',
               'count': '${onTimeCounts[key]} Tepat Waktu'
             });
           }
@@ -526,7 +525,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                     if (isWide) {
                       return Column(
                         children: [
-                          // Baris 1: Grafik Kehadiran (fleksibel mengikuti lebar kolom kiri) & Kalender
+                          // Baris 1: Grafik Kehadiran & Kalender[cite: 10]
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -536,7 +535,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          // Baris 2: Top 10 (Lebar persis sejajar kolom grafik di atasnya) & Card Kontrak di sebelah kanannya
+                          // Baris 2: Top 10 (Lebar proporsional menyesuaikan konten kolom nama & jumlah tepat waktu) & Card Kontrak Berakhir di sebelah kanannya
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -571,7 +570,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Komponen Grafik (fl_chart)
+  // Komponen Grafik (fl_chart)[cite: 10]
   Widget _buildAttendanceChart() {
     return BarChart(
       BarChartData(
@@ -665,7 +664,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Komponen Kalender
+  // Komponen Kalender[cite: 10]
   Widget _buildCalendar() {
     return TableCalendar(
       firstDay: DateTime.utc(2020, 1, 1),
@@ -829,7 +828,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Widget daftar Top 10 Karyawan Paling Tepat Waktu
+  // Widget daftar Top 10 Karyawan Paling Tepat Waktu (Proporsional, hanya menampilkan foto/peringkat, nama, dan jumlah tepat waktu)[cite: 10]
   Widget _buildTopEmployeesCard() {
     return Container(
       width: double.infinity,
@@ -893,7 +892,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
               if (index == 2) rankColor = Colors.brown[400]!;
 
               return Padding(
-                padding: const EdgeInsets.only(bottom: 12.0),
+                padding: const EdgeInsets.only(bottom: 10.0),
                 child: Row(
                   children: [
                     SizedBox(
@@ -908,7 +907,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                       ),
                     ),
                     CircleAvatar(
-                      radius: 20,
+                      radius: 16,
                       backgroundColor: Colors.indigo[50],
                       backgroundImage:
                           (photoUrl != null && photoUrl.toString().isNotEmpty)
@@ -916,36 +915,23 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                               : null,
                       child: (photoUrl == null || photoUrl.toString().isEmpty)
                           ? const Icon(Icons.person,
-                              size: 20, color: Colors.indigo)
+                              size: 16, color: Colors.indigo)
                           : null,
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            emp['name'],
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFF1E293B),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            emp['jabatan'],
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 11,
-                              color: Colors.grey[600],
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
+                      child: Text(
+                        emp['name'],
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF1E293B),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 4),
