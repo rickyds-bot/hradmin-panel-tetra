@@ -172,7 +172,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       // 6. Data Grafik Kehadiran 7 Hari Terakhir
       await _fetchChartData(nonAdminIds);
 
-      // 7. Karyawan Paling Tepat Waktu (Top 10)
+      // 7. Karyawan Paling Tepat Waktu (Top 8)
       DateTime firstDayPrevMonth = DateTime(now.year, now.month - 1, 1);
       DateTime lastDayPrevMonth = DateTime(now.year, now.month, 0);
 
@@ -227,16 +227,16 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       var sortedKeys = onTimeCounts.keys.toList()
         ..sort((a, b) => onTimeCounts[b]!.compareTo(onTimeCounts[a]!));
 
-      var top10Keys = sortedKeys.take(10).toList();
+      var top8Keys = sortedKeys.take(8).toList();
 
-      if (top10Keys.isNotEmpty) {
+      if (top8Keys.isNotEmpty) {
         final topEmpData = await Supabase.instance.client
             .from('employees')
             .select('id, full_name, photo_url, jabatan_name')
-            .inFilter('id', top10Keys);
+            .inFilter('id', top8Keys);
 
         List<Map<String, dynamic>> tempTop = [];
-        for (var key in top10Keys) {
+        for (var key in top8Keys) {
           var emp = topEmpData.firstWhere((e) => e['id'].toString() == key,
               orElse: () => <String, dynamic>{});
           if (emp.isNotEmpty) {
@@ -454,7 +454,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 ),
                 const SizedBox(height: 24),
 
-                // Layout Utama: Baris 1 (Grafik & Top 10 Tepat Waktu), Baris 2 (Kontrak Akan Berakhir & Kalender)
+                // Layout Utama: Baris 1 (Grafik & Top 8 Tepat Waktu), Baris 2 (Kontrak Akan Berakhir & Kalender)
                 LayoutBuilder(
                   builder: (context, constraints) {
                     bool isWide = constraints.maxWidth > 900;
@@ -525,7 +525,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                     if (isWide) {
                       return Column(
                         children: [
-                          // Baris 1: Grafik Kehadiran (Kiri) & Top 10 Paling Tepat Waktu (Kanan)
+                          // Baris 1: Grafik Kehadiran (Kiri) & Top 8 Paling Tepat Waktu (Kanan)
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -828,7 +828,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Widget daftar Top 10 Karyawan Paling Tepat Waktu
+  // Widget daftar Top 8 Karyawan Paling Tepat Waktu
   Widget _buildTopEmployeesCard() {
     return Container(
       width: double.infinity,
@@ -854,7 +854,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                   color: Colors.indigo, size: 20),
               const SizedBox(width: 8),
               Text(
-                'Top 10 Paling Tepat Waktu',
+                'Top 8 Paling Tepat Waktu',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
