@@ -476,6 +476,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 13,
                               color: Colors.black87,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                           const SizedBox(height: 24),
