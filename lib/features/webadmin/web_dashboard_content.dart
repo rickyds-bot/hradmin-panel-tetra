@@ -51,7 +51,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   Future<void> _fetchDashboardData() async {
     setState(() => _isLoading = true);
     try {
-      // 1. Ambil data hari libur dari Supabase (tabel hari_libur)[cite: 10]
+      // 1. Ambil data hari libur dari Supabase (tabel hari_libur)
       final holidaysRes = await Supabase.instance.client
           .from('hari_libur')
           .select('holiday_date, description');
@@ -68,7 +68,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         }
       }
 
-      // 2. Ambil data karyawan (Filter non-admin + Ambil data kontrak)[cite: 10]
+      // 2. Ambil data karyawan (Filter non-admin + Ambil data kontrak)
       final karyawanRes = await Supabase.instance.client.from('employees').select(
           'id, full_name, gender, employee_status, role, contract_number, contract_end');
 
@@ -137,7 +137,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       final todayStr = today.toIso8601String().split('T')[0];
 
-      // 3. Absen Hari Ini (Check-In)[cite: 10]
+      // 3. Absen Hari Ini (Check-In)
       final absensiRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id')
@@ -149,7 +149,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           .toSet();
       _totalHadirHariIni = uniqueHadir.length;
 
-      // 4. Cuti Hari Ini[cite: 10]
+      // 4. Cuti Hari Ini
       final cutiRes = await Supabase.instance.client
           .from('leave_requests')
           .select('employee_id')
@@ -160,7 +160,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       _totalCutiHariIni =
           cutiRes.where((e) => nonAdminIds.contains(e['employee_id'])).length;
 
-      // 5. Lembur Pending[cite: 10]
+      // 5. Lembur Pending
       final lemburRes = await Supabase.instance.client
           .from('overtime_requests')
           .select('employee_id')
@@ -169,10 +169,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       _totalPendingLembur =
           lemburRes.where((e) => nonAdminIds.contains(e['employee_id'])).length;
 
-      // 6. Data Grafik Kehadiran 7 Hari Terakhir[cite: 10]
+      // 6. Data Grafik Kehadiran 7 Hari Terakhir
       await _fetchChartData(nonAdminIds);
 
-      // 7. Karyawan Paling Tepat Waktu (Top 10)[cite: 10]
+      // 7. Karyawan Paling Tepat Waktu (Top 10)
       DateTime firstDayPrevMonth = DateTime(now.year, now.month - 1, 1);
       DateTime lastDayPrevMonth = DateTime(now.year, now.month, 0);
 
@@ -214,7 +214,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             try {
               DateTime checkInTime = DateTime.parse(createdAtStr.toString());
               int totalMinutes = checkInTime.hour * 60 + checkInTime.minute;
-              const int limitMinutes = 8 * 60 + 45; // 08:45[cite: 10]
+              const int limitMinutes = 8 * 60 + 45; // 08:45
 
               if (totalMinutes <= limitMinutes) {
                 onTimeCounts[eIdStr] = (onTimeCounts[eIdStr] ?? 0) + 1;
@@ -454,7 +454,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 ),
                 const SizedBox(height: 24),
 
-                // Layout Utama: Baris 1 (Grafik & Kalender), Baris 2 (Top 10 & Kontrak Berakhir presisi sejajar lebar grafik)
+                // Layout Utama: Baris 1 (Grafik & Top 10 Tepat Waktu), Baris 2 (Kontrak Akan Berakhir & Kalender)
                 LayoutBuilder(
                   builder: (context, constraints) {
                     bool isWide = constraints.maxWidth > 900;
@@ -525,26 +525,26 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                     if (isWide) {
                       return Column(
                         children: [
-                          // Baris 1: Grafik Kehadiran & Kalender[cite: 10]
+                          // Baris 1: Grafik Kehadiran (Kiri) & Top 10 Paling Tepat Waktu (Kanan)
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Expanded(flex: 2, child: chartSection),
                               const SizedBox(width: 16),
-                              Expanded(flex: 1, child: calendarSection),
+                              Expanded(
+                                  flex: 1, child: _buildTopEmployeesCard()),
                             ],
                           ),
                           const SizedBox(height: 16),
-                          // Baris 2: Top 10 (Lebar proporsional menyesuaikan konten kolom nama & jumlah tepat waktu) & Card Kontrak Berakhir di sebelah kanannya
+                          // Baris 2: Kontrak Akan Berakhir (Kiri) & Kalender (Kanan)
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Expanded(
-                                  flex: 2, child: _buildTopEmployeesCard()),
-                              const SizedBox(width: 16),
-                              Expanded(
                                   flex: 1,
                                   child: _buildExpiringContractsCard()),
+                              const SizedBox(width: 16),
+                              Expanded(flex: 1, child: calendarSection),
                             ],
                           ),
                         ],
@@ -554,11 +554,11 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                         children: [
                           chartSection,
                           const SizedBox(height: 16),
-                          calendarSection,
-                          const SizedBox(height: 16),
                           _buildTopEmployeesCard(),
                           const SizedBox(height: 16),
                           _buildExpiringContractsCard(),
+                          const SizedBox(height: 16),
+                          calendarSection,
                         ],
                       );
                     }
@@ -570,7 +570,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Komponen Grafik (fl_chart)[cite: 10]
+  // Komponen Grafik (fl_chart)
   Widget _buildAttendanceChart() {
     return BarChart(
       BarChartData(
@@ -664,7 +664,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Komponen Kalender[cite: 10]
+  // Komponen Kalender
   Widget _buildCalendar() {
     return TableCalendar(
       firstDay: DateTime.utc(2020, 1, 1),
@@ -828,7 +828,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Widget daftar Top 10 Karyawan Paling Tepat Waktu (Proporsional, hanya menampilkan foto/peringkat, nama, dan jumlah tepat waktu)[cite: 10]
+  // Widget daftar Top 10 Karyawan Paling Tepat Waktu
   Widget _buildTopEmployeesCard() {
     return Container(
       width: double.infinity,
