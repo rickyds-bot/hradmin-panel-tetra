@@ -101,7 +101,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         } else if (empStatus == 'kontrak') {
           kontrak++;
 
-          // Cek masa berlaku kontrak (Seminggu sebelum atau sudah lewat)
+          // Cek masa berlaku kontrak (1 bulan / 30 hari sebelum atau sudah lewat)
           if (emp['contract_end'] != null) {
             try {
               DateTime endDate = DateTime.parse(emp['contract_end'].toString());
@@ -109,7 +109,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                   DateTime(endDate.year, endDate.month, endDate.day);
               int diffDays = endDay.difference(today).inDays;
 
-              if (diffDays <= 7) {
+              if (diffDays <= 30) {
                 tempExpiring.add({
                   'name': emp['full_name'] ?? 'Tanpa Nama',
                   'contract_number': emp['contract_number'] ?? '-',
@@ -455,7 +455,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 ),
                 const SizedBox(height: 24),
 
-                // Baris Utama: Grafik, Top 10, Kontrak & Kalender
+                // Baris Utama: Grafik & Kalender, serta Card Top 10 & Kontrak di bawahnya (Posisi awal)
                 LayoutBuilder(
                   builder: (context, constraints) {
                     bool isWide = constraints.maxWidth > 900;
@@ -463,7 +463,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                       direction: isWide ? Axis.horizontal : Axis.vertical,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Kolom Kiri: Grafik Kehadiran & 2 Card Informasi di bawahnya
+                        // Kolom Kiri: Grafik Kehadiran & Card Informasi di bawahnya
                         Expanded(
                           flex: isWide ? 2 : 0,
                           child: Column(
@@ -494,28 +494,11 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                 ),
                               ),
                               const SizedBox(height: 16),
-
-                              // Row Top 10 dan Kontrak Expired (Sejajar jika isWide)
-                              isWide
-                                  ? Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Expanded(
-                                            child: _buildTopEmployeesCard()),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                            child:
-                                                _buildExpiringContractsCard()),
-                                      ],
-                                    )
-                                  : Column(
-                                      children: [
-                                        _buildTopEmployeesCard(),
-                                        const SizedBox(height: 16),
-                                        _buildExpiringContractsCard(),
-                                      ],
-                                    ),
+                              // Card Top 10 Paling Tepat Waktu di bawah grafik
+                              _buildTopEmployeesCard(),
+                              const SizedBox(height: 16),
+                              // Card Kontrak Akan Berakhir di bawah Top 10
+                              _buildExpiringContractsCard(),
                             ],
                           ),
                         ),
@@ -870,7 +853,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Periode: $_topEmployeesPeriod • Jam Masuk 08:30 (Toleransi s/d 08:45)',
+            'Periode: $_topEmployeesPeriod • Batas Masuk 08:30 (Toleransi s/d 08:45)',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               color: Colors.grey[500],
@@ -996,36 +979,23 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded,
-                      color: Colors.amber[600], size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Kontrak Akan Berakhir',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ],
-              ),
+              Icon(Icons.warning_amber_rounded,
+                  color: Colors.amber[600], size: 20),
+              const SizedBox(width: 8),
               Text(
-                'Perpanjang kontrak →',
+                'Kontrak Akan Berakhir',
                 style: GoogleFonts.plusJakartaSans(
-                  fontSize: 11,
-                  color: Colors.indigo,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 4),
           Text(
-            'Batas toleransi: 7 Hari',
+            'Batas toleransi: 1 Bulan (30 Hari)',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               color: Colors.grey[500],
@@ -1034,7 +1004,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           const Divider(height: 20),
           if (_expiringContracts.isEmpty)
             Text(
-              'Tidak ada kontrak yang akan berakhir dalam 7 hari ke depan.',
+              'Tidak ada kontrak yang akan berakhir dalam 1 bulan ke depan.',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 12,
                 color: Colors.grey,
@@ -1053,7 +1023,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
               if (diff < 0) {
                 statusColor = Colors.red[700]!;
                 bgColor = Colors.red[50]!;
-              } else if (diff <= 3) {
+              } else if (diff <= 7) {
                 statusColor = Colors.orange[800]!;
                 bgColor = Colors.orange[50]!;
               } else {
