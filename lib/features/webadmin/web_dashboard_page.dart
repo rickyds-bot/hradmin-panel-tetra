@@ -191,7 +191,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                       _buildNavItem(
                         2,
                         Icons.access_time_outlined,
-                        'Absensi',
+                        'Kehadiran',
                       ),
                       _buildNavItem(
                         3,
@@ -480,7 +480,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
             child: Column(
               children: [
                 _buildSubNavItem(8, 'Laporan Karyawan'),
-                _buildSubNavItem(9, 'Laporan Absensi'),
+                _buildSubNavItem(9, 'Laporan Kehadiran'),
                 _buildSubNavItem(10, 'Laporan Cuti'),
                 _buildSubNavItem(11, 'Laporan Lembur'),
               ],
