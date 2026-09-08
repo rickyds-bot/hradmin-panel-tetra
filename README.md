@@ -47,13 +47,13 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
 ## Preview 
 <p align="center"> <img src="./screenshots/beranda.jpeg" width="250" alt="Halaman Beranda" /> <img src="./screenshots/profile.jpeg" width="250" alt="Halaman Profil" /> </p>
 
-## 📱 Download Aplikasi
+## Download Aplikasi
 
 ### Android (APK)
 Download APK terbaru di halaman [Releases](https://github.com/rickyds-bot/hradmin-panel-tetra/releases/latest).
 
 Atau klik langsung:
-[![Download APK](https://img.shields.io/badge/Download-APK-brightgreen)](https://github.com/rickyds-bot/hradmin-panel-tetra/releases/latest/download/app-release.apk)
+[![Download APK](https://img.shields.io/badge/Download-APK-brightgreen)](https://github.com/rickyds-bot/hradmin-panel-tetra/releases/latest/download/app-arm64-v8a-karyawan-release.apk)
 
 ### Cara Install
 1. Download file `.apk` dari link di atas
@@ -62,7 +62,7 @@ Atau klik langsung:
 4. Login menggunakan akun karyawan yang sudah teregister/terdaftar
 
 ### Web Admin Dashboard
-Akses dashboard admin di: [link Cloudflare Pages/Worker kamu]
+Akses dashboard admin di: [https://hradmin.tetra.co.id] 
 
 
 ## Struktur Project
@@ -106,6 +106,10 @@ Project ini membutuhkan environment/konfigurasi berikut :
 
 - [`DEPLOYMENT.md`](./DEPLOYMENT.md) — panduan build & go-live
 - [`CHANGELOG.md`](./CHANGELOG.md) 
+
+## Lisensi
+
+- Internal use — hak cipta © PT. Tetra Konstruksindo
 
 ## Kontak   
 
