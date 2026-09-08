@@ -477,6 +477,20 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
     }
   }
 
+  // Menggerakkan kamera Google Maps ke posisi terbaru.
+  // Tanpa ini, peta cuma diam di posisi awal (initialCameraPosition)
+  // walaupun marker-nya sudah pindah -> kelihatan seperti "stuck".
+  Future<void> _animateCameraTo(Position pos) async {
+    if (_mapController == null) return;
+    try {
+      await _mapController!.animateCamera(
+        CameraUpdate.newLatLng(LatLng(pos.latitude, pos.longitude)),
+      );
+    } catch (e) {
+      debugPrint("Gagal animasi kamera map: $e");
+    }
+  }
+
   Future<void> _getCurrentLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -500,11 +514,20 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
           );
           _isLoadingMap = false; // Map langsung terbuka tanpa lag
         });
+        _animateCameraTo(lastPosition);
       }
 
-      // 2. Ambil lokasi real-time dengan akurasi medium (lebih cepat dari high)
+      // 2. Ambil lokasi real-time dengan akurasi medium (lebih cepat dari high).
+      // Dikasih timeout supaya kalau sinyal GPS lemah, tidak menggantung
+      // selamanya dan spinner _isLoadingMap tidak macet terus.
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          if (lastPosition != null) return lastPosition;
+          throw 'Waktu tunggu GPS habis. Coba lagi di area dengan sinyal lebih baik.';
+        },
       );
 
       if (mounted) {
@@ -519,8 +542,10 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
           );
           _isLoadingMap = false;
         });
+        _animateCameraTo(position);
       }
     } catch (e) {
+      debugPrint("Gagal ambil lokasi: $e");
       if (mounted) setState(() => _isLoadingMap = false);
     }
   }
@@ -562,6 +587,10 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
 
       Position currentPos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
+      ).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () =>
+            throw 'Gagal mendapatkan lokasi GPS. Pastikan GPS aktif dan sinyal cukup, lalu coba lagi.',
       );
 
       final empData = await Supabase.instance.client
@@ -917,6 +946,14 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
                       zoom: 16,
                     ),
                     markers: _markers,
+                    onMapCreated: (controller) {
+                      _mapController = controller;
+                      // Kalau posisi sudah ada duluan (mis. dari getLastKnownPosition)
+                      // sebelum map selesai dibuat, langsung snap ke sana.
+                      if (_currentPosition != null) {
+                        _animateCameraTo(_currentPosition!);
+                      }
+                    },
                   ),
           ),
         ),
