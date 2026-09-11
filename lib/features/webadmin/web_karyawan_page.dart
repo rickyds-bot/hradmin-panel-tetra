@@ -47,7 +47,7 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
     try {
       final response = await Supabase.instance.client
           .from('employees')
-          .select()
+          .select('*, departments(name)') // Join dengan tabel departments
           .order('full_name', ascending: true);
 
       setState(() {
@@ -927,6 +927,8 @@ class _DetailKaryawanDialogState extends State<DetailKaryawanDialog> {
                     _buildInfoRow('Email', widget.karyawan['email']),
                     _buildInfoRow('No. Telepon', widget.karyawan['phone']),
                     _buildInfoRow('Jabatan', widget.karyawan['jabatan_name']),
+                    _buildInfoRow('Departemen',
+                        widget.karyawan['departments']?['name'] ?? '-'),
                     _buildInfoRow('Role', widget.karyawan['role']),
                     _buildInfoRow(
                         'Position ID', widget.karyawan['position_id']),
@@ -1138,7 +1140,6 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
   final _addressKtpCtrl = TextEditingController();
   final _addressNowCtrl = TextEditingController();
 
-  // Status Pernikahan menggunakan Dropdown
   String _selectedMaritalStatus = 'Single';
   final List<String> _maritalStatusOptions = ['Single', 'Menikah', 'Bercerai'];
 
@@ -1186,6 +1187,35 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
 
   Uint8List? _selectedFileBytes;
   String? _selectedFileName;
+
+  List<Map<String, dynamic>> _departments = [];
+  int? _selectedDepartmentId;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchDepartments();
+  }
+
+  Future<void> _fetchDepartments() async {
+    try {
+      final res = await Supabase.instance.client
+          .from('departments')
+          .select('id, name')
+          .order('name', ascending: true);
+
+      if (mounted) {
+        setState(() {
+          _departments = List<Map<String, dynamic>>.from(res);
+          if (_departments.isNotEmpty) {
+            _selectedDepartmentId = _departments.first['id'];
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("Gagal mengambil data departemen: $e");
+    }
+  }
 
   int _mapRoleToPositionId(String role) {
     switch (role.toLowerCase()) {
@@ -1303,8 +1333,7 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
               'address_ktp': _addressKtpCtrl.text,
               'address_now': _addressNowCtrl.text,
               'education': _selectedEducation,
-              'marital_status':
-                  _selectedMaritalStatus, // Menggunakan nilai dropdown
+              'marital_status': _selectedMaritalStatus,
               'spouse_name': _spouseNameCtrl.text,
               'spouse_birth_date': _spouseBirthDateCtrl.text.isNotEmpty
                   ? _spouseBirthDateCtrl.text
@@ -1313,6 +1342,7 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
               'emergency_name': _emergencyNameCtrl.text,
               'emergency_phone': _emergencyPhoneCtrl.text,
               'jabatan_name': _jabatanCtrl.text,
+              'department_id': _selectedDepartmentId,
               'role': _selectedRole,
               'position_id': positionId,
               'is_active': _selectedAccountStatus == 'Aktif',
@@ -1433,7 +1463,6 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
                         _selectedEducation,
                         _educationOptions,
                         (val) => setState(() => _selectedEducation = val!)),
-                    // Dropdown Status Pernikahan
                     _buildDropdownField(
                         'Status Pernikahan',
                         _selectedMaritalStatus,
@@ -1457,6 +1486,32 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
                     _buildTextField(_addressNowCtrl, 'Alamat Domisili Sekarang',
                         width: 616),
                     _buildTextField(_jabatanCtrl, 'Jabatan', width: 300),
+                    if (_departments.isNotEmpty)
+                      SizedBox(
+                        width: 300,
+                        child: DropdownButtonFormField<int>(
+                          value: _selectedDepartmentId,
+                          items: _departments.map((dept) {
+                            return DropdownMenuItem<int>(
+                              value: dept['id'],
+                              child: Text(dept['name'],
+                                  style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 12)),
+                            );
+                          }).toList(),
+                          onChanged: (val) =>
+                              setState(() => _selectedDepartmentId = val),
+                          decoration: InputDecoration(
+                            labelText: 'Departemen/Divisi',
+                            labelStyle:
+                                GoogleFonts.plusJakartaSans(fontSize: 12),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 12),
+                          ),
+                        ),
+                      ),
                     _buildDropdownField('Role', _selectedRole, _roleOptions,
                         (val) => setState(() => _selectedRole = val!)),
                     _buildDropdownField(
@@ -1642,7 +1697,6 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
   late TextEditingController _addressKtpCtrl;
   late TextEditingController _addressNowCtrl;
 
-  // Status Pernikahan menggunakan Dropdown
   late String _selectedMaritalStatus;
   final List<String> _maritalStatusOptions = ['Single', 'Menikah', 'Bercerai'];
 
@@ -1689,6 +1743,9 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
 
   late TextEditingController _contractStartCtrl;
   late TextEditingController _contractEndCtrl;
+
+  List<Map<String, dynamic>> _departments = [];
+  int? _selectedDepartmentId;
 
   @override
   void initState() {
@@ -1777,7 +1834,37 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
     _contractEndCtrl =
         TextEditingController(text: widget.karyawan['contract_end'] ?? '');
 
+    if (widget.karyawan['department_id'] != null) {
+      _selectedDepartmentId =
+          int.tryParse(widget.karyawan['department_id'].toString());
+    }
+
+    _fetchDepartments();
     _fetchContractHistory();
+  }
+
+  Future<void> _fetchDepartments() async {
+    try {
+      final res = await Supabase.instance.client
+          .from('departments')
+          .select('id, name')
+          .order('name', ascending: true);
+
+      if (mounted) {
+        setState(() {
+          _departments = List<Map<String, dynamic>>.from(res);
+          if (_selectedDepartmentId != null &&
+              !_departments.any((d) => d['id'] == _selectedDepartmentId)) {
+            _selectedDepartmentId =
+                _departments.isNotEmpty ? _departments.first['id'] : null;
+          } else if (_selectedDepartmentId == null && _departments.isNotEmpty) {
+            _selectedDepartmentId = _departments.first['id'];
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("Gagal mengambil data departemen: $e");
+    }
   }
 
   int _mapRoleToPositionId(String role) {
@@ -2041,7 +2128,7 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
         'address_ktp': _addressKtpCtrl.text,
         'address_now': _addressNowCtrl.text,
         'education': _selectedEducation,
-        'marital_status': _selectedMaritalStatus, // Menggunakan nilai dropdown
+        'marital_status': _selectedMaritalStatus,
         'spouse_name': _spouseNameCtrl.text,
         'spouse_birth_date': _spouseBirthDateCtrl.text.isNotEmpty
             ? _spouseBirthDateCtrl.text
@@ -2050,6 +2137,7 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
         'emergency_name': _emergencyNameCtrl.text,
         'emergency_phone': _emergencyPhoneCtrl.text,
         'jabatan_name': _jabatanCtrl.text,
+        'department_id': _selectedDepartmentId,
         'join_date': _joinDateCtrl.text.isNotEmpty ? _joinDateCtrl.text : null,
         'role': _selectedRole,
         'position_id': positionId,
@@ -2167,7 +2255,6 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                             _selectedEducation,
                             _educationOptions,
                             (val) => setState(() => _selectedEducation = val!)),
-                        // Dropdown Status Pernikahan
                         _buildDropdownField(
                             'Status Pernikahan',
                             _selectedMaritalStatus,
@@ -2205,6 +2292,32 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                             _addressNowCtrl, 'Alamat Domisili Sekarang',
                             width: 616),
                         _buildTextField(_jabatanCtrl, 'Jabatan', width: 300),
+                        if (_departments.isNotEmpty)
+                          SizedBox(
+                            width: 300,
+                            child: DropdownButtonFormField<int>(
+                              value: _selectedDepartmentId,
+                              items: _departments.map((dept) {
+                                return DropdownMenuItem<int>(
+                                  value: dept['id'],
+                                  child: Text(dept['name'],
+                                      style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 12)),
+                                );
+                              }).toList(),
+                              onChanged: (val) =>
+                                  setState(() => _selectedDepartmentId = val),
+                              decoration: InputDecoration(
+                                labelText: 'Departemen/Divisi',
+                                labelStyle:
+                                    GoogleFonts.plusJakartaSans(fontSize: 12),
+                                border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8)),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 12),
+                              ),
+                            ),
+                          ),
                         _buildTextField(_joinDateCtrl, 'Tanggal Masuk',
                             width: 300, readOnly: true, onTap: () async {
                           final p = await showDatePicker(
