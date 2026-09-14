@@ -321,15 +321,24 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           barRods: [
             BarChartRodData(
               toY: count,
-              color: Colors.blue[600]!,
-              width: 40,
-              borderRadius: BorderRadius.circular(6),
+              width: 26,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(6),
+                topRight: Radius.circular(6),
+              ),
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [Colors.indigo[600]!, Colors.blue[400]!],
+              ),
+              // Track abu-abu netral (bukan biru pucat) agar bar data
+              // tidak terlihat "dobel"/menyatu dengan background-nya.
               backDrawRodData: BackgroundBarChartRodData(
                 show: true,
                 toY: _totalKaryawan.toDouble() > 0
                     ? _totalKaryawan.toDouble()
                     : 10,
-                color: Colors.blue[50],
+                color: Colors.grey[100],
               ),
             ),
           ],
@@ -340,7 +349,13 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
     _attendanceChartData = tempChartData;
     _chartLabels = tempLabels;
-    _maxYChart = maxVal < 10 ? 10 : (_totalKaryawan.toDouble() + 5);
+
+    // PERBAIKAN: beri "headroom" (ruang napas) di atas bar tertinggi
+    // agar grid/label tidak mepet ke judul card di atasnya.
+    final double baseMax =
+        _totalKaryawan > 0 ? _totalKaryawan.toDouble() : maxVal;
+    final double target = baseMax > maxVal ? baseMax : maxVal;
+    _maxYChart = (target * 1.25).clamp(10, double.infinity);
   }
 
   bool _isPublicHoliday(DateTime day) {
@@ -488,15 +503,51 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Grafik Kehadiran (7 Hari Terakhir)',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 13,
-                              color: Colors.black87,
-                              fontWeight: FontWeight.bold,
-                            ),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.indigo[50],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(Icons.bar_chart_rounded,
+                                    color: Colors.indigo[600], size: 18),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Grafik Kehadiran',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 14,
+                                        color: const Color(0xFF1E293B),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '7 Hari Terakhir',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 11,
+                                        color: Colors.grey[500],
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 24),
+                          // PERBAIKAN: jarak lebih lega (32px) + garis
+                          // pemisah tipis, agar judul tidak "menabrak"
+                          // area chart di bawahnya.
+                          const SizedBox(height: 20),
+                          Divider(height: 1, color: Colors.grey[100]),
+                          const SizedBox(height: 20),
                           Expanded(child: _buildAttendanceChart()),
                         ],
                       ),
@@ -590,96 +641,111 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Komponen Grafik (fl_chart)
+  // Komponen Grafik (fl_chart) — versi rapi & profesional
   Widget _buildAttendanceChart() {
-    return BarChart(
-      BarChartData(
-        alignment: BarChartAlignment.spaceAround,
-        maxY: _maxYChart,
-        barTouchData: BarTouchData(
-          enabled: true,
-          touchTooltipData: BarTouchTooltipData(
-            getTooltipColor: (group) => Colors.blueGrey[800]!,
-            getTooltipItem: (group, groupIndex, rod, rodIndex) {
-              return BarTooltipItem(
-                '${_chartLabels[group.x.toInt()]}\n',
-                GoogleFonts.plusJakartaSans(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-                children: <TextSpan>[
-                  TextSpan(
-                    text: '${rod.toY.toInt()} Hadir',
-                    style: GoogleFonts.plusJakartaSans(
-                      color: Colors.amber,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 11,
-                    ),
+    // PERBAIKAN: bungkus dengan Padding kecil di sisi atas supaya area
+    // gambar chart (termasuk gridline paling atas) punya jarak aman
+    // dari konten lain, dan tidak "mepet"/tabrakan secara visual.
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, right: 8),
+      child: BarChart(
+        BarChartData(
+          alignment: BarChartAlignment.spaceAround,
+          maxY: _maxYChart,
+          minY: 0,
+          barTouchData: BarTouchData(
+            enabled: true,
+            touchTooltipData: BarTouchTooltipData(
+              getTooltipColor: (group) => Colors.blueGrey[800]!,
+              tooltipBorderRadius: BorderRadius.circular(8),
+              tooltipPadding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                return BarTooltipItem(
+                  '${_chartLabels[group.x.toInt()]}\n',
+                  GoogleFonts.plusJakartaSans(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
                   ),
-                ],
-              );
-            },
-          ),
-        ),
-        titlesData: FlTitlesData(
-          show: true,
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (double value, TitleMeta meta) {
-                final int index = value.toInt();
-                if (index >= 0 && index < _chartLabels.length) {
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Text(
-                      _chartLabels[index],
+                  children: <TextSpan>[
+                    TextSpan(
+                      text: '${rod.toY.toInt()} Hadir',
                       style: GoogleFonts.plusJakartaSans(
-                        fontSize: 10,
-                        color: Colors.black54,
-                        fontWeight: FontWeight.w500,
+                        color: Colors.amber[300],
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11,
                       ),
                     ),
-                  );
-                }
-                return const SizedBox();
-              },
-              reservedSize: 28,
-            ),
-          ),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 40,
-              interval: _maxYChart > 20 ? 10 : 2,
-              getTitlesWidget: (value, meta) {
-                return Text(
-                  value.toInt().toString(),
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 10,
-                    color: Colors.black54,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  textAlign: TextAlign.left,
+                  ],
                 );
               },
             ),
           ),
-          topTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-          getDrawingHorizontalLine: (value) => FlLine(
-            color: Colors.grey[200],
-            strokeWidth: 1,
+          titlesData: FlTitlesData(
+            show: true,
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (double value, TitleMeta meta) {
+                  final int index = value.toInt();
+                  if (index >= 0 && index < _chartLabels.length) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 10.0),
+                      child: Text(
+                        _chartLabels[index],
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 10,
+                          color: Colors.grey[500],
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    );
+                  }
+                  return const SizedBox();
+                },
+                reservedSize: 30,
+              ),
+            ),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 32,
+                interval: _maxYChart > 20 ? 10 : 2,
+                getTitlesWidget: (value, meta) {
+                  // Sembunyikan label paling atas (meta.max) agar tidak
+                  // terlalu dekat/menabrak elemen di atas chart.
+                  if (value == meta.max) return const SizedBox();
+                  return Text(
+                    value.toInt().toString(),
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 10,
+                      color: Colors.grey[400],
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.left,
+                  );
+                },
+              ),
+            ),
+            topTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            horizontalInterval: _maxYChart > 20 ? 10 : 2,
+            getDrawingHorizontalLine: (value) => FlLine(
+              color: Colors.grey[200],
+              strokeWidth: 1,
+              dashArray: [6, 4],
+            ),
+          ),
+          borderData: FlBorderData(show: false),
+          barGroups: _attendanceChartData,
         ),
-        borderData: FlBorderData(show: false),
-        barGroups: _attendanceChartData,
       ),
     );
   }
