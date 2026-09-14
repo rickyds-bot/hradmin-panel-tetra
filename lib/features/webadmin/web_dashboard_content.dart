@@ -236,16 +236,16 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       var sortedKeys = onTimeCounts.keys.toList()
         ..sort((a, b) => onTimeCounts[b]!.compareTo(onTimeCounts[a]!));
 
-      var top8Keys = sortedKeys.take(8).toList();
+      var top10Keys = sortedKeys.take(10).toList();
 
-      if (top8Keys.isNotEmpty) {
+      if (top10Keys.isNotEmpty) {
         final topEmpData = await Supabase.instance.client
             .from('employees')
             .select('id, full_name, photo_url, jabatan_name')
-            .inFilter('id', top8Keys);
+            .inFilter('id', top10Keys);
 
         List<Map<String, dynamic>> tempTop = [];
-        for (var key in top8Keys) {
+        for (var key in top10Keys) {
           var emp = topEmpData.firstWhere((e) => e['id'].toString() == key,
               orElse: () => <String, dynamic>{});
           if (emp.isNotEmpty) {
@@ -868,7 +868,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                   color: Colors.indigo, size: 20),
               const SizedBox(width: 8),
               Text(
-                'Top 8 Paling Tepat Waktu',
+                'Top 10 Paling Tepat Waktu',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
