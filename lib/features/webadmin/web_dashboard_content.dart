@@ -174,7 +174,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       _totalPendingLembur =
           lemburRes.where((e) => nonAdminIds.contains(e['employee_id'])).length;
 
-      // 6. Data Grafik Kehadiran 7 Hari Terakhir
+      // 6. Data Grafik Kehadiran 10 Hari Terakhir
       await _fetchChartData(nonAdminIds);
 
       // 7. Karyawan Paling Tepat Waktu (Top 10) - PERBAIKAN ZONA WAKTU & BULAN BERJALAN
@@ -269,20 +269,23 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     }
   }
 
+  // Jumlah hari yang ditampilkan pada grafik kehadiran.
+  static const int _chartDaysRange = 10;
+
   Future<void> _fetchChartData(List<dynamic> validIds) async {
     final now = DateTime.now();
-    final startOf7DaysLocal = DateTime(now.year, now.month, now.day)
-        .subtract(const Duration(days: 6));
-    final startOf7DaysUtcStr = startOf7DaysLocal.toUtc().toIso8601String();
+    final startOfRangeLocal = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: _chartDaysRange - 1));
+    final startOfRangeUtcStr = startOfRangeLocal.toUtc().toIso8601String();
 
     final weeklyRes = await Supabase.instance.client
         .from('attendance')
         .select('employee_id, created_at')
-        .gte('created_at', startOf7DaysUtcStr);
+        .gte('created_at', startOfRangeUtcStr);
 
     Map<String, Set<dynamic>> dailyHadir = {};
-    for (int i = 0; i < 7; i++) {
-      final d = startOf7DaysLocal.add(Duration(days: i));
+    for (int i = 0; i < _chartDaysRange; i++) {
+      final d = startOfRangeLocal.add(Duration(days: i));
       dailyHadir[DateFormat('yyyy-MM-dd').format(d)] = {};
     }
 
@@ -321,7 +324,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           barRods: [
             BarChartRodData(
               toY: count,
-              width: 26,
+              width: 18,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(6),
                 topRight: Radius.circular(6),
@@ -530,7 +533,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      '7 Hari Terakhir',
+                                      '10 Hari Terakhir',
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 11,
                                         color: Colors.grey[500],
