@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart'; // Import package ini
 
 class WebAbsensiPage extends StatefulWidget {
   const WebAbsensiPage({super.key});
@@ -269,14 +270,14 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
     final double parsedLng =
         lng != null ? double.parse(lng.toString()) : 106.816666;
 
-    // Menggunakan StatefulBuilder agar tombol ganti mode peta (Normal / Satelit) dapat merender ulang popup
     MapType currentMapType = MapType.normal;
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setStateModal) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Text(
             'Lokasi Absen: $empName',
             style: GoogleFonts.plusJakartaSans(
@@ -399,6 +400,50 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                           ? MapType.satellite
                                           : MapType.normal;
                                 });
+                              },
+                            ),
+                          ),
+                        ),
+                        // Tombol Buka Map menggunakan url_launcher
+                        Positioned(
+                          bottom: 16,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.black87,
+                                elevation: 4,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                              ),
+                              icon: const Icon(Icons.map_outlined,
+                                  size: 20, color: Colors.blueAccent),
+                              label: Text(
+                                'Buka Map',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              onPressed: () async {
+                                final Uri url = Uri.parse(
+                                    'https://www.google.com/maps/search/?api=1&query=$parsedLat,$parsedLng');
+                                if (!await launchUrl(url)) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text(
+                                              'Tidak dapat membuka Google Maps')),
+                                    );
+                                  }
+                                }
                               },
                             ),
                           ),
@@ -821,7 +866,6 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                           .toLowerCase()
                                                           .contains('masuk');
 
-                                                  // Keterlambatan jika lewat dari jam 08:45:00
                                                   if (isCheckIn) {
                                                     DateTime limitTime =
                                                         DateTime(
@@ -839,7 +883,6 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                   }
                                                 }
 
-                                                // Cek apakah komplit in & out pada hari yang sama
                                                 bool hasCheckIn = false;
                                                 bool hasCheckOut = false;
                                                 DateTime? actualCheckOutDt;
