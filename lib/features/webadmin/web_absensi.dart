@@ -269,118 +269,158 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
     final double parsedLng =
         lng != null ? double.parse(lng.toString()) : 106.816666;
 
+    // Menggunakan StatefulBuilder agar tombol ganti mode peta (Normal / Satelit) dapat merender ulang popup
+    MapType currentMapType = MapType.normal;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          'Lokasi Absen: $empName',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 15,
-            fontWeight: FontWeight.bold,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateModal) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'Lokasi Absen: $empName',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ),
-        content: SizedBox(
-          width: 480,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue[100]!),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on,
-                      color: Colors.blueAccent,
-                      size: 24,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Latitude : $parsedLat',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Longitude: $parsedLng',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ],
+          content: SizedBox(
+            width: 480,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue[100]!),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.location_on,
+                        color: Colors.blueAccent,
+                        size: 24,
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                'Peta Lokasi Absen:',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
-                ),
-              ),
-              const SizedBox(height: 6),
-              Container(
-                height: 300,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey[300]!),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: GoogleMap(
-                    initialCameraPosition: CameraPosition(
-                      target: LatLng(parsedLat, parsedLng),
-                      zoom: 16,
-                    ),
-                    markers: {
-                      Marker(
-                        markerId: const MarkerId('attendance_location'),
-                        position: LatLng(parsedLat, parsedLng),
-                        infoWindow: InfoWindow(
-                          title: empName,
-                          snippet: 'Lat: $parsedLat, Lng: $parsedLng',
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Latitude : $parsedLat',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Longitude: $parsedLng',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    },
-                    zoomControlsEnabled: true,
-                    myLocationButtonEnabled: false,
+                    ],
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[800],
-              foregroundColor: Colors.white,
+                const SizedBox(height: 14),
+                Text(
+                  'Peta Lokasi Absen:',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  height: 300,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey[300]!),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Stack(
+                      children: [
+                        GoogleMap(
+                          mapType: currentMapType,
+                          initialCameraPosition: CameraPosition(
+                            target: LatLng(parsedLat, parsedLng),
+                            zoom: 16,
+                          ),
+                          markers: {
+                            Marker(
+                              markerId: const MarkerId('attendance_location'),
+                              position: LatLng(parsedLat, parsedLng),
+                              infoWindow: InfoWindow(
+                                title: empName,
+                                snippet: 'Lat: $parsedLat, Lng: $parsedLng',
+                              ),
+                            ),
+                          },
+                          zoomControlsEnabled: true,
+                          myLocationButtonEnabled: false,
+                        ),
+                        // Tombol Toggle View (Normal / Satelit)
+                        Positioned(
+                          top: 10,
+                          right: 10,
+                          child: Card(
+                            elevation: 2,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: IconButton(
+                              tooltip: currentMapType == MapType.normal
+                                  ? 'Beralih ke Satelit'
+                                  : 'Beralih ke Peta Normal',
+                              icon: Icon(
+                                currentMapType == MapType.normal
+                                    ? Icons.satellite_alt
+                                    : Icons.map_outlined,
+                                color: Colors.blue[800],
+                              ),
+                              onPressed: () {
+                                setStateModal(() {
+                                  currentMapType =
+                                      currentMapType == MapType.normal
+                                          ? MapType.satellite
+                                          : MapType.normal;
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Tutup'),
           ),
-        ],
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[800],
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Tutup'),
+            ),
+          ],
+        ),
       ),
     );
   }
