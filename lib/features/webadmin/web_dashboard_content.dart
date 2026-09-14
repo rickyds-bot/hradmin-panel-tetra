@@ -86,9 +86,15 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         nonAdminIds.add(emp['id']);
 
         final gender = (emp['gender'] ?? '').toString().trim().toLowerCase();
-        if (gender == 'l' || gender.contains('laki') || gender == 'male' || gender == 'pria') {
+        if (gender == 'l' ||
+            gender.contains('laki') ||
+            gender == 'male' ||
+            gender == 'pria') {
           l++;
-        } else if (gender == 'p' || gender.contains('perempuan') || gender == 'female' || gender == 'wanita') {
+        } else if (gender == 'p' ||
+            gender.contains('perempuan') ||
+            gender == 'female' ||
+            gender == 'wanita') {
           p++;
         }
 
@@ -132,8 +138,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       _totalKontrak = kontrak;
       _totalMagang = magang;
 
-      // 3. Absen Hari Ini (Check-In) - PERBAIKAN ZONA WAKTU
-      // Konversi awal hari lokal ke UTC untuk query ke Supabase
+      // 3. Absen Hari Ini (Check-In)
       final String startOfTodayUtcStr = todayLocal.toUtc().toIso8601String();
 
       final absensiRes = await Supabase.instance.client
@@ -171,25 +176,38 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       // 6. Data Grafik Kehadiran 7 Hari Terakhir
       await _fetchChartData(nonAdminIds);
 
-      // 7. Karyawan Paling Tepat Waktu (Top 8) - PERBAIKAN ZONA WAKTU
-      DateTime firstDayPrevMonthLocal = DateTime(now.year, now.month - 1, 1);
-      DateTime lastDayPrevMonthLocal = DateTime(now.year, now.month, 0, 23, 59, 59);
+      // 7. Karyawan Paling Tepat Waktu (Top 8) - UPDATE BULAN BERJALAN
+      DateTime firstDayCurrentMonthLocal = DateTime(now.year, now.month, 1);
+      DateTime lastDayCurrentMonthLocal =
+          DateTime(now.year, now.month + 1, 0, 23, 59, 59);
 
-      String startPrevMonthUtc = firstDayPrevMonthLocal.toUtc().toIso8601String();
-      String endPrevMonthUtc = lastDayPrevMonthLocal.toUtc().toIso8601String();
+      String startCurrentMonthUtc =
+          firstDayCurrentMonthLocal.toUtc().toIso8601String();
+      String endCurrentMonthUtc =
+          lastDayCurrentMonthLocal.toUtc().toIso8601String();
 
       const List<String> _namaBulan = [
-        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+        'Januari',
+        'Februari',
+        'Maret',
+        'April',
+        'Mei',
+        'Juni',
+        'Juli',
+        'Agustus',
+        'September',
+        'Oktober',
+        'November',
+        'Desember'
       ];
       _topEmployeesPeriod =
-          '${_namaBulan[firstDayPrevMonthLocal.month - 1]} ${firstDayPrevMonthLocal.year}';
+          '${_namaBulan[firstDayCurrentMonthLocal.month - 1]} ${firstDayCurrentMonthLocal.year}';
 
       final allAttRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id, created_at')
-          .gte('created_at', startPrevMonthUtc)
-          .lte('created_at', endPrevMonthUtc);
+          .gte('created_at', startCurrentMonthUtc)
+          .lte('created_at', endCurrentMonthUtc);
 
       Map<String, int> onTimeCounts = {};
 
@@ -201,9 +219,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
           if (createdAtStr != null) {
             try {
-              // Konversi waktu UTC ke Waktu Lokal (WIB) untuk pengecekan jam
-              DateTime checkInTimeLocal = DateTime.parse(createdAtStr.toString()).toLocal();
-              int totalMinutes = checkInTimeLocal.hour * 60 + checkInTimeLocal.minute;
+              DateTime checkInTimeLocal =
+                  DateTime.parse(createdAtStr.toString()).toLocal();
+              int totalMinutes =
+                  checkInTimeLocal.hour * 60 + checkInTimeLocal.minute;
               const int limitMinutes = 8 * 60 + 45; // 08:45 Waktu Lokal
 
               if (totalMinutes <= limitMinutes) {
@@ -248,12 +267,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     }
   }
 
-  // PERBAIKAN ZONA WAKTU PADA GRAFIK
   Future<void> _fetchChartData(List<dynamic> validIds) async {
     final now = DateTime.now();
-    // Hitung tanggal lokal 7 hari ke belakang (di-set ke jam 00:00:00)
-    final startOf7DaysLocal = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
-    // Konversi ke format UTC untuk query Supabase
+    final startOf7DaysLocal = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 6));
     final startOf7DaysUtcStr = startOf7DaysLocal.toUtc().toIso8601String();
 
     final weeklyRes = await Supabase.instance.client
@@ -274,11 +291,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       final createdAt = row['created_at'];
       if (createdAt != null) {
         try {
-          // Parse data UTC dari Supabase, lalu konversi ke waktu lokal
           DateTime localDate = DateTime.parse(createdAt.toString()).toLocal();
           final dateStr = DateFormat('yyyy-MM-dd').format(localDate);
 
-          // Masukkan data kehadiran ke tanggal lokal yang sudah dikonversi
           if (dailyHadir.containsKey(dateStr)) {
             dailyHadir[dateStr]!.add(empId);
           }
