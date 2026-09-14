@@ -85,6 +85,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
         nonAdminIds.add(emp['id']);
 
+        // PERBAIKAN LOGIKA GENDER (Mencegah salah hitung)
         final gender = (emp['gender'] ?? '').toString().trim().toLowerCase();
         if (gender == 'l' ||
             gender.contains('laki') ||
@@ -138,7 +139,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       _totalKontrak = kontrak;
       _totalMagang = magang;
 
-      // 3. Absen Hari Ini (Check-In)
+      // 3. Absen Hari Ini (Check-In) - PERBAIKAN ZONA WAKTU
       final String startOfTodayUtcStr = todayLocal.toUtc().toIso8601String();
 
       final absensiRes = await Supabase.instance.client
@@ -176,7 +177,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       // 6. Data Grafik Kehadiran 7 Hari Terakhir
       await _fetchChartData(nonAdminIds);
 
-      // 7. Karyawan Paling Tepat Waktu (Top 8) - UPDATE BULAN BERJALAN
+      // 7. Karyawan Paling Tepat Waktu (Top 10) - PERBAIKAN ZONA WAKTU & BULAN BERJALAN
       DateTime firstDayCurrentMonthLocal = DateTime(now.year, now.month, 1);
       DateTime lastDayCurrentMonthLocal =
           DateTime(now.year, now.month + 1, 0, 23, 59, 59);
@@ -236,6 +237,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       var sortedKeys = onTimeCounts.keys.toList()
         ..sort((a, b) => onTimeCounts[b]!.compareTo(onTimeCounts[a]!));
 
+      // MENGUBAH JADI TOP 10
       var top10Keys = sortedKeys.take(10).toList();
 
       if (top10Keys.isNotEmpty) {
@@ -476,7 +478,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
                     Widget chartSection = Container(
                       width: isWide ? null : constraints.maxWidth,
-                      height: 400,
+                      height: 400, // SET TINGGI 400
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -502,6 +504,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
                     Widget calendarSection = Container(
                       width: isWide ? null : constraints.maxWidth,
+                      height:
+                          400, // SET TINGGI 400 (Sama dengan Kontrak Berakhir)
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -541,6 +545,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                     if (isWide) {
                       return Column(
                         children: [
+                          // Baris 1: Grafik Kehadiran & Top 10 Paling Tepat Waktu
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -551,6 +556,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                             ],
                           ),
                           const SizedBox(height: 16),
+                          // Baris 2: Kontrak Berakhir & Kalender
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -842,10 +848,11 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Widget daftar Top 8 Karyawan Paling Tepat Waktu
+  // Widget daftar Top 10 Karyawan Paling Tepat Waktu
   Widget _buildTopEmployeesCard() {
     return Container(
       width: double.infinity,
+      height: 400, // SET TINGGI 400 (Sama dengan Grafik Kehadiran)
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -886,86 +893,98 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             ),
           ),
           const Divider(height: 20),
-          if (_topEmployees.isEmpty)
-            Text(
-              'Belum ada data kedisiplinan.',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 12,
-                color: Colors.grey,
+
+          // BUNGKUS DENGAN EXPANDED DAN SINGLECHILDSCROLLVIEW
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_topEmployees.isEmpty)
+                    Text(
+                      'Belum ada data kedisiplinan.',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        color: Colors.grey,
+                      ),
+                    )
+                  else
+                    ..._topEmployees.asMap().entries.map((entry) {
+                      final int index = entry.key;
+                      final emp = entry.value;
+                      final photoUrl = emp['photo'];
+
+                      Color rankColor = Colors.grey[600]!;
+                      if (index == 0) rankColor = Colors.amber[700]!;
+                      if (index == 1) rankColor = Colors.blueGrey[400]!;
+                      if (index == 2) rankColor = Colors.brown[400]!;
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10.0),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 28,
+                              child: Text(
+                                '#${index + 1}',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: rankColor,
+                                ),
+                              ),
+                            ),
+                            CircleAvatar(
+                              radius: 16,
+                              backgroundColor: Colors.indigo[50],
+                              backgroundImage: (photoUrl != null &&
+                                      photoUrl.toString().isNotEmpty)
+                                  ? NetworkImage(photoUrl.toString())
+                                  : null,
+                              child: (photoUrl == null ||
+                                      photoUrl.toString().isEmpty)
+                                  ? const Icon(Icons.person,
+                                      size: 16, color: Colors.indigo)
+                                  : null,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                emp['name'],
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(0xFF1E293B),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.indigo[50],
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                emp['count'],
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.indigo[700],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                ],
               ),
-            )
-          else
-            ..._topEmployees.asMap().entries.map((entry) {
-              final int index = entry.key;
-              final emp = entry.value;
-              final photoUrl = emp['photo'];
-
-              Color rankColor = Colors.grey[600]!;
-              if (index == 0) rankColor = Colors.amber[700]!;
-              if (index == 1) rankColor = Colors.blueGrey[400]!;
-              if (index == 2) rankColor = Colors.brown[400]!;
-
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10.0),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 28,
-                      child: Text(
-                        '#${index + 1}',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: rankColor,
-                        ),
-                      ),
-                    ),
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundColor: Colors.indigo[50],
-                      backgroundImage:
-                          (photoUrl != null && photoUrl.toString().isNotEmpty)
-                              ? NetworkImage(photoUrl.toString())
-                              : null,
-                      child: (photoUrl == null || photoUrl.toString().isEmpty)
-                          ? const Icon(Icons.person,
-                              size: 16, color: Colors.indigo)
-                          : null,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        emp['name'],
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF1E293B),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.indigo[50],
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        emp['count'],
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.indigo[700],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
+            ),
+          ),
         ],
       ),
     );
@@ -975,6 +994,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   Widget _buildExpiringContractsCard() {
     return Container(
       width: double.infinity,
+      height: 400, // SET TINGGI 400 (Sama dengan Kalender)
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -996,12 +1016,16 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
               Icon(Icons.warning_amber_rounded,
                   color: Colors.amber[600], size: 20),
               const SizedBox(width: 8),
-              Text(
-                'Kontrak yg Akan Berakhir (Karyawan Kontrak)',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+              Expanded(
+                child: Text(
+                  'Kontrak yg Akan Berakhir (Karyawan Kontrak)',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  maxLines: 1, // Mencegah teks turun jika panjang
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -1015,90 +1039,102 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             ),
           ),
           const Divider(height: 20),
-          if (_expiringContracts.isEmpty)
-            Text(
-              'Tidak ada kontrak yang akan berakhir dalam 1 bulan ke depan.',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 12,
-                color: Colors.grey,
-              ),
-            )
-          else
-            ..._expiringContracts.map((emp) {
-              int diff = emp['diff_days'];
-              String statusText = diff < 0
-                  ? 'Lewat ${diff.abs()} hari'
-                  : (diff == 0 ? 'Hari ini' : '$diff hari lagi');
 
-              Color statusColor;
-              Color bgColor;
+          // BUNGKUS DENGAN EXPANDED DAN SINGLECHILDSCROLLVIEW
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_expiringContracts.isEmpty)
+                    Text(
+                      'Tidak ada kontrak yang akan berakhir dalam 1 bulan ke depan.',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        color: Colors.grey,
+                      ),
+                    )
+                  else
+                    ..._expiringContracts.map((emp) {
+                      int diff = emp['diff_days'];
+                      String statusText = diff < 0
+                          ? 'Lewat ${diff.abs()} hari'
+                          : (diff == 0 ? 'Hari ini' : '$diff hari lagi');
 
-              if (diff < 0) {
-                statusColor = Colors.red[700]!;
-                bgColor = Colors.red[50]!;
-              } else if (diff <= 7) {
-                statusColor = Colors.orange[800]!;
-                bgColor = Colors.orange[50]!;
-              } else {
-                statusColor = Colors.amber[800]!;
-                bgColor = Colors.amber[50]!.withOpacity(0.5);
-              }
+                      Color statusColor;
+                      Color bgColor;
 
-              String formattedDate = '-';
-              try {
-                DateTime dt = DateTime.parse(emp['end_date'].toString());
-                formattedDate = DateFormat('yyyy-MM-dd').format(dt);
-              } catch (_) {}
+                      if (diff < 0) {
+                        statusColor = Colors.red[700]!;
+                        bgColor = Colors.red[50]!;
+                      } else if (diff <= 7) {
+                        statusColor = Colors.orange[800]!;
+                        bgColor = Colors.orange[50]!;
+                      } else {
+                        statusColor = Colors.amber[800]!;
+                        bgColor = Colors.amber[50]!.withOpacity(0.5);
+                      }
 
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: bgColor,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: RichText(
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        text: TextSpan(
+                      String formattedDate = '-';
+                      try {
+                        DateTime dt =
+                            DateTime.parse(emp['end_date'].toString());
+                        formattedDate = DateFormat('yyyy-MM-dd').format(dt);
+                      } catch (_) {}
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            TextSpan(
-                              text: '${emp['name']} ',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
+                            Expanded(
+                              child: RichText(
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                text: TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: '${emp['name']} ',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: 'No: ${emp['contract_number']}',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 11,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                            TextSpan(
-                              text: 'No: ${emp['contract_number']}',
+                            const SizedBox(width: 8),
+                            Text(
+                              '$statusText ($formattedDate)',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 11,
-                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w600,
+                                color: statusColor,
                               ),
                             ),
                           ],
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '$statusText ($formattedDate)',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: statusColor,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
+                      );
+                    }),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
