@@ -77,7 +77,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       List<Map<String, dynamic>> tempExpiring = [];
 
       final DateTime now = DateTime.now();
-      final DateTime today = DateTime(now.year, now.month, now.day);
+      final DateTime todayLocal = DateTime(now.year, now.month, now.day);
 
       for (var emp in karyawanRes) {
         final role = (emp['role'] ?? '').toString().trim().toLowerCase();
@@ -86,11 +86,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         nonAdminIds.add(emp['id']);
 
         final gender = (emp['gender'] ?? '').toString().trim().toLowerCase();
-        if (gender == 'l' || gender == 'laki-laki' || gender == 'male') {
+        if (gender == 'l' || gender.contains('laki') || gender == 'male' || gender == 'pria') {
           l++;
-        } else if (gender == 'p' ||
-            gender == 'perempuan' ||
-            gender == 'female') {
+        } else if (gender == 'p' || gender.contains('perempuan') || gender == 'female' || gender == 'wanita') {
           p++;
         }
 
@@ -107,7 +105,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
               DateTime endDate = DateTime.parse(emp['contract_end'].toString());
               DateTime endDay =
                   DateTime(endDate.year, endDate.month, endDate.day);
-              int diffDays = endDay.difference(today).inDays;
+              int diffDays = endDay.difference(todayLocal).inDays;
 
               if (diffDays <= 30) {
                 tempExpiring.add({
@@ -124,7 +122,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         }
       }
 
-      // Urutkan dari yang paling mendesak (minus / terlewat paling atas)
       tempExpiring.sort((a, b) => a['diff_days'].compareTo(b['diff_days']));
       _expiringContracts = tempExpiring;
 
@@ -135,13 +132,14 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       _totalKontrak = kontrak;
       _totalMagang = magang;
 
-      final todayStr = today.toIso8601String().split('T')[0];
+      // 3. Absen Hari Ini (Check-In) - PERBAIKAN ZONA WAKTU
+      // Konversi awal hari lokal ke UTC untuk query ke Supabase
+      final String startOfTodayUtcStr = todayLocal.toUtc().toIso8601String();
 
-      // 3. Absen Hari Ini (Check-In)
       final absensiRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id')
-          .gte('created_at', '$todayStr 00:00:00');
+          .gte('created_at', startOfTodayUtcStr);
 
       Set uniqueHadir = absensiRes
           .map((e) => e['employee_id'])
@@ -150,6 +148,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       _totalHadirHariIni = uniqueHadir.length;
 
       // 4. Cuti Hari Ini
+      final todayStr = todayLocal.toIso8601String().split('T')[0];
       final cutiRes = await Supabase.instance.client
           .from('leave_requests')
           .select('employee_id')
@@ -172,35 +171,25 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       // 6. Data Grafik Kehadiran 7 Hari Terakhir
       await _fetchChartData(nonAdminIds);
 
-      // 7. Karyawan Paling Tepat Waktu (Top 8)
-      DateTime firstDayPrevMonth = DateTime(now.year, now.month - 1, 1);
-      DateTime lastDayPrevMonth = DateTime(now.year, now.month, 0);
+      // 7. Karyawan Paling Tepat Waktu (Top 8) - PERBAIKAN ZONA WAKTU
+      DateTime firstDayPrevMonthLocal = DateTime(now.year, now.month - 1, 1);
+      DateTime lastDayPrevMonthLocal = DateTime(now.year, now.month, 0, 23, 59, 59);
 
-      String startDate = firstDayPrevMonth.toIso8601String().split('T')[0];
-      String endDate = lastDayPrevMonth.toIso8601String().split('T')[0];
+      String startPrevMonthUtc = firstDayPrevMonthLocal.toUtc().toIso8601String();
+      String endPrevMonthUtc = lastDayPrevMonthLocal.toUtc().toIso8601String();
 
       const List<String> _namaBulan = [
-        'Januari',
-        'Februari',
-        'Maret',
-        'April',
-        'Mei',
-        'Juni',
-        'Juli',
-        'Agustus',
-        'September',
-        'Oktober',
-        'November',
-        'Desember'
+        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
       ];
       _topEmployeesPeriod =
-          '${_namaBulan[firstDayPrevMonth.month - 1]} ${firstDayPrevMonth.year}';
+          '${_namaBulan[firstDayPrevMonthLocal.month - 1]} ${firstDayPrevMonthLocal.year}';
 
       final allAttRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id, created_at')
-          .gte('created_at', '$startDate 00:00:00')
-          .lte('created_at', '$endDate 23:59:59');
+          .gte('created_at', startPrevMonthUtc)
+          .lte('created_at', endPrevMonthUtc);
 
       Map<String, int> onTimeCounts = {};
 
@@ -212,9 +201,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
           if (createdAtStr != null) {
             try {
-              DateTime checkInTime = DateTime.parse(createdAtStr.toString());
-              int totalMinutes = checkInTime.hour * 60 + checkInTime.minute;
-              const int limitMinutes = 8 * 60 + 45; // 08:45
+              // Konversi waktu UTC ke Waktu Lokal (WIB) untuk pengecekan jam
+              DateTime checkInTimeLocal = DateTime.parse(createdAtStr.toString()).toLocal();
+              int totalMinutes = checkInTimeLocal.hour * 60 + checkInTimeLocal.minute;
+              const int limitMinutes = 8 * 60 + 45; // 08:45 Waktu Lokal
 
               if (totalMinutes <= limitMinutes) {
                 onTimeCounts[eIdStr] = (onTimeCounts[eIdStr] ?? 0) + 1;
@@ -258,18 +248,22 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     }
   }
 
+  // PERBAIKAN ZONA WAKTU PADA GRAFIK
   Future<void> _fetchChartData(List<dynamic> validIds) async {
-    final last7Days = DateTime.now().subtract(const Duration(days: 6));
-    final last7DaysStr = DateFormat('yyyy-MM-dd').format(last7Days);
+    final now = DateTime.now();
+    // Hitung tanggal lokal 7 hari ke belakang (di-set ke jam 00:00:00)
+    final startOf7DaysLocal = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
+    // Konversi ke format UTC untuk query Supabase
+    final startOf7DaysUtcStr = startOf7DaysLocal.toUtc().toIso8601String();
 
     final weeklyRes = await Supabase.instance.client
         .from('attendance')
         .select('employee_id, created_at')
-        .gte('created_at', '$last7DaysStr 00:00:00');
+        .gte('created_at', startOf7DaysUtcStr);
 
     Map<String, Set<dynamic>> dailyHadir = {};
     for (int i = 0; i < 7; i++) {
-      final d = last7Days.add(Duration(days: i));
+      final d = startOf7DaysLocal.add(Duration(days: i));
       dailyHadir[DateFormat('yyyy-MM-dd').format(d)] = {};
     }
 
@@ -279,10 +273,16 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       final createdAt = row['created_at'];
       if (createdAt != null) {
-        final dateStr = createdAt.toString().split('T')[0];
-        if (dailyHadir.containsKey(dateStr)) {
-          dailyHadir[dateStr]!.add(empId);
-        }
+        try {
+          // Parse data UTC dari Supabase, lalu konversi ke waktu lokal
+          DateTime localDate = DateTime.parse(createdAt.toString()).toLocal();
+          final dateStr = DateFormat('yyyy-MM-dd').format(localDate);
+
+          // Masukkan data kehadiran ke tanggal lokal yang sudah dikonversi
+          if (dailyHadir.containsKey(dateStr)) {
+            dailyHadir[dateStr]!.add(empId);
+          }
+        } catch (_) {}
       }
     }
 
@@ -454,7 +454,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 ),
                 const SizedBox(height: 24),
 
-                // Layout Utama: Baris 1 (Grafik & Top 8 Tepat Waktu), Baris 2 (Kontrak Akan Berakhir & Kalender)
+                // Layout Utama
                 LayoutBuilder(
                   builder: (context, constraints) {
                     bool isWide = constraints.maxWidth > 900;
@@ -526,7 +526,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                     if (isWide) {
                       return Column(
                         children: [
-                          // Baris 1: Grafik Kehadiran (Kiri) & Top 8 Paling Tepat Waktu (Kanan)
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -537,7 +536,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          // Baris 2: Kontrak Akan Berakhir (Kiri) & Kalender (Kanan)
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
