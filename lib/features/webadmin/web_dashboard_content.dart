@@ -44,9 +44,11 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   // =========================================================
   List<Map<String, dynamic>> _topEmployees = [];
   String _topEmployeesPeriod = '';
-  DateTime _top10CurrentDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  DateTime _top10CurrentDate =
+      DateTime(DateTime.now().year, DateTime.now().month, 1);
   bool _isLoadingTop10 = false;
-  List<dynamic> _nonAdminIds = []; // Disimpan di level class agar bisa digunakan ulang
+  List<dynamic> _nonAdminIds =
+      []; // Disimpan di level class agar bisa digunakan ulang
 
   @override
   void initState() {
@@ -174,15 +176,15 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           .select('employee_id')
           .eq('status', 'pending');
 
-      _totalPendingLembur =
-          lemburRes.where((e) => _nonAdminIds.contains(e['employee_id'])).length;
+      _totalPendingLembur = lemburRes
+          .where((e) => _nonAdminIds.contains(e['employee_id']))
+          .length;
 
       // 6. Data Grafik Kehadiran 10 Hari Terakhir
       await _fetchChartData(_nonAdminIds);
 
       // 7. Ambil Data Top 10 Paling Tepat Waktu (Terpisah ke fungsi tersendiri)
       await _fetchTop10Data();
-
     } catch (e) {
       debugPrint('Error fetching dashboard stats: $e');
     } finally {
@@ -196,15 +198,27 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   Future<void> _fetchTop10Data() async {
     setState(() => _isLoadingTop10 = true);
     try {
-      DateTime firstDay = DateTime(_top10CurrentDate.year, _top10CurrentDate.month, 1);
-      DateTime lastDay = DateTime(_top10CurrentDate.year, _top10CurrentDate.month + 1, 0, 23, 59, 59);
+      DateTime firstDay =
+          DateTime(_top10CurrentDate.year, _top10CurrentDate.month, 1);
+      DateTime lastDay = DateTime(
+          _top10CurrentDate.year, _top10CurrentDate.month + 1, 0, 23, 59, 59);
 
       String startUtc = firstDay.toUtc().toIso8601String();
       String endUtc = lastDay.toUtc().toIso8601String();
 
       const List<String> namaBulan = [
-        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+        'Januari',
+        'Februari',
+        'Maret',
+        'April',
+        'Mei',
+        'Juni',
+        'Juli',
+        'Agustus',
+        'September',
+        'Oktober',
+        'November',
+        'Desember'
       ];
       _topEmployeesPeriod = '${namaBulan[firstDay.month - 1]} ${firstDay.year}';
 
@@ -224,8 +238,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
           if (createdAtStr != null) {
             try {
-              DateTime checkInTimeLocal = DateTime.parse(createdAtStr.toString()).toLocal();
-              int totalMinutes = checkInTimeLocal.hour * 60 + checkInTimeLocal.minute;
+              DateTime checkInTimeLocal =
+                  DateTime.parse(createdAtStr.toString()).toLocal();
+              int totalMinutes =
+                  checkInTimeLocal.hour * 60 + checkInTimeLocal.minute;
               const int limitMinutes = 8 * 60 + 45; // 08:45 Waktu Lokal
 
               if (totalMinutes <= limitMinutes) {
@@ -951,8 +967,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                     constraints: const BoxConstraints(),
                     icon: const Icon(Icons.chevron_left, size: 22),
                     onPressed: () {
-                      _top10CurrentDate = DateTime(
-                          _top10CurrentDate.year, _top10CurrentDate.month - 1, 1);
+                      _top10CurrentDate = DateTime(_top10CurrentDate.year,
+                          _top10CurrentDate.month - 1, 1);
                       _fetchTop10Data();
                     },
                   ),
@@ -983,8 +999,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                       if (_top10CurrentDate.year == now.year &&
                           _top10CurrentDate.month == now.month) return;
 
-                      _top10CurrentDate = DateTime(
-                          _top10CurrentDate.year, _top10CurrentDate.month + 1, 1);
+                      _top10CurrentDate = DateTime(_top10CurrentDate.year,
+                          _top10CurrentDate.month + 1, 1);
                       _fetchTop10Data();
                     },
                   ),

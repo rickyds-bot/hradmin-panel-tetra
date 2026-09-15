@@ -726,11 +726,59 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
   late String _selectedStatus;
   final _notesCtrl = TextEditingController();
 
+  late DateTime _startTime;
+  late DateTime _endTime;
+  late double _durationHours;
+
   @override
   void initState() {
     super.initState();
     _selectedStatus = widget.lemburData['status'] ?? 'pending';
     _notesCtrl.text = widget.lemburData['notes'] ?? '';
+
+    // Inisialisasi waktu dari database
+    _startTime = DateTime.tryParse(widget.lemburData['start_time'] ?? '')?.toLocal() ?? DateTime.now();
+    _endTime = DateTime.tryParse(widget.lemburData['end_time'] ?? '')?.toLocal() ?? DateTime.now();
+    _recalculateDuration();
+  }
+
+  void _recalculateDuration() {
+    final diffInMinutes = _endTime.difference(_startTime).inMinutes;
+    _durationHours = diffInMinutes > 0 ? double.parse((diffInMinutes / 60.0).toStringAsFixed(1)) : 0.0;
+  }
+
+  Future<void> _selectDateTime(bool isStart) async {
+    final initialDt = isStart ? _startTime : _endTime;
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDt,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+    if (pickedDate == null) return;
+
+    if (!mounted) return;
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initialDt),
+    );
+    if (pickedTime == null) return;
+
+    setState(() {
+      final newDt = DateTime(
+        pickedDate.year,
+        pickedDate.month,
+        pickedDate.day,
+        pickedTime.hour,
+        pickedTime.minute,
+      );
+      if (isStart) {
+        _startTime = newDt;
+      } else {
+        _endTime = newDt;
+      }
+      _recalculateDuration();
+    });
   }
 
   @override
@@ -740,6 +788,19 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
   }
 
   Future<void> _updateStatus() async {
+    if (_endTime.isBefore(_startTime)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Waktu selesai tidak boleh lebih awal dari waktu mulai',
+            style: GoogleFonts.plusJakartaSans(fontSize: 12),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
     try {
       final currentUser = Supabase.instance.client.auth.currentUser;
@@ -756,6 +817,9 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
       await Supabase.instance.client.from('overtime_requests').update({
         'status': _selectedStatus,
         'notes': _notesCtrl.text,
+        'start_time': _startTime.toIso8601String(),
+        'end_time': _endTime.toIso8601String(),
+        'duration_hours': _durationHours,
         if (_selectedStatus != 'pending') 'approved_by': adminEmpId,
       }).eq('id', widget.lemburData['id']);
 
@@ -765,7 +829,7 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Status lembur diperbarui!',
+              'Data lembur berhasil diperbarui!',
               style: GoogleFonts.plusJakartaSans(fontSize: 12),
             ),
             backgroundColor: Colors.green,
@@ -773,10 +837,11 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
         );
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Gagal: $e'), backgroundColor: Colors.red),
         );
+      }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -786,23 +851,25 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
   Widget build(BuildContext context) {
     final String empName =
         widget.lemburData['employees']?['full_name'] ?? 'Karyawan';
+    final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 400),
+        constraints: const BoxConstraints(maxWidth: 420),
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Proses Lembur',
+              'Edit & Proses Lembur',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Text(
               'Karyawan: $empName',
               style: GoogleFonts.plusJakartaSans(
@@ -810,7 +877,88 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
                 color: Colors.grey[700],
               ),
             ),
-            const Divider(height: 24),
+            const Divider(height: 20),
+
+            // Form Edit Jam Mulai & Selesai
+            Text(
+              'Penyesuaian Waktu Lembur:',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () => _selectDateTime(true),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey[300]!),
+                        borderRadius: BorderRadius.circular(6),
+                        color: Colors.grey[50],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Mulai', style: GoogleFonts.plusJakartaSans(fontSize: 10, color: Colors.grey[600])),
+                          const SizedBox(height: 2),
+                          Text(dateFormat.format(_startTime), style: GoogleFonts.plusJakartaSans(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: InkWell(
+                    onTap: () => _selectDateTime(false),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey[300]!),
+                        borderRadius: BorderRadius.circular(6),
+                        color: Colors.grey[50],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Selesai', style: GoogleFonts.plusJakartaSans(fontSize: 10, color: Colors.grey[600])),
+                          const SizedBox(height: 2),
+                          Text(dateFormat.format(_endTime), style: GoogleFonts.plusJakartaSans(fontSize: 11, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Kalkulasi Durasi:',
+                    style: GoogleFonts.plusJakartaSans(fontSize: 11, color: Colors.blue[900]),
+                  ),
+                  Text(
+                    '$_durationHours Jam',
+                    style: GoogleFonts.plusJakartaSans(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue[900]),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Form Status Approval
             DropdownButtonFormField<String>(
               value: _selectedStatus,
               items: [
@@ -910,7 +1058,7 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
                           ),
                         )
                       : Text(
-                          'Simpan Status',
+                          'Simpan Perubahan',
                           style: GoogleFonts.plusJakartaSans(fontSize: 12),
                         ),
                 ),

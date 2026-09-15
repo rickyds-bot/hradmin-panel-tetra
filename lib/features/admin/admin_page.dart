@@ -54,13 +54,19 @@ class _AdminPageState extends State<AdminPage> {
         }
       }
 
-      final todayStr = DateTime.now().toIso8601String().split('T')[0];
+      // PERBAIKAN ZONA WAKTU (TIMEZONE)
+      final DateTime now = DateTime.now();
+      final DateTime todayLocal = DateTime(now.year, now.month, now.day);
 
-      // 2. Absen Hari Ini (Check-In)
+      // Ubah jam 00:00 lokal ke format UTC yang dikenali Supabase
+      final String startOfTodayUtcStr = todayLocal.toUtc().toIso8601String();
+      final String todayStr = todayLocal.toIso8601String().split('T')[0];
+
+      // 2. Absen Hari Ini (Check-In) - Menggunakan startOfTodayUtcStr
       final absensiRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id')
-          .gte('created_at', '$todayStr 00:00:00');
+          .gte('created_at', startOfTodayUtcStr);
 
       Set uniqueHadir = absensiRes
           .map((e) => e['employee_id'])
