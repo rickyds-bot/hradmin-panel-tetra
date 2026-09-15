@@ -36,10 +36,17 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   DateTime? _selectedDay;
   final Map<String, String> _holidaysMap = {};
 
-  // Variabel untuk Karyawan Paling Tepat Waktu & Kontrak
+  // Variabel untuk Karyawan Kontrak
+  List<Map<String, dynamic>> _expiringContracts = [];
+
+  // =========================================================
+  // Variabel Baru Khusus Top 10 Karyawan Paling Tepat Waktu
+  // =========================================================
   List<Map<String, dynamic>> _topEmployees = [];
   String _topEmployeesPeriod = '';
-  List<Map<String, dynamic>> _expiringContracts = [];
+  DateTime _top10CurrentDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  bool _isLoadingTop10 = false;
+  List<dynamic> _nonAdminIds = []; // Disimpan di level class agar bisa digunakan ulang
 
   @override
   void initState() {
@@ -51,7 +58,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   Future<void> _fetchDashboardData() async {
     setState(() => _isLoading = true);
     try {
-      // 1. Ambil data hari libur dari Supabase (tabel hari_libur)
+      // 1. Ambil data hari libur dari Supabase
       final holidaysRes = await Supabase.instance.client
           .from('hari_libur')
           .select('holiday_date, description');
@@ -68,12 +75,12 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         }
       }
 
-      // 2. Ambil data karyawan (Filter non-admin + Ambil data kontrak)
+      // 2. Ambil data karyawan
       final karyawanRes = await Supabase.instance.client.from('employees').select(
           'id, full_name, gender, employee_status, role, contract_number, contract_end');
 
       int l = 0, p = 0, tetap = 0, kontrak = 0, magang = 0;
-      List<dynamic> nonAdminIds = [];
+      _nonAdminIds.clear();
       List<Map<String, dynamic>> tempExpiring = [];
 
       final DateTime now = DateTime.now();
@@ -83,9 +90,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         final role = (emp['role'] ?? '').toString().trim().toLowerCase();
         if (role == 'admin') continue;
 
-        nonAdminIds.add(emp['id']);
+        _nonAdminIds.add(emp['id']);
 
-        // PERBAIKAN LOGIKA GENDER (Mencegah salah hitung)
         final gender = (emp['gender'] ?? '').toString().trim().toLowerCase();
         if (gender == 'l' ||
             gender.contains('laki') ||
@@ -105,8 +111,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           tetap++;
         } else if (empStatus == 'kontrak') {
           kontrak++;
-
-          // Cek masa berlaku kontrak (1 bulan / 30 hari sebelum atau sudah lewat)
           if (emp['contract_end'] != null) {
             try {
               DateTime endDate = DateTime.parse(emp['contract_end'].toString());
@@ -132,16 +136,15 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       tempExpiring.sort((a, b) => a['diff_days'].compareTo(b['diff_days']));
       _expiringContracts = tempExpiring;
 
-      _totalKaryawan = nonAdminIds.length;
+      _totalKaryawan = _nonAdminIds.length;
       _totalLakiLaki = l;
       _totalPerempuan = p;
       _totalTetap = tetap;
       _totalKontrak = kontrak;
       _totalMagang = magang;
 
-      // 3. Absen Hari Ini (Check-In) - PERBAIKAN ZONA WAKTU
+      // 3. Absen Hari Ini (Check-In)
       final String startOfTodayUtcStr = todayLocal.toUtc().toIso8601String();
-
       final absensiRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id')
@@ -149,7 +152,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       Set uniqueHadir = absensiRes
           .map((e) => e['employee_id'])
-          .where((id) => nonAdminIds.contains(id))
+          .where((id) => _nonAdminIds.contains(id))
           .toSet();
       _totalHadirHariIni = uniqueHadir.length;
 
@@ -163,7 +166,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           .gte('end_date', todayStr);
 
       _totalCutiHariIni =
-          cutiRes.where((e) => nonAdminIds.contains(e['employee_id'])).length;
+          cutiRes.where((e) => _nonAdminIds.contains(e['employee_id'])).length;
 
       // 5. Lembur Pending
       final lemburRes = await Supabase.instance.client
@@ -172,58 +175,57 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           .eq('status', 'pending');
 
       _totalPendingLembur =
-          lemburRes.where((e) => nonAdminIds.contains(e['employee_id'])).length;
+          lemburRes.where((e) => _nonAdminIds.contains(e['employee_id'])).length;
 
       // 6. Data Grafik Kehadiran 10 Hari Terakhir
-      await _fetchChartData(nonAdminIds);
+      await _fetchChartData(_nonAdminIds);
 
-      // 7. Karyawan Paling Tepat Waktu (Top 10) - PERBAIKAN ZONA WAKTU & BULAN BERJALAN
-      DateTime firstDayCurrentMonthLocal = DateTime(now.year, now.month, 1);
-      DateTime lastDayCurrentMonthLocal =
-          DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+      // 7. Ambil Data Top 10 Paling Tepat Waktu (Terpisah ke fungsi tersendiri)
+      await _fetchTop10Data();
 
-      String startCurrentMonthUtc =
-          firstDayCurrentMonthLocal.toUtc().toIso8601String();
-      String endCurrentMonthUtc =
-          lastDayCurrentMonthLocal.toUtc().toIso8601String();
+    } catch (e) {
+      debugPrint('Error fetching dashboard stats: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
-      const List<String> _namaBulan = [
-        'Januari',
-        'Februari',
-        'Maret',
-        'April',
-        'Mei',
-        'Juni',
-        'Juli',
-        'Agustus',
-        'September',
-        'Oktober',
-        'November',
-        'Desember'
+  // =========================================================
+  // FUNGSI BARU: Ambil Data Khusus Top 10
+  // =========================================================
+  Future<void> _fetchTop10Data() async {
+    setState(() => _isLoadingTop10 = true);
+    try {
+      DateTime firstDay = DateTime(_top10CurrentDate.year, _top10CurrentDate.month, 1);
+      DateTime lastDay = DateTime(_top10CurrentDate.year, _top10CurrentDate.month + 1, 0, 23, 59, 59);
+
+      String startUtc = firstDay.toUtc().toIso8601String();
+      String endUtc = lastDay.toUtc().toIso8601String();
+
+      const List<String> namaBulan = [
+        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
       ];
-      _topEmployeesPeriod =
-          '${_namaBulan[firstDayCurrentMonthLocal.month - 1]} ${firstDayCurrentMonthLocal.year}';
+      _topEmployeesPeriod = '${namaBulan[firstDay.month - 1]} ${firstDay.year}';
 
       final allAttRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id, created_at')
-          .gte('created_at', startCurrentMonthUtc)
-          .lte('created_at', endCurrentMonthUtc);
+          .gte('created_at', startUtc)
+          .lte('created_at', endUtc);
 
       Map<String, int> onTimeCounts = {};
 
       for (var r in allAttRes) {
         final eId = r['employee_id'];
-        if (nonAdminIds.contains(eId)) {
+        if (_nonAdminIds.contains(eId)) {
           final String eIdStr = eId.toString();
           final createdAtStr = r['created_at'];
 
           if (createdAtStr != null) {
             try {
-              DateTime checkInTimeLocal =
-                  DateTime.parse(createdAtStr.toString()).toLocal();
-              int totalMinutes =
-                  checkInTimeLocal.hour * 60 + checkInTimeLocal.minute;
+              DateTime checkInTimeLocal = DateTime.parse(createdAtStr.toString()).toLocal();
+              int totalMinutes = checkInTimeLocal.hour * 60 + checkInTimeLocal.minute;
               const int limitMinutes = 8 * 60 + 45; // 08:45 Waktu Lokal
 
               if (totalMinutes <= limitMinutes) {
@@ -237,7 +239,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       var sortedKeys = onTimeCounts.keys.toList()
         ..sort((a, b) => onTimeCounts[b]!.compareTo(onTimeCounts[a]!));
 
-      // MENGUBAH JADI TOP 10
       var top10Keys = sortedKeys.take(10).toList();
 
       if (top10Keys.isNotEmpty) {
@@ -263,9 +264,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         _topEmployees = [];
       }
     } catch (e) {
-      debugPrint('Error fetching dashboard stats: $e');
+      debugPrint('Error fetching top 10 stats: $e');
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoadingTop10 = false);
     }
   }
 
@@ -334,8 +335,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 end: Alignment.topCenter,
                 colors: [Colors.indigo[600]!, Colors.blue[400]!],
               ),
-              // Track abu-abu netral (bukan biru pucat) agar bar data
-              // tidak terlihat "dobel"/menyatu dengan background-nya.
               backDrawRodData: BackgroundBarChartRodData(
                 show: true,
                 toY: _totalKaryawan.toDouble() > 0
@@ -353,8 +352,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     _attendanceChartData = tempChartData;
     _chartLabels = tempLabels;
 
-    // PERBAIKAN: beri "headroom" (ruang napas) di atas bar tertinggi
-    // agar grid/label tidak mepet ke judul card di atasnya.
     final double baseMax =
         _totalKaryawan > 0 ? _totalKaryawan.toDouble() : maxVal;
     final double target = baseMax > maxVal ? baseMax : maxVal;
@@ -496,7 +493,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
                     Widget chartSection = Container(
                       width: isWide ? null : constraints.maxWidth,
-                      height: 400, // SET TINGGI 400
+                      height: 400,
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -545,9 +542,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                               ),
                             ],
                           ),
-                          // PERBAIKAN: jarak lebih lega (32px) + garis
-                          // pemisah tipis, agar judul tidak "menabrak"
-                          // area chart di bawahnya.
                           const SizedBox(height: 20),
                           Divider(height: 1, color: Colors.grey[100]),
                           const SizedBox(height: 20),
@@ -558,8 +552,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
                     Widget calendarSection = Container(
                       width: isWide ? null : constraints.maxWidth,
-                      height:
-                          400, // SET TINGGI 400 (Sama dengan Kontrak Berakhir)
+                      height: 400,
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -599,7 +592,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                     if (isWide) {
                       return Column(
                         children: [
-                          // Baris 1: Grafik Kehadiran & Top 10 Paling Tepat Waktu
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -610,7 +602,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          // Baris 2: Kontrak Berakhir & Kalender
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -644,11 +635,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Komponen Grafik (fl_chart) — versi rapi & profesional
+  // Komponen Grafik (fl_chart)
   Widget _buildAttendanceChart() {
-    // PERBAIKAN: bungkus dengan Padding kecil di sisi atas supaya area
-    // gambar chart (termasuk gridline paling atas) punya jarak aman
-    // dari konten lain, dan tidak "mepet"/tabrakan secara visual.
     return Padding(
       padding: const EdgeInsets.only(top: 4, right: 8),
       child: BarChart(
@@ -716,8 +704,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 reservedSize: 32,
                 interval: _maxYChart > 20 ? 10 : 2,
                 getTitlesWidget: (value, meta) {
-                  // Sembunyikan label paling atas (meta.max) agar tidak
-                  // terlalu dekat/menabrak elemen di atas chart.
                   if (value == meta.max) return const SizedBox();
                   return Text(
                     value.toInt().toString(),
@@ -753,7 +739,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Komponen Kalender
   Widget _buildCalendar() {
     return TableCalendar(
       firstDay: DateTime.utc(2020, 1, 1),
@@ -917,11 +902,13 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Widget daftar Top 10 Karyawan Paling Tepat Waktu
+  // =========================================================
+  // Widget Top 10 dengan Kontrol Prev & Next Bulan
+  // =========================================================
   Widget _buildTopEmployeesCard() {
     return Container(
       width: double.infinity,
-      height: 400, // SET TINGGI 400 (Sama dengan Grafik Kehadiran)
+      height: 400,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -939,23 +926,75 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Icon(Icons.verified_rounded,
-                  color: Colors.indigo, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Top 10 Paling Tepat Waktu',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
+              Row(
+                children: [
+                  const Icon(Icons.verified_rounded,
+                      color: Colors.indigo, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Top 10 Paling Tepat Waktu',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
               ),
+              // KONTROL GESER BULAN
+              Row(
+                children: [
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(Icons.chevron_left, size: 22),
+                    onPressed: () {
+                      _top10CurrentDate = DateTime(
+                          _top10CurrentDate.year, _top10CurrentDate.month - 1, 1);
+                      _fetchTop10Data();
+                    },
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _topEmployeesPeriod,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.indigo[700],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: Icon(
+                      Icons.chevron_right,
+                      size: 22,
+                      color: (_top10CurrentDate.year == DateTime.now().year &&
+                              _top10CurrentDate.month == DateTime.now().month)
+                          ? Colors.grey[300]
+                          : Colors.black87,
+                    ),
+                    onPressed: () {
+                      DateTime now = DateTime.now();
+                      // Mencegah untuk melihat bulan di masa depan
+                      if (_top10CurrentDate.year == now.year &&
+                          _top10CurrentDate.month == now.month) return;
+
+                      _top10CurrentDate = DateTime(
+                          _top10CurrentDate.year, _top10CurrentDate.month + 1, 1);
+                      _fetchTop10Data();
+                    },
+                  ),
+                ],
+              )
             ],
           ),
           const SizedBox(height: 4),
           Text(
-            'Periode: $_topEmployeesPeriod • Batas Masuk 08:30 (Toleransi s/d 08:45)',
+            'Batas Masuk 08:30 (Toleransi s/d 08:45)',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               color: Colors.grey[500],
@@ -963,96 +1002,103 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           ),
           const Divider(height: 20),
 
-          // BUNGKUS DENGAN EXPANDED DAN SINGLECHILDSCROLLVIEW
+          // TAMPILAN LIST (Dengan Indikator Loading khusus)
           Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_topEmployees.isEmpty)
-                    Text(
-                      'Belum ada data kedisiplinan.',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 12,
-                        color: Colors.grey,
-                      ),
-                    )
-                  else
-                    ..._topEmployees.asMap().entries.map((entry) {
-                      final int index = entry.key;
-                      final emp = entry.value;
-                      final photoUrl = emp['photo'];
-
-                      Color rankColor = Colors.grey[600]!;
-                      if (index == 0) rankColor = Colors.amber[700]!;
-                      if (index == 1) rankColor = Colors.blueGrey[400]!;
-                      if (index == 2) rankColor = Colors.brown[400]!;
-
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10.0),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 28,
+            child: _isLoadingTop10
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_topEmployees.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 20.0),
+                            child: Center(
                               child: Text(
-                                '#${index + 1}',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: rankColor,
-                                ),
-                              ),
-                            ),
-                            CircleAvatar(
-                              radius: 16,
-                              backgroundColor: Colors.indigo[50],
-                              backgroundImage: (photoUrl != null &&
-                                      photoUrl.toString().isNotEmpty)
-                                  ? NetworkImage(photoUrl.toString())
-                                  : null,
-                              child: (photoUrl == null ||
-                                      photoUrl.toString().isEmpty)
-                                  ? const Icon(Icons.person,
-                                      size: 16, color: Colors.indigo)
-                                  : null,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                emp['name'],
+                                'Belum ada data kedisiplinan pada bulan ini.',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFF1E293B),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.indigo[50],
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                emp['count'],
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.indigo[700],
+                                  color: Colors.grey,
                                 ),
                               ),
                             ),
-                          ],
-                        ),
-                      );
-                    }),
-                ],
-              ),
-            ),
+                          )
+                        else
+                          ..._topEmployees.asMap().entries.map((entry) {
+                            final int index = entry.key;
+                            final emp = entry.value;
+                            final photoUrl = emp['photo'];
+
+                            Color rankColor = Colors.grey[600]!;
+                            if (index == 0) rankColor = Colors.amber[700]!;
+                            if (index == 1) rankColor = Colors.blueGrey[400]!;
+                            if (index == 2) rankColor = Colors.brown[400]!;
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10.0),
+                              child: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 28,
+                                    child: Text(
+                                      '#${index + 1}',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: rankColor,
+                                      ),
+                                    ),
+                                  ),
+                                  CircleAvatar(
+                                    radius: 16,
+                                    backgroundColor: Colors.indigo[50],
+                                    backgroundImage: (photoUrl != null &&
+                                            photoUrl.toString().isNotEmpty)
+                                        ? NetworkImage(photoUrl.toString())
+                                        : null,
+                                    child: (photoUrl == null ||
+                                            photoUrl.toString().isEmpty)
+                                        ? const Icon(Icons.person,
+                                            size: 16, color: Colors.indigo)
+                                        : null,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      emp['name'],
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: const Color(0xFF1E293B),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.indigo[50],
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      emp['count'],
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.indigo[700],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                      ],
+                    ),
+                  ),
           ),
         ],
       ),
@@ -1063,7 +1109,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   Widget _buildExpiringContractsCard() {
     return Container(
       width: double.infinity,
-      height: 400, // SET TINGGI 400 (Sama dengan Kalender)
+      height: 400,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1093,7 +1139,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                     fontWeight: FontWeight.bold,
                     color: Colors.black87,
                   ),
-                  maxLines: 1, // Mencegah teks turun jika panjang
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -1108,8 +1154,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             ),
           ),
           const Divider(height: 20),
-
-          // BUNGKUS DENGAN EXPANDED DAN SINGLECHILDSCROLLVIEW
           Expanded(
             child: SingleChildScrollView(
               child: Column(
