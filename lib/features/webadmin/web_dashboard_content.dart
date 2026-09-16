@@ -341,7 +341,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           barRods: [
             BarChartRodData(
               toY: count,
-              width: 18,
+              width: 20,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(6),
                 topRight: Radius.circular(6),
