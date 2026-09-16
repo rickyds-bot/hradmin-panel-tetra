@@ -511,8 +511,7 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                                 label: Text('Approved By')),
                                             DataColumn(
                                                 // Kolom Baru: Catatan HR
-                                                label:
-                                                    Text('Catatan HR/Admin')),
+                                                label: Text('Notes')),
                                             DataColumn(label: Text('Action')),
                                           ],
                                           rows: List<DataRow>.generate(
@@ -1067,7 +1066,7 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
               maxLines: 2,
               style: GoogleFonts.plusJakartaSans(fontSize: 12),
               decoration: InputDecoration(
-                labelText: 'Catatan HR / Admin (Opsional)',
+                labelText: 'Notes HR / Admin (Opsional)',
                 labelStyle: GoogleFonts.plusJakartaSans(fontSize: 12),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
