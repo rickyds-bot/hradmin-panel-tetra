@@ -79,12 +79,9 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
     }
   }
 
-  // Helper aman untuk parsing waktu string dari Database agar akurat zona waktu lokal (WIB / +7)
-  // Helper mutlak untuk memastikan waktu terbaca akurat di waktu lokal tanpa geser UTC
   DateTime? _parseLocalDateTime(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return null;
     try {
-      // Jika format dari database berupa "HH:mm:ss" saja (tipe data time)
       if (dateStr.length == 8 &&
           !dateStr.contains('T') &&
           !dateStr.contains('-')) {
@@ -94,11 +91,8 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
             int.parse(parts[1]), int.parse(parts[2]));
       }
 
-      // Jika format timestamp lengkap (ISO 8601)
       DateTime parsed = DateTime.parse(dateStr);
 
-      // Jika Dart mendeteksinya sebagai UTC, kita ambil nilai jam/menit mentahnya sebagai waktu lokal
-      // atau konversi eksplisit untuk menghindari pergeseran ganda.
       if (dateStr.endsWith('Z') || dateStr.contains('+00:00')) {
         return parsed.toLocal();
       }
@@ -108,11 +102,9 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
     }
   }
 
-  // Mengambil string jam dan menit secara mentah dari database agar tidak pernah selisih zona waktu
   String _formatTime(String? timestampStr) {
     if (timestampStr == null || timestampStr.isEmpty) return '-';
     try {
-      // Jika format dari database berupa "HH:mm:ss" atau "HH:mm"
       if (!timestampStr.contains('T') &&
           !timestampStr.contains('-') &&
           timestampStr.contains(':')) {
@@ -122,8 +114,6 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
         }
       }
 
-      // Jika format dari database adalah ISO Timestamp (misal: "2026-06-07T08:00:00+00" atau sejenisnya)
-      // Kita ambil bagian setelah huruf 'T' secara langsung untuk mengabaikan pergeseran zona waktu
       if (timestampStr.contains('T')) {
         String timePart = timestampStr.split('T')[1];
         List<String> timeComponents = timePart.split(':');
@@ -132,7 +122,6 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
         }
       }
 
-      // Fallback standar
       DateTime dt = DateTime.parse(timestampStr);
       String twoDigits(int n) => n.toString().padLeft(2, '0');
       return '${twoDigits(dt.hour)}:${twoDigits(dt.minute)}';
@@ -174,15 +163,13 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
         var approverId = item['approved_by'];
         newItem['approver'] = empMap[approverId] ?? {'full_name': '-'};
 
-        // Perhitungan durasi jam lembur secara presisi berdasarkan waktu lokal
         try {
           if (item['start_time'] != null && item['end_time'] != null) {
             DateTime? startDt = _parseLocalDateTime(item['start_time']);
             DateTime? endDt = _parseLocalDateTime(item['end_time']);
             if (startDt != null && endDt != null) {
               if (endDt.isBefore(startDt)) {
-                endDt =
-                    endDt.add(const Duration(days: 1)); // Melewati tengah malam
+                endDt = endDt.add(const Duration(days: 1));
               }
               double calculatedHours =
                   endDt.difference(startDt).inMinutes / 60.0;
@@ -236,7 +223,6 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
     }
   }
 
-  // Mengubah titik (.) menjadi strip (-) pada format tanggal
   String _formatDate(String? timestampStr) {
     DateTime? dt = _parseLocalDateTime(timestampStr);
     if (dt == null) return '-';
@@ -249,18 +235,22 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
     return DateFormat('EEEE', 'id_ID').format(dt);
   }
 
-  double _calculateTotalHours() {
-    double total = 0.0;
+  Map<String, double> _calculateTotalHours() {
+    double weekdayTotal = 0.0;
+    double weekendTotal = 0.0;
     for (var item in _laporanList) {
       double hours =
           double.tryParse(item['duration_hours']?.toString() ?? '0') ?? 0.0;
-      total += hours;
+      String dayName = _getDayName(item['start_time']).toLowerCase();
+      if (dayName == 'sabtu' || dayName == 'minggu') {
+        weekendTotal += hours;
+      } else {
+        weekdayTotal += hours;
+      }
     }
-    return total;
+    return {'weekday': weekdayTotal, 'weekend': weekendTotal};
   }
 
-  // Export menggunakan format XLSX Asli via package:excel dengan Web Blob Downloader
-  // Export menggunakan format XLSX Asli dengan nama file berdasarkan karyawan & tanggal
   Future<void> _exportToExcel() async {
     if (_laporanList.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -273,7 +263,6 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
     excel.rename(excel.getDefaultSheet() ?? 'Sheet1', sheetName);
     var sheet = excel[sheetName];
 
-    // Header Tabel
     sheet.appendRow([
       excel_lib.TextCellValue('No'),
       excel_lib.TextCellValue('Hari'),
@@ -285,6 +274,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
       excel_lib.TextCellValue('Total Jam'),
       excel_lib.TextCellValue('Status'),
       excel_lib.TextCellValue('Approved By'),
+      excel_lib.TextCellValue('Notes'), // Tambahan header Notes
     ]);
 
     int no = 1;
@@ -304,17 +294,27 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
         excel_lib.TextCellValue('${item['duration_hours'] ?? '-'} Jam'),
         excel_lib.TextCellValue(item['status'] ?? 'Pending'),
         excel_lib.TextCellValue(approver),
+        excel_lib.TextCellValue(
+            item['notes']?.toString() ?? '-'), // Tambahan isi Notes
       ]);
     }
 
-    // Baris Total Jam Lembur disejajarkan di kolom TOTAL JAM (Indeks ke-7)
-    List<excel_lib.CellValue?> totalRow = List.filled(10, null);
+    final totals = _calculateTotalHours();
+
+    // Sesuaikan panjang array agar pas dengan 11 kolom
+    List<excel_lib.CellValue?> totalRow = List.filled(11, null);
     totalRow[6] = excel_lib.TextCellValue('Total Jam Lembur:');
-    totalRow[7] = excel_lib.TextCellValue(
-        '${_calculateTotalHours().toStringAsFixed(1)} Jam');
+    totalRow[7] =
+        excel_lib.TextCellValue('${totals['weekday']?.toStringAsFixed(1)} Jam');
     sheet.appendRow(totalRow);
 
-    // Format nama file berdasarkan karyawan & tanggal
+    List<excel_lib.CellValue?> totalWeekendRow = List.filled(11, null);
+    totalWeekendRow[6] =
+        excel_lib.TextCellValue('Total Jam Lembur (Hari Libur):');
+    totalWeekendRow[7] =
+        excel_lib.TextCellValue('${totals['weekend']?.toStringAsFixed(1)} Jam');
+    sheet.appendRow(totalWeekendRow);
+
     String empName = _selectedEmployee['id'] == 'all'
         ? 'Semua_Karyawan'
         : (_selectedEmployee['full_name'] ?? 'Karyawan')
@@ -340,7 +340,6 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
     }
   }
 
-  // Export PDF stabil dengan nama file berdasarkan karyawan & tanggal
   Future<void> _exportToPDF() async {
     if (_laporanList.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -351,7 +350,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
     String subHeaderTitle = _selectedEmployee['id'] == 'all'
         ? 'Semua Karyawan'
         : 'Karyawan: ${_selectedEmployee['full_name']}';
-    double totalKumulatif = _calculateTotalHours();
+    final totals = _calculateTotalHours();
 
     final pdf = pw.Document();
 
@@ -396,7 +395,8 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                 'Jam Selesai',
                 'Total Jam',
                 'Status',
-                'Approved By'
+                'Approved By',
+                'Notes' // Tambahan header Notes
               ],
               data: List<List<String>>.generate(_laporanList.length, (index) {
                 final item = _laporanList[index];
@@ -416,6 +416,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                   '${item['duration_hours'] ?? '-'} Jam',
                   item['status'] ?? 'Pending',
                   approver,
+                  item['notes']?.toString() ?? '-', // Tambahan data Notes
                 ];
               }),
               headerStyle: pw.TextStyle(
@@ -427,30 +428,50 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
               cellStyle: const pw.TextStyle(fontSize: 8),
               cellAlignment: pw.Alignment.centerLeft,
               columnWidths: {
-                0: const pw.FixedColumnWidth(30),
-                1: const pw.FixedColumnWidth(55),
-                2: const pw.FixedColumnWidth(65),
+                0: const pw.FixedColumnWidth(25),
+                1: const pw.FixedColumnWidth(45),
+                2: const pw.FixedColumnWidth(60),
                 3: const pw.FlexColumnWidth(1.2),
-                4: const pw.FlexColumnWidth(2),
-                5: const pw.FixedColumnWidth(55),
-                6: const pw.FixedColumnWidth(55),
-                7: const pw.FixedColumnWidth(65),
-                8: const pw.FixedColumnWidth(60),
+                4: const pw.FlexColumnWidth(1.5),
+                5: const pw.FixedColumnWidth(50),
+                6: const pw.FixedColumnWidth(50),
+                7: const pw.FixedColumnWidth(60),
+                8: const pw.FixedColumnWidth(55),
                 9: const pw.FlexColumnWidth(1),
+                10: const pw.FlexColumnWidth(1.2), // Lebar untuk kolom Notes
               },
             ),
             pw.SizedBox(height: 12),
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.end,
               children: [
-                pw.Container(
-                  padding: const pw.EdgeInsets.all(8),
-                  decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                  child: pw.Text(
-                    'Total Jam Lembur: ${totalKumulatif.toStringAsFixed(1)} Jam',
-                    style: pw.TextStyle(
-                        fontSize: 11, fontWeight: pw.FontWeight.bold),
-                  ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Container(
+                      padding: const pw.EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration:
+                          const pw.BoxDecoration(color: PdfColors.grey200),
+                      child: pw.Text(
+                        'Total Jam Lembur: ${totals['weekday']?.toStringAsFixed(1)} Jam',
+                        style: pw.TextStyle(
+                            fontSize: 11, fontWeight: pw.FontWeight.bold),
+                      ),
+                    ),
+                    pw.SizedBox(height: 4),
+                    pw.Container(
+                      padding: const pw.EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration:
+                          const pw.BoxDecoration(color: PdfColors.grey200),
+                      child: pw.Text(
+                        'Total Jam Lembur (Hari Libur): ${totals['weekend']?.toStringAsFixed(1)} Jam',
+                        style: pw.TextStyle(
+                            fontSize: 11, fontWeight: pw.FontWeight.bold),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -459,7 +480,6 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
       ),
     );
 
-    // Format nama file PDF berdasarkan karyawan & tanggal
     String empName = _selectedEmployee['id'] == 'all'
         ? 'Semua_Karyawan'
         : (_selectedEmployee['full_name'] ?? 'Karyawan')
@@ -481,7 +501,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
 
   @override
   Widget build(BuildContext context) {
-    double totalKumulatif = _calculateTotalHours();
+    final totals = _calculateTotalHours();
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -724,6 +744,9 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                                           DataColumn(label: Text('Status')),
                                           DataColumn(
                                               label: Text('Approved By')),
+                                          DataColumn(
+                                              label: Text(
+                                                  'Notes')), // Tambahan DataColumn Notes
                                         ],
                                         rows: List<DataRow>.generate(
                                             _laporanList.length, (index) {
@@ -800,6 +823,9 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                                                   style: const TextStyle(
                                                       fontWeight:
                                                           FontWeight.w500))),
+                                              DataCell(Text(item['notes']
+                                                      ?.toString() ??
+                                                  '-')), // Tambahan DataCell Notes
                                             ],
                                           );
                                         }),
@@ -822,13 +848,27 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                         ),
                       ),
                       alignment: Alignment.centerRight,
-                      child: Text(
-                        'Total Jam Lembur: ${totalKumulatif.toStringAsFixed(1)} Jam',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue[900],
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'Total Jam Lembur: ${totals['weekday']?.toStringAsFixed(1)} Jam',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue[900],
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Total Jam Lembur (Hari Libur): ${totals['weekend']?.toStringAsFixed(1)} Jam',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue[900],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                 ],

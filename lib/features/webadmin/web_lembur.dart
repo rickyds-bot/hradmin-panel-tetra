@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart'; // Ditambahkan untuk dukungan PointerDeviceKind
+import 'package:flutter/gestures.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -22,7 +22,6 @@ class _WebLemburPageState extends State<WebLemburPage> {
   int _rowsPerPage = 50;
   final List<int> _pageOptions = [50, 100, 200];
 
-  // Ditambahkan controller untuk scroll horizontal dan vertical
   final ScrollController _horizontalScroll = ScrollController();
   final ScrollController _verticalScroll = ScrollController();
 
@@ -510,6 +509,10 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                             DataColumn(label: Text('Status')),
                                             DataColumn(
                                                 label: Text('Approved By')),
+                                            DataColumn(
+                                                // Kolom Baru: Catatan HR
+                                                label:
+                                                    Text('Catatan HR/Admin')),
                                             DataColumn(label: Text('Action')),
                                           ],
                                           rows: List<DataRow>.generate(
@@ -646,6 +649,37 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                                     ),
                                                   ),
                                                   DataCell(
+                                                    // Cell Baru: Tampilan Catatan HR
+                                                    SizedBox(
+                                                      width: 150,
+                                                      child: Text(
+                                                        item['notes'] != null &&
+                                                                item['notes']
+                                                                    .toString()
+                                                                    .trim()
+                                                                    .isNotEmpty
+                                                            ? item['notes']
+                                                            : '-',
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        maxLines: 2,
+                                                        style: TextStyle(
+                                                          color:
+                                                              Colors.grey[700],
+                                                          fontStyle: item['notes'] !=
+                                                                      null &&
+                                                                  item['notes']
+                                                                      .toString()
+                                                                      .trim()
+                                                                      .isNotEmpty
+                                                              ? FontStyle.normal
+                                                              : FontStyle
+                                                                  .italic,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
                                                     Row(
                                                       mainAxisSize:
                                                           MainAxisSize.min,
@@ -657,7 +691,7 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                                             size: 18,
                                                           ),
                                                           tooltip:
-                                                              'Ubah Status',
+                                                              'Ubah Status & Catatan',
                                                           onPressed: () {
                                                             showDialog(
                                                               context: context,
@@ -737,14 +771,20 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
     _notesCtrl.text = widget.lemburData['notes'] ?? '';
 
     // Inisialisasi waktu dari database
-    _startTime = DateTime.tryParse(widget.lemburData['start_time'] ?? '')?.toLocal() ?? DateTime.now();
-    _endTime = DateTime.tryParse(widget.lemburData['end_time'] ?? '')?.toLocal() ?? DateTime.now();
+    _startTime =
+        DateTime.tryParse(widget.lemburData['start_time'] ?? '')?.toLocal() ??
+            DateTime.now();
+    _endTime =
+        DateTime.tryParse(widget.lemburData['end_time'] ?? '')?.toLocal() ??
+            DateTime.now();
     _recalculateDuration();
   }
 
   void _recalculateDuration() {
     final diffInMinutes = _endTime.difference(_startTime).inMinutes;
-    _durationHours = diffInMinutes > 0 ? double.parse((diffInMinutes / 60.0).toStringAsFixed(1)) : 0.0;
+    _durationHours = diffInMinutes > 0
+        ? double.parse((diffInMinutes / 60.0).toStringAsFixed(1))
+        : 0.0;
   }
 
   Future<void> _selectDateTime(bool isStart) async {
@@ -894,7 +934,8 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
                   child: InkWell(
                     onTap: () => _selectDateTime(true),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.grey[300]!),
                         borderRadius: BorderRadius.circular(6),
@@ -903,9 +944,13 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Mulai', style: GoogleFonts.plusJakartaSans(fontSize: 10, color: Colors.grey[600])),
+                          Text('Mulai',
+                              style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 10, color: Colors.grey[600])),
                           const SizedBox(height: 2),
-                          Text(dateFormat.format(_startTime), style: GoogleFonts.plusJakartaSans(fontSize: 11, fontWeight: FontWeight.bold)),
+                          Text(dateFormat.format(_startTime),
+                              style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
@@ -916,7 +961,8 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
                   child: InkWell(
                     onTap: () => _selectDateTime(false),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.grey[300]!),
                         borderRadius: BorderRadius.circular(6),
@@ -925,9 +971,13 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Selesai', style: GoogleFonts.plusJakartaSans(fontSize: 10, color: Colors.grey[600])),
+                          Text('Selesai',
+                              style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 10, color: Colors.grey[600])),
                           const SizedBox(height: 2),
-                          Text(dateFormat.format(_endTime), style: GoogleFonts.plusJakartaSans(fontSize: 11, fontWeight: FontWeight.bold)),
+                          Text(dateFormat.format(_endTime),
+                              style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
@@ -947,11 +997,15 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
                 children: [
                   Text(
                     'Kalkulasi Durasi:',
-                    style: GoogleFonts.plusJakartaSans(fontSize: 11, color: Colors.blue[900]),
+                    style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11, color: Colors.blue[900]),
                   ),
                   Text(
                     '$_durationHours Jam',
-                    style: GoogleFonts.plusJakartaSans(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue[900]),
+                    style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue[900]),
                   ),
                 ],
               ),
