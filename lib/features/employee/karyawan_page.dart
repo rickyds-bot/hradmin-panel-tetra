@@ -414,6 +414,9 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
   final Set<Marker> _markers = {};
   bool _isLoadingMap = true;
 
+  // --- PERUBAHAN: Menambahkan variabel tipe peta (Default: Satellite) ---
+  MapType _currentMapType = MapType.satellite;
+
   late Future<List<Map<String, dynamic>>> _historyFuture;
 
   @override
@@ -477,9 +480,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
     }
   }
 
-  // Menggerakkan kamera Google Maps ke posisi terbaru.
-  // Tanpa ini, peta cuma diam di posisi awal (initialCameraPosition)
-  // walaupun marker-nya sudah pindah -> kelihatan seperti "stuck".
   Future<void> _animateCameraTo(Position pos) async {
     if (_mapController == null) return;
     try {
@@ -501,7 +501,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         permission = await Geolocator.requestPermission();
       }
 
-      // 1. Tampilkan lokasi terakhir yang tersimpan di memori HP agar Map langsung muncul
       Position? lastPosition = await Geolocator.getLastKnownPosition();
       if (lastPosition != null && mounted) {
         setState(() {
@@ -512,14 +511,11 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
               position: LatLng(lastPosition.latitude, lastPosition.longitude),
             ),
           );
-          _isLoadingMap = false; // Map langsung terbuka tanpa lag
+          _isLoadingMap = false;
         });
         _animateCameraTo(lastPosition);
       }
 
-      // 2. Ambil lokasi real-time dengan akurasi medium (lebih cepat dari high).
-      // Dikasih timeout supaya kalau sinyal GPS lemah, tidak menggantung
-      // selamanya dan spinner _isLoadingMap tidak macet terus.
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
       ).timeout(
@@ -684,11 +680,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
           'latitude': currentPos.latitude,
           'longitude': currentPos.longitude,
         });
-
-        //await AppLogger.log(
-        //  activity: 'Melakukan $tipe (Absensi Wajah)',
-        //  module: 'Absensi Mobile',
-        //);
 
         await file.delete();
         _refreshHistory();
@@ -929,6 +920,7 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         ),
       );
 
+  // --- PERUBAHAN: Penambahan mapType dan Tombol Toggle Tampilan Peta ---
   Widget _buildMapSection() => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: SizedBox(
@@ -937,23 +929,49 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
             borderRadius: BorderRadius.circular(15),
             child: _isLoadingMap
                 ? const Center(child: CircularProgressIndicator())
-                : GoogleMap(
-                    initialCameraPosition: CameraPosition(
-                      target: LatLng(
-                        _currentPosition?.latitude ?? -6.2,
-                        _currentPosition?.longitude ?? 106.8,
+                : Stack(
+                    children: [
+                      GoogleMap(
+                        mapType:
+                            _currentMapType, // Pengaturan jenis peta (Satellite / Normal)
+                        initialCameraPosition: CameraPosition(
+                          target: LatLng(
+                            _currentPosition?.latitude ?? -6.2,
+                            _currentPosition?.longitude ?? 106.8,
+                          ),
+                          zoom: 16,
+                        ),
+                        markers: _markers,
+                        onMapCreated: (controller) {
+                          _mapController = controller;
+                          if (_currentPosition != null) {
+                            _animateCameraTo(_currentPosition!);
+                          }
+                        },
                       ),
-                      zoom: 16,
-                    ),
-                    markers: _markers,
-                    onMapCreated: (controller) {
-                      _mapController = controller;
-                      // Kalau posisi sudah ada duluan (mis. dari getLastKnownPosition)
-                      // sebelum map selesai dibuat, langsung snap ke sana.
-                      if (_currentPosition != null) {
-                        _animateCameraTo(_currentPosition!);
-                      }
-                    },
+                      Positioned(
+                        top: 10,
+                        right: 10,
+                        child: FloatingActionButton.small(
+                          heroTag: "btn_map_type",
+                          backgroundColor: Colors.white,
+                          child: Icon(
+                            _currentMapType == MapType.satellite
+                                ? Icons.map
+                                : Icons.satellite,
+                            color: Colors.blue.shade900,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _currentMapType =
+                                  _currentMapType == MapType.satellite
+                                      ? MapType.normal
+                                      : MapType.satellite;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
                   ),
           ),
         ),
