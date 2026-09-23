@@ -9,7 +9,6 @@ import 'web_absensi.dart';
 import 'web_cuti.dart';
 import 'web_lembur.dart';
 import 'web_lokasi.dart';
-import 'web_log.dart';
 import 'web_dashboard_content.dart';
 import 'web_laporan_karyawan_page.dart';
 import 'web_laporan_absensi.dart';
@@ -38,11 +37,10 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
     'Pengajuan Lembur', // 4
     'Pengaturan Lokasi', // 5
     'Pemberitahuan', // 6
-    'Log Aktifitas Karyawan', // 7
-    'Laporan Karyawan', // 8
-    'Laporan Absensi', // 9
-    'Laporan Cuti', // 10
-    'Laporan Lembur', // 11
+    'Laporan Karyawan', // 7
+    'Laporan Absensi', // 8
+    'Laporan Cuti', // 9
+    'Laporan Lembur', // 10
   ];
 
   late final List<Widget> _pages = [
@@ -53,11 +51,10 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
     const WebLemburPage(), // 4
     const WebLokasiPage(), // 5
     const WebPemberitahuanPage(), // 6
-    const WebLogPage(), // 7
-    const WebLaporanKaryawanPage(), // 8
-    const WebLaporanAbsensiPage(), // 9
-    const LaporanCutiPage(), // 10
-    const LaporanLemburPage(), // 11
+    const WebLaporanKaryawanPage(), // 7
+    const WebLaporanAbsensiPage(), // 8
+    const LaporanCutiPage(), // 9
+    const LaporanLemburPage(), // 10
   ];
 
   void _showGantiPasswordDialog(BuildContext context) {
@@ -217,21 +214,8 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                         child: Divider(color: Colors.white.withOpacity(0.2)),
                       ),
 
-                      // --- MENU DROPDOWN LAPORAN (Indeks 8 sampai 11) ---
+                      // --- MENU DROPDOWN LAPORAN (Indeks 7 sampai 10) ---
                       _buildLaporanDropdownGroup(),
-
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 8,
-                          horizontal: 12,
-                        ),
-                        child: Divider(color: Colors.white.withOpacity(0.2)),
-                      ),
-                      _buildNavItem(
-                        7,
-                        Icons.receipt_long_outlined,
-                        'Log Aktifitas',
-                      ),
                     ],
                   ),
                 ),
@@ -413,8 +397,8 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
   }
 
   Widget _buildLaporanDropdownGroup() {
-    // Range index laporan dari 8 sampai 11
-    bool isLaporanSelected = _selectedIndex >= 8 && _selectedIndex <= 11;
+    // Range index laporan dari 7 sampai 10
+    bool isLaporanSelected = _selectedIndex >= 7 && _selectedIndex <= 10;
 
     return Column(
       children: [
@@ -479,10 +463,10 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
             padding: const EdgeInsets.only(left: 16.0),
             child: Column(
               children: [
-                _buildSubNavItem(8, 'Laporan Karyawan'),
-                _buildSubNavItem(9, 'Laporan Kehadiran'),
-                _buildSubNavItem(10, 'Laporan Cuti'),
-                _buildSubNavItem(11, 'Laporan Lembur'),
+                _buildSubNavItem(7, 'Laporan Karyawan'),
+                _buildSubNavItem(8, 'Laporan Kehadiran'),
+                _buildSubNavItem(9, 'Laporan Cuti'),
+                _buildSubNavItem(10, 'Laporan Lembur'),
               ],
             ),
           ),
