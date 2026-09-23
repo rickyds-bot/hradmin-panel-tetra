@@ -20,7 +20,7 @@ import 'kamera_absen_page.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'notification_services.dart';
 import 'register_face_page.dart';
-import 'package:mobile_absensi/features/core/utils/app_logger.dart';
+//import 'package:mobile_absensi/features/core/utils/app_logger.dart';
 import 'package:flutter_html/flutter_html.dart' hide Marker;
 
 // ============================================================================
@@ -685,10 +685,10 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
           'longitude': currentPos.longitude,
         });
 
-        await AppLogger.log(
-          activity: 'Melakukan $tipe (Absensi Wajah)',
-          module: 'Absensi Mobile',
-        );
+        //await AppLogger.log(
+        //  activity: 'Melakukan $tipe (Absensi Wajah)',
+        //  module: 'Absensi Mobile',
+        //);
 
         await file.delete();
         _refreshHistory();
@@ -1326,10 +1326,10 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
       // --- LOGIKA NOTIFIKASI DIHAPUS DARI APLIKASI (FLUTTER) ---
       // Karena telah ditangani oleh Webhook Database & Deno Edge Function
 
-      await AppLogger.log(
-        activity: 'Mengajukan $_selectedLeaveType ($_mode)',
-        module: 'Cuti & Izin',
-      );
+      //await AppLogger.log(
+      //  activity: 'Mengajukan $_selectedLeaveType ($_mode)',
+      //  module: 'Cuti & Izin',
+      //);
 
       _riwayatKey.currentState?._loadData();
 

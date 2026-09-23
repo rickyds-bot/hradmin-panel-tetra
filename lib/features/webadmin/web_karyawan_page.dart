@@ -6,7 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:typed_data';
 import 'dart:convert';
-import 'package:mobile_absensi/features/core/utils/app_logger.dart';
+//import 'package:mobile_absensi/features/core/utils/app_logger.dart';
 
 class WebKaryawanPage extends StatefulWidget {
   const WebKaryawanPage({super.key});
@@ -1381,11 +1381,11 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
       }
 
       if (mounted) {
-        await AppLogger.log(
-          activity:
-              'Menambahkan karyawan baru: ${_nameCtrl.text} (NIK: ${_nikCtrl.text})',
-          module: 'Data Karyawan',
-        );
+        //await AppLogger.log(
+        //  activity:
+        //      'Menambahkan karyawan baru: ${_nameCtrl.text} (NIK: ${_nikCtrl.text})',
+        //  module: 'Data Karyawan',
+        //);
 
         Navigator.pop(context);
         widget.onSuccess();
@@ -2046,11 +2046,11 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                       if (fileUrl != null) 'contract_file': fileUrl,
                     }).eq('id', widget.karyawan['id']);
 
-                    await AppLogger.log(
-                      activity:
-                          'Memperbarui biodata karyawan: ${_nameCtrl.text}',
-                      module: 'Data Karyawan',
-                    );
+                    //await AppLogger.log(
+                    //  activity:
+                    //      'Memperbarui biodata karyawan: ${_nameCtrl.text}',
+                    //  module: 'Data Karyawan',
+                    //);
 
                     Navigator.pop(context);
 
@@ -2156,10 +2156,10 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
             : null,
       }).eq('id', widget.karyawan['id']);
 
-      await AppLogger.log(
-        activity: 'Memperbarui biodata karyawan: ${_nameCtrl.text}',
-        module: 'Data Karyawan',
-      );
+      //await AppLogger.log(
+      //  activity: 'Memperbarui biodata karyawan: ${_nameCtrl.text}',
+      //  module: 'Data Karyawan',
+      //);
 
       if (mounted) {
         Navigator.pop(context);
@@ -2633,11 +2633,11 @@ class _KaryawanLeaveBalanceDialogState
           .from('leave_balance')
           .upsert(payload, onConflict: 'user_id');
 
-      await AppLogger.log(
-        activity:
-            'Memperbarui saldo cuti untuk ${widget.empName} (Sisa: $remaining Hari)',
-        module: 'Data Karyawan',
-      );
+      //await AppLogger.log(
+      //  activity:
+      //      'Memperbarui saldo cuti untuk ${widget.empName} (Sisa: $remaining Hari)',
+      //  module: 'Data Karyawan',
+      //);
 
       if (mounted) {
         setState(() => _isEditing = false);

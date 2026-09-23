@@ -2,7 +2,7 @@ import 'dart:async'; // Tambahkan ini untuk menggunakan StreamSubscription
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'web_dashboard_page.dart';
-import 'package:mobile_absensi/features/core/utils/app_logger.dart';
+//import 'package:mobile_absensi/features/core/utils/app_logger.dart';
 
 class WebLoginPage extends StatefulWidget {
   const WebLoginPage({super.key});
@@ -63,10 +63,10 @@ class _WebLoginPageState extends State<WebLoginPage> {
       );
 
       if (response.user != null) {
-        await AppLogger.log(
-          activity: 'Admin berhasil login ke sistem',
-          module: 'Autentikasi Web',
-        );
+        //await AppLogger.log(
+        //  activity: 'Admin berhasil login ke sistem',
+        //  module: 'Autentikasi Web',
+        //);
 
         if (mounted) {
           Navigator.of(context).pushReplacement(
