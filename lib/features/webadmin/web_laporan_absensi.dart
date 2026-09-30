@@ -231,8 +231,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     return (jabatan ?? '').toString().trim().toLowerCase() == 'security';
   }
 
+  // Jabatan dengan jam kerja 08:00-17:00: driver, OB, CS
   bool _isDriverJabatan(dynamic jabatan) {
-    return (jabatan ?? '').toString().trim().toLowerCase() == 'driver';
+    final j = (jabatan ?? '').toString().trim().toLowerCase();
+    return const ['driver', 'ob', 'cs'].contains(j);
   }
 
   void _processAttendanceData(List<dynamic> rawData) {

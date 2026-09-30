@@ -142,12 +142,13 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
     return jabatan == 'security';
   }
 
+  // Jabatan dengan jam kerja 08:00-17:00: driver, OB, CS
   bool _isDriverItem(dynamic item) {
     final jabatan = (item['employees']?['jabatan_name'] ?? '')
         .toString()
         .trim()
         .toLowerCase();
-    return jabatan == 'driver';
+    return const ['driver', 'ob', 'cs'].contains(jabatan);
   }
 
   // Tanggal shift: untuk security, absen sebelum jam 12:00 dihitung
