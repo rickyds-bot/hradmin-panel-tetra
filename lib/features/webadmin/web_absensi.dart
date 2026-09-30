@@ -21,6 +21,9 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
   // Map untuk menyimpan data cuti/izin karyawan yang di-approve
   final Map<int, List<Map<String, DateTime>>> _approvedLeaves = {};
 
+  // Info shift security per record absen (id -> tanggal shift, jenis shift, dst)
+  final Map<dynamic, Map<String, dynamic>> _secShiftInfo = {};
+
   // Map untuk menyimpan data hari libur nasional
   final Map<String, String> _holidaysMap = {};
 
@@ -115,6 +118,7 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
       }).toList();
 
       _absensiList = mergedData;
+      _buildSecurityShifts();
       _applyLocalFilter();
     } catch (e) {
       if (mounted) {
@@ -133,7 +137,7 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
     }
   }
 
-  // Security: shift malam 17:00 (check-in) s/d 07:00 (check-out hari berikutnya)
+  // Security: shift pagi 07:00-17:00 atau shift malam 17:00-07:00 (hari berikutnya)
   bool _isSecurityItem(dynamic item) {
     final jabatan = (item['employees']?['jabatan_name'] ?? '')
         .toString()
@@ -161,6 +165,106 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
     return d;
   }
 
+  // Jenis absen berdasarkan status: 'in' (check-in), 'out' (check-out), atau null
+  String? _punchKind(dynamic item) {
+    final st = (item['status'] ?? '').toString().toLowerCase();
+    if (st.contains('out') || st.contains('pulang') || st.contains('keluar')) {
+      return 'out';
+    }
+    if (st.contains('in') || st.contains('masuk') || st.contains('hadir')) {
+      return 'in';
+    }
+    return null;
+  }
+
+  // Security punya 2 shift: pagi 07:00-17:00 dan malam 17:00-07:00.
+  // Absen dikelompokkan per shift: check-in memulai shift, check-out
+  // berikutnya menutupnya. Tanggal shift = tanggal check-in.
+  void _buildSecurityShifts() {
+    _secShiftInfo.clear();
+    final Map<dynamic, List<dynamic>> byEmp = {};
+    for (var item in _absensiList) {
+      if (!_isSecurityItem(item) || item['created_at'] == null) continue;
+      byEmp.putIfAbsent(item['employee_id'], () => []).add(item);
+    }
+
+    byEmp.forEach((empId, list) {
+      list.sort((x, y) => DateTime.parse(x['created_at'])
+          .compareTo(DateTime.parse(y['created_at'])));
+
+      List<dynamic> current = [];
+      bool currentHasIn = false;
+
+      void finalizeShift() {
+        if (current.isEmpty) return;
+        final firstDt = DateTime.parse(current.first['created_at']).toLocal();
+        bool hasOut = false;
+        DateTime? outDt;
+        for (var p in current.skip(currentHasIn ? 1 : 0)) {
+          hasOut = true;
+          outDt = DateTime.parse(p['created_at']).toLocal();
+        }
+        DateTime shiftDay = DateTime(firstDt.year, firstDt.month, firstDt.day);
+        String shift;
+        if (currentHasIn) {
+          shift = firstDt.hour < 12 ? 'day' : 'night';
+        } else {
+          // check-out tanpa check-in: pagi = sisa shift malam, sore = shift pagi
+          shift = firstDt.hour < 12 ? 'night' : 'day';
+          if (firstDt.hour < 12) {
+            shiftDay = shiftDay.subtract(const Duration(days: 1));
+          }
+        }
+        for (var p in current) {
+          _secShiftInfo[p['id']] = {
+            'date': shiftDay,
+            'shift': shift,
+            'hasIn': currentHasIn,
+            'hasOut': hasOut,
+            'outDt': outDt,
+          };
+        }
+        current = [];
+        currentHasIn = false;
+      }
+
+      for (var p in list) {
+        final dt = DateTime.parse(p['created_at']).toLocal();
+        final kind = _punchKind(p) ?? (current.isEmpty ? 'in' : 'out');
+        if (kind == 'in') {
+          finalizeShift();
+          current = [p];
+          currentHasIn = true;
+        } else {
+          if (currentHasIn &&
+              dt
+                      .difference(
+                          DateTime.parse(current.first['created_at']).toLocal())
+                      .inHours <=
+                  20) {
+            current.add(p);
+            finalizeShift();
+          } else {
+            finalizeShift();
+            current = [p];
+            currentHasIn = false;
+            finalizeShift();
+          }
+        }
+      }
+      finalizeShift();
+    });
+  }
+
+  // Tanggal shift sebuah record absen (security: berdasarkan pasangan shift)
+  DateTime _rowShiftDay(dynamic item, DateTime dt, bool isSecurity) {
+    if (isSecurity) {
+      final info = _secShiftInfo[item['id']];
+      if (info != null) return info['date'] as DateTime;
+    }
+    return _shiftDate(dt, isSecurity);
+  }
+
   void _applyLocalFilter() {
     List<dynamic> temp = List.from(_absensiList);
 
@@ -178,7 +282,7 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
         if (item['created_at'] == null) return false;
         try {
           DateTime itemDate = DateTime.parse(item['created_at']).toLocal();
-          itemDate = _shiftDate(itemDate, _isSecurityItem(item));
+          itemDate = _rowShiftDay(item, itemDate, _isSecurityItem(item));
           return itemDate.year == _selectedDateFilter!.year &&
               itemDate.month == _selectedDateFilter!.month &&
               itemDate.day == _selectedDateFilter!.day;
@@ -842,8 +946,16 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                               if (attDate != null) {
                                                 bool isLeave = false;
                                                 final DateTime shiftDay =
-                                                    _shiftDate(
-                                                        attDate, isSecurity);
+                                                    _rowShiftDay(item, attDate,
+                                                        isSecurity);
+                                                // Security: shift malam (17:00-07:00) atau pagi (07:00-17:00)
+                                                final bool isNightShift =
+                                                    isSecurity &&
+                                                        (_secShiftInfo[item[
+                                                                        'id']]?[
+                                                                    'shift'] ??
+                                                                'night') ==
+                                                            'night';
                                                 // Sabtu/Minggu (non-security) = Lembur, tidak dihitung terlambat
                                                 final bool skipLate =
                                                     !isSecurity &&
@@ -912,14 +1024,16 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                           .contains('masuk');
 
                                                   if (isCheckIn) {
-                                                    // Security masuk 17:00 (batas 17:15 dgn toleransi 15 menit), driver 08:15 (masuk 08:00 + toleransi 15 menit), lainnya 08:45
+                                                    // Security malam masuk 17:00 (batas 17:15) / pagi 07:00 (batas 07:15), driver 08:15 (masuk 08:00 + toleransi 15 menit), lainnya 08:45
                                                     DateTime limitTime =
                                                         isSecurity
                                                             ? DateTime(
                                                                 shiftDay.year,
                                                                 shiftDay.month,
                                                                 shiftDay.day,
-                                                                17,
+                                                                isNightShift
+                                                                    ? 17
+                                                                    : 7,
                                                                 15,
                                                                 0)
                                                             : DateTime(
@@ -961,8 +1075,8 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                             a['created_at'])
                                                         .toLocal();
                                                     final DateTime dShift =
-                                                        _shiftDate(
-                                                            d, isSecurity);
+                                                        _rowShiftDay(
+                                                            a, d, isSecurity);
                                                     if (dShift.year ==
                                                             dateOnly.year &&
                                                         dShift.month ==
@@ -991,17 +1105,30 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                 if (hasCheckIn && hasCheckOut) {
                                                   if (actualCheckOutDt !=
                                                       null) {
-                                                    // Security pulang 07:00 (hari berikutnya), driver 17:00, lainnya 17:30
+                                                    // Security malam pulang 07:00 (hari berikutnya) / pagi 17:00, driver 17:00, lainnya 17:30
                                                     DateTime earlyLimit =
                                                         isSecurity
-                                                            ? DateTime(
-                                                                dateOnly.year,
-                                                                dateOnly.month,
-                                                                dateOnly.day +
-                                                                    1,
-                                                                7,
-                                                                0,
-                                                                0)
+                                                            ? (isNightShift
+                                                                ? DateTime(
+                                                                    dateOnly
+                                                                        .year,
+                                                                    dateOnly
+                                                                        .month,
+                                                                    dateOnly.day +
+                                                                        1,
+                                                                    7,
+                                                                    0,
+                                                                    0)
+                                                                : DateTime(
+                                                                    dateOnly
+                                                                        .year,
+                                                                    dateOnly
+                                                                        .month,
+                                                                    dateOnly
+                                                                        .day,
+                                                                    17,
+                                                                    0,
+                                                                    0))
                                                             : DateTime(
                                                                 dateOnly.year,
                                                                 dateOnly.month,

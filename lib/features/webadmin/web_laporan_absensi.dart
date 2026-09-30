@@ -237,11 +237,92 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     return const ['driver', 'ob', 'cs'].contains(j);
   }
 
+  // Jenis absen berdasarkan status: 'in' (check-in), 'out' (check-out), atau null
+  String? _punchKind(dynamic item) {
+    final st = (item['status'] ?? '').toString().toLowerCase();
+    if (st.contains('out') || st.contains('pulang') || st.contains('keluar')) {
+      return 'out';
+    }
+    if (st.contains('in') || st.contains('masuk') || st.contains('hadir')) {
+      return 'in';
+    }
+    return null;
+  }
+
+  // Security punya 2 shift: pagi 07:00-17:00 dan malam 17:00-07:00.
+  // Check-in memulai shift, check-out berikutnya menutupnya.
+  // Hasil: tanggal shift (yyyy-MM-dd) -> {punches, hasIn, shift}
+  Map<String, Map<String, dynamic>> _groupSecurityShifts(List<dynamic> list) {
+    final Map<String, Map<String, dynamic>> result = {};
+    list.sort((x, y) => DateTime.parse(x['created_at'])
+        .compareTo(DateTime.parse(y['created_at'])));
+
+    List<dynamic> current = [];
+    bool currentHasIn = false;
+
+    void finalizeShift() {
+      if (current.isEmpty) return;
+      final firstDt = DateTime.parse(current.first['created_at']).toLocal();
+      DateTime shiftDay = DateTime(firstDt.year, firstDt.month, firstDt.day);
+      String shift;
+      if (currentHasIn) {
+        shift = firstDt.hour < 12 ? 'day' : 'night';
+      } else {
+        // check-out tanpa check-in: pagi = sisa shift malam, sore = shift pagi
+        shift = firstDt.hour < 12 ? 'night' : 'day';
+        if (firstDt.hour < 12) {
+          shiftDay = shiftDay.subtract(const Duration(days: 1));
+        }
+      }
+      final key = DateFormat('yyyy-MM-dd').format(shiftDay);
+      if (result.containsKey(key)) {
+        (result[key]!['punches'] as List<dynamic>).addAll(current);
+      } else {
+        result[key] = {
+          'punches': List<dynamic>.from(current),
+          'hasIn': currentHasIn,
+          'shift': shift,
+        };
+      }
+      current = [];
+      currentHasIn = false;
+    }
+
+    for (var p in list) {
+      final dt = DateTime.parse(p['created_at']).toLocal();
+      final kind = _punchKind(p) ?? (current.isEmpty ? 'in' : 'out');
+      if (kind == 'in') {
+        finalizeShift();
+        current = [p];
+        currentHasIn = true;
+      } else {
+        if (currentHasIn &&
+            dt
+                    .difference(
+                        DateTime.parse(current.first['created_at']).toLocal())
+                    .inHours <=
+                20) {
+          current.add(p);
+          finalizeShift();
+        } else {
+          finalizeShift();
+          current = [p];
+          currentHasIn = false;
+          finalizeShift();
+        }
+      }
+    }
+    finalizeShift();
+    return result;
+  }
+
   void _processAttendanceData(List<dynamic> rawData) {
     Map<String, Map<String, List<dynamic>>> empDatePunches = {};
 
     // Peta id karyawan -> apakah security (shift malam 17:00 - 07:00)
     final Map<String, bool> securityMap = {};
+    final Map<String, List<dynamic>> secRaw = {};
+    final Map<String, Map<String, Map<String, dynamic>>> secShifts = {};
     for (var emp in _employees) {
       securityMap[emp['id'].toString()] =
           _isSecurityJabatan(emp['jabatan_name']);
@@ -256,16 +337,27 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       DateTime? dt = DateTime.tryParse(createdAtStr)?.toLocal();
       if (dt == null) continue;
 
-      // Security: absen sebelum jam 12:00 masuk ke shift hari sebelumnya
-      if ((securityMap[empId] ?? false) && dt.hour < 12) {
-        dt = dt.subtract(const Duration(days: 1));
+      // Security dikelompokkan per shift (pagi/malam) setelah loop ini
+      if (securityMap[empId] == true) {
+        secRaw.putIfAbsent(empId, () => []).add(item);
+        continue;
       }
+
       String dateKey = DateFormat('yyyy-MM-dd').format(dt);
 
       empDatePunches.putIfAbsent(empId, () => {});
       empDatePunches[empId]!.putIfAbsent(dateKey, () => []);
       empDatePunches[empId]![dateKey]!.add(item);
     }
+
+    secRaw.forEach((empId, list) {
+      final groups = _groupSecurityShifts(list);
+      secShifts[empId] = groups;
+      empDatePunches[empId] = {};
+      groups.forEach((dk, g) {
+        empDatePunches[empId]![dk] = g['punches'] as List<dynamic>;
+      });
+    });
 
     Map<String, List<Map<String, dynamic>>> grouped = {};
     List<Map<String, dynamic>> flat = [];
@@ -328,6 +420,19 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
         var punches = empDatePunches[empIdStr]?[dateKey];
 
+        // Security: info shift (pagi/malam) & apakah ada check-in
+        Map<String, dynamic>? secInfo;
+        if (isSecurity) {
+          final secByDate = secShifts[empIdStr];
+          if (secByDate != null) {
+            secInfo = secByDate[dateKey];
+          }
+        }
+        final bool isNightShift =
+            isSecurity && (secInfo == null || secInfo['shift'] == 'night');
+        final bool onlyCheckOut =
+            isSecurity && secInfo != null && secInfo['hasIn'] == false;
+
         if (punches != null && punches.isNotEmpty) {
           punches.sort((a, b) => DateTime.parse(a['created_at'])
               .toLocal()
@@ -338,25 +443,29 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
           DateTime checkInDt =
               DateTime.parse(firstPunch['created_at']).toLocal();
-          DateTime? checkOutDt = punches.length > 1
-              ? DateTime.parse(lastPunch['created_at']).toLocal()
-              : null;
+          DateTime? checkOutDt = onlyCheckOut
+              ? checkInDt
+              : (punches.length > 1
+                  ? DateTime.parse(lastPunch['created_at']).toLocal()
+                  : null);
 
-          String checkInTime = DateFormat('HH:mm:ss').format(checkInDt);
+          String checkInTime =
+              onlyCheckOut ? '-' : DateFormat('HH:mm:ss').format(checkInDt);
           String checkOutTime = checkOutDt != null
               ? DateFormat('HH:mm:ss').format(checkOutDt)
               : '-';
 
           String lateStr = '-';
 
-          // Batas terlambat (toleransi 15 menit): security 17:15, driver 08:15 (masuk 08:00 + toleransi 15 menit), lainnya 08:45
+          // Batas terlambat (toleransi 15 menit): security malam 17:15 / pagi 07:15, driver 08:15 (masuk 08:00 + toleransi 15 menit), lainnya 08:45
           DateTime limitTime = isSecurity
-              ? DateTime(curr.year, curr.month, curr.day, 17, 15, 0)
+              ? DateTime(
+                  curr.year, curr.month, curr.day, isNightShift ? 17 : 7, 15, 0)
               : DateTime(checkInDt.year, checkInDt.month, checkInDt.day, 8,
                   isDriver ? 15 : 45, 0);
 
           // Sabtu/Minggu (non-security) berstatus Lembur: tidak dihitung terlambat
-          final bool skipLate = isWeekend && !isSecurity;
+          final bool skipLate = (isWeekend && !isSecurity) || onlyCheckOut;
 
           if (!skipLate && checkInDt.isAfter(limitTime)) {
             Duration diff = checkInDt.difference(limitTime);
@@ -383,9 +492,11 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           }
 
           if (checkOutDt != null) {
-            // Batas pulang: security 07:00 (hari berikutnya), driver 17:00, lainnya 17:30
+            // Batas pulang: security malam 07:00 (hari berikutnya) / pagi 17:00, driver 17:00, lainnya 17:30
             DateTime earlyLimit = isSecurity
-                ? DateTime(curr.year, curr.month, curr.day + 1, 7, 0, 0)
+                ? (isNightShift
+                    ? DateTime(curr.year, curr.month, curr.day + 1, 7, 0, 0)
+                    : DateTime(curr.year, curr.month, curr.day, 17, 0, 0))
                 : DateTime(checkOutDt.year, checkOutDt.month, checkOutDt.day,
                     17, isDriver ? 0 : 30, 0);
             if (checkOutDt.isBefore(earlyLimit)) {
@@ -406,7 +517,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           }
 
           // Durasi kerja (check-out - check-in), aman untuk shift lewat tengah malam
-          int workSeconds = checkOutDt != null
+          int workSeconds = (checkOutDt != null && !onlyCheckOut)
               ? checkOutDt.difference(checkInDt).inSeconds
               : 0;
 
@@ -426,7 +537,9 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'department': empDeptName,
             'day': dayName,
             'date': dateFormatted,
-            'work_hours': workHours,
+            'work_hours': isSecurity
+                ? (isNightShift ? '17:00-07:00' : '07:00-17:00')
+                : workHours,
             'check_in': checkInTime,
             'check_out': checkOutTime,
             'coordinate': coordinate,
@@ -467,7 +580,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'department': empDeptName,
             'day': dayName,
             'date': dateFormatted,
-            'work_hours': workHours,
+            'work_hours': isSecurity ? '-' : workHours,
             'check_in': '-',
             'check_out': '-',
             'coordinate': '-',
