@@ -940,6 +940,14 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                   }
                                                 }
 
+                                                // Sabtu/Minggu (non-security): hilangkan notes 'Terlambat'
+                                                // (termasuk yang tersimpan dari database)
+                                                if (skipLate &&
+                                                    notes.toLowerCase() ==
+                                                        'terlambat') {
+                                                  notes = '';
+                                                }
+
                                                 bool hasCheckIn = false;
                                                 bool hasCheckOut = false;
                                                 DateTime? actualCheckOutDt;
