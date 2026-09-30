@@ -687,7 +687,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         String checkIn = row['check_in'] ?? '-';
         String checkOut = row['check_out'] ?? '-';
 
-        // Baris Pertama: Menampilkan jam Check-in
+        // Baris Pertama: Menampilkan jam Check-in (Terlambat & Notes diisi)
         List<String> rowDataCheckIn = [
           row['day'] ?? '',
           row['date'] ?? '',
@@ -702,7 +702,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         sheetObject
             .appendRow(rowDataCheckIn.map((e) => TextCellValue(e)).toList());
 
-        // Baris Kedua: Menampilkan jam Check-out dengan sisa data yang sama
+        // Baris Kedua: Menampilkan jam Check-out (Terlambat & Notes dikosongkan)
         List<String> rowDataCheckOut = [
           row['day'] ?? '',
           row['date'] ?? '',
@@ -710,9 +710,9 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           checkOut,
           row['coordinate'] ?? '',
           row['location'] ?? '',
-          row['late'] ?? '',
+          '', // Kolom Terlambat dikosongkan
           row['aktifitas'] ?? '',
-          row['notes'] ?? '',
+          '', // Kolom Notes dikosongkan
         ];
         sheetObject
             .appendRow(rowDataCheckOut.map((e) => TextCellValue(e)).toList());
