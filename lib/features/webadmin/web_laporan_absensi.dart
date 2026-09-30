@@ -428,6 +428,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'location': locationName,
             'late': lateStr,
             'work_seconds': workSeconds,
+            'work_total': workSeconds > 0 ? _formatDurasi(workSeconds) : '-',
             'aktifitas': aktifitas,
             'notes': notes,
           };
@@ -468,6 +469,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'location': '-',
             'late': '-',
             'work_seconds': 0,
+            'work_total': '-',
             'aktifitas': aktifitas,
             'notes': notes,
           };
@@ -534,6 +536,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       'Kordinat',
       'Nama Lokasi',
       'Terlambat',
+      'Total Jam Kerja',
       'Aktifitas',
       'Notes'
     ];
@@ -575,6 +578,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           row['coordinate'] ?? '-',
           row['location'] ?? '-',
           row['late'] ?? '-',
+          row['work_total'] ?? '-',
           row['aktifitas'] ?? '-',
           row['notes'] ?? '-',
         ];
@@ -729,6 +733,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         'Kordinat',
         'Nama Lokasi',
         'Terlambat',
+        'Total Jam Kerja',
         'Aktifitas',
         'Notes'
       ];
@@ -767,6 +772,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           row['coordinate'] ?? '',
           row['location'] ?? '',
           row['late'] ?? '',
+          row['work_total'] ?? '',
           row['aktifitas'] ?? '',
           row['notes'] ?? '',
         ];
@@ -782,6 +788,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           row['coordinate'] ?? '',
           row['location'] ?? '',
           '', // Kolom Terlambat dikosongkan
+          '', // Kolom Total Jam Kerja dikosongkan
           row['aktifitas'] ?? '',
           '', // Kolom Notes dikosongkan
         ];
@@ -1142,6 +1149,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                                             DataColumn(
                                                 label: Text('Terlambat')),
                                             DataColumn(
+                                                label: Text('Total Jam Kerja')),
+                                            DataColumn(
                                                 label: Text('Aktifitas')),
                                             DataColumn(label: Text('Notes')),
                                           ],
@@ -1165,6 +1174,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                                                     row['location'] ?? '-')),
                                                 DataCell(
                                                     Text(row['late'] ?? '-')),
+                                                DataCell(Text(
+                                                    row['work_total'] ?? '-')),
                                                 DataCell(Text(
                                                     row['aktifitas'] ?? '-')),
                                                 DataCell(
