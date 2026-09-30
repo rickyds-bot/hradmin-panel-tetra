@@ -686,20 +686,36 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
         String checkIn = row['check_in'] ?? '-';
         String checkOut = row['check_out'] ?? '-';
-        String jamAbsen = '$checkIn\n$checkOut';
 
-        List<String> rowData = [
+        // Baris Pertama: Menampilkan jam Check-in
+        List<String> rowDataCheckIn = [
           row['day'] ?? '',
           row['date'] ?? '',
           row['work_hours'] ?? '',
-          jamAbsen,
+          checkIn,
           row['coordinate'] ?? '',
           row['location'] ?? '',
           row['late'] ?? '',
           row['aktifitas'] ?? '',
           row['notes'] ?? '',
         ];
-        sheetObject.appendRow(rowData.map((e) => TextCellValue(e)).toList());
+        sheetObject
+            .appendRow(rowDataCheckIn.map((e) => TextCellValue(e)).toList());
+
+        // Baris Kedua: Menampilkan jam Check-out dengan sisa data yang sama
+        List<String> rowDataCheckOut = [
+          row['day'] ?? '',
+          row['date'] ?? '',
+          row['work_hours'] ?? '',
+          checkOut,
+          row['coordinate'] ?? '',
+          row['location'] ?? '',
+          row['late'] ?? '',
+          row['aktifitas'] ?? '',
+          row['notes'] ?? '',
+        ];
+        sheetObject
+            .appendRow(rowDataCheckOut.map((e) => TextCellValue(e)).toList());
       }
 
       int th = totalDetikTerlambat ~/ 3600;
