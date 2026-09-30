@@ -125,7 +125,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         }
       }
 
-      // Ambil data hari libur nasional / cuti bersama dari tabel hari_libur
       final holidaysResponse = await Supabase.instance.client
           .from('hari_libur')
           .select('holiday_date, description')
@@ -253,7 +252,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       final empJabatan = emp['jabatan_name'] ?? '-';
       final empDeptName = _getDepartmentName(emp['department_id']);
 
-      // Mengambil status absen bebas dari data master karyawan
       final bool isFreeLocation = emp['is_free_location'] ?? false;
 
       List<Map<String, dynamic>> empRows = [];
@@ -309,12 +307,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
           String lateStr = '-';
 
-          // --- BATAS TERLAMBAT DIHITUNG DARI JAM 08:45:00 ---
           DateTime limitTime = DateTime(
               checkInDt.year, checkInDt.month, checkInDt.day, 8, 45, 0);
 
           if (checkInDt.isAfter(limitTime)) {
-            // Hitungan telat dihitung langsung sebagai selisih dengan 08:45
             Duration diff = checkInDt.difference(limitTime);
             int hours = diff.inHours;
             int minutes = diff.inMinutes % 60;
@@ -338,7 +334,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             }
           }
 
-          // --- Deteksi Checkout Lebih Awal ---
           if (checkOutDt != null) {
             DateTime earlyLimit = DateTime(
                 checkOutDt.year, checkOutDt.month, checkOutDt.day, 17, 30, 0);
@@ -354,7 +349,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           String coordinate =
               '${firstPunch['latitude'] ?? '-'}, ${firstPunch['longitude'] ?? '-'}';
 
-          // --- Penentuan Nama Lokasi berdasarkan opsi Absen Bebas ---
           String locationName = isFreeLocation
               ? 'Absen Bebas'
               : _matchLocationName(
@@ -660,8 +654,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         'Hari',
         'Tanggal',
         'Jam Kerja',
-        'Jam Check-in',
-        'Jam Check-out',
+        'Jam Check-in / Check-out',
         'Kordinat',
         'Nama Lokasi',
         'Terlambat',
@@ -691,12 +684,15 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           }
         }
 
+        String checkIn = row['check_in'] ?? '-';
+        String checkOut = row['check_out'] ?? '-';
+        String jamAbsen = '$checkIn\n$checkOut';
+
         List<String> rowData = [
           row['day'] ?? '',
           row['date'] ?? '',
           row['work_hours'] ?? '',
-          row['check_in'] ?? '',
-          row['check_out'] ?? '',
+          jamAbsen,
           row['coordinate'] ?? '',
           row['location'] ?? '',
           row['late'] ?? '',
