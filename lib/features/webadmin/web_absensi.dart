@@ -995,11 +995,17 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                   aktifitas = 'Hanya Checkout';
                                                 }
 
-                                                // Absen di hari Sabtu/Minggu = Lembur
-                                                if (shiftDay.weekday ==
-                                                        DateTime.saturday ||
-                                                    shiftDay.weekday ==
-                                                        DateTime.sunday) {
+                                                // Security: aktifitas dikosongkan (kerja setiap hari).
+                                                // Lainnya: Lembur jika absen (check-in & check-out)
+                                                // di hari Sabtu/Minggu.
+                                                if (isSecurity) {
+                                                  aktifitas = '';
+                                                } else if (hasCheckIn &&
+                                                    hasCheckOut &&
+                                                    (shiftDay.weekday ==
+                                                            DateTime.saturday ||
+                                                        shiftDay.weekday ==
+                                                            DateTime.sunday)) {
                                                   aktifitas = 'Lembur';
                                                 }
                                               }

@@ -212,6 +212,21 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     }
   }
 
+  String _formatDurasi(int totalSeconds) {
+    final h = totalSeconds ~/ 3600;
+    final m = (totalSeconds % 3600) ~/ 60;
+    final sec = totalSeconds % 60;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+  }
+
+  int _sumWorkSeconds(List<Map<String, dynamic>> rows) {
+    int total = 0;
+    for (var r in rows) {
+      total += (r['work_seconds'] as int?) ?? 0;
+    }
+    return total;
+  }
+
   bool _isSecurityJabatan(dynamic jabatan) {
     return (jabatan ?? '').toString().trim().toLowerCase() == 'security';
   }
@@ -370,10 +385,18 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             aktifitas = 'Belum Checkout';
           }
 
-          // Absen di hari Sabtu/Minggu = Lembur
-          if (isWeekend) {
+          // Security: kolom aktifitas dikosongkan (kerja setiap hari).
+          // Lainnya: Lembur jika absen (check-in & check-out) di Sabtu/Minggu.
+          if (isSecurity) {
+            aktifitas = '';
+          } else if (isWeekend && checkOutDt != null) {
             aktifitas = 'Lembur';
           }
+
+          // Durasi kerja (check-out - check-in), aman untuk shift lewat tengah malam
+          int workSeconds = checkOutDt != null
+              ? checkOutDt.difference(checkInDt).inSeconds
+              : 0;
 
           String coordinate =
               '${firstPunch['latitude'] ?? '-'}, ${firstPunch['longitude'] ?? '-'}';
@@ -397,6 +420,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'coordinate': coordinate,
             'location': locationName,
             'late': lateStr,
+            'work_seconds': workSeconds,
             'aktifitas': aktifitas,
             'notes': notes,
           };
@@ -412,9 +436,14 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           } else if (isPublicHoliday) {
             notes = publicHolidayName;
             aktifitas = 'Libur';
-          } else if (isWeekend) {
+          } else if (isWeekend && !isSecurity) {
             notes = 'Libur Akhir Pekan';
             aktifitas = 'Libur';
+          }
+
+          // Security bekerja setiap hari: kolom aktifitas dikosongkan
+          if (isSecurity) {
+            aktifitas = '';
           }
 
           var row = {
@@ -431,6 +460,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'coordinate': '-',
             'location': '-',
             'late': '-',
+            'work_seconds': 0,
             'aktifitas': aktifitas,
             'notes': notes,
           };
@@ -548,6 +578,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       int ts = totalDetikTerlambat % 60;
       String totalLateFormatted =
           '${th.toString().padLeft(2, '0')}:${tm.toString().padLeft(2, '0')}:${ts.toString().padLeft(2, '0')}';
+      String totalJamKerjaFormatted = _formatDurasi(_sumWorkSeconds(rows));
 
       pdf.addPage(
         pw.MultiPage(
@@ -621,6 +652,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                             fontSize: 9, fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 4),
                     pw.Text('Total Jam Terlambat: $totalLateFormatted',
+                        style: pw.TextStyle(
+                            fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                    pw.SizedBox(height: 4),
+                    pw.Text('Total Jam Kerja: $totalJamKerjaFormatted',
                         style: pw.TextStyle(
                             fontSize: 9, fontWeight: pw.FontWeight.bold)),
                   ],
@@ -752,6 +787,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       int ts = totalDetikTerlambat % 60;
       String totalLateFormatted =
           '${th.toString().padLeft(2, '0')}:${tm.toString().padLeft(2, '0')}:${ts.toString().padLeft(2, '0')}';
+      String totalJamKerjaFormatted = _formatDurasi(_sumWorkSeconds(rows));
 
       sheetObject.appendRow([]);
       sheetObject.appendRow([
@@ -761,6 +797,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       sheetObject.appendRow([
         TextCellValue('Total Jam Terlambat:'),
         TextCellValue(totalLateFormatted)
+      ]);
+      sheetObject.appendRow([
+        TextCellValue('Total Jam Kerja:'),
+        TextCellValue(totalJamKerjaFormatted)
       ]);
     });
 
