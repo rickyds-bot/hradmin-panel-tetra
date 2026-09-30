@@ -231,6 +231,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     return (jabatan ?? '').toString().trim().toLowerCase() == 'security';
   }
 
+  bool _isDriverJabatan(dynamic jabatan) {
+    return (jabatan ?? '').toString().trim().toLowerCase() == 'driver';
+  }
+
   void _processAttendanceData(List<dynamic> rawData) {
     Map<String, Map<String, List<dynamic>>> empDatePunches = {};
 
@@ -285,7 +289,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
       final bool isFreeLocation = emp['is_free_location'] ?? false;
       final bool isSecurity = _isSecurityJabatan(emp['jabatan_name']);
-      final String workHours = isSecurity ? '17:00-07:00' : '08:30-17:30';
+      final bool isDriver = _isDriverJabatan(emp['jabatan_name']);
+      final String workHours = isSecurity
+          ? '17:00-07:00'
+          : (isDriver ? '08:00-17:00' : '08:30-17:30');
 
       List<Map<String, dynamic>> empRows = [];
       DateTime curr = _startDate;
@@ -340,11 +347,11 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
           String lateStr = '-';
 
-          // Batas terlambat: security 17:00, lainnya 08:45
+          // Batas terlambat (toleransi 15 menit): security 17:15, driver 08:15 (masuk 08:00 + toleransi 15 menit), lainnya 08:45
           DateTime limitTime = isSecurity
-              ? DateTime(curr.year, curr.month, curr.day, 17, 0, 0)
-              : DateTime(
-                  checkInDt.year, checkInDt.month, checkInDt.day, 8, 45, 0);
+              ? DateTime(curr.year, curr.month, curr.day, 17, 15, 0)
+              : DateTime(checkInDt.year, checkInDt.month, checkInDt.day, 8,
+                  isDriver ? 15 : 45, 0);
 
           if (checkInDt.isAfter(limitTime)) {
             Duration diff = checkInDt.difference(limitTime);
@@ -371,11 +378,11 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           }
 
           if (checkOutDt != null) {
-            // Batas pulang: security 07:00 (hari berikutnya), lainnya 17:30
+            // Batas pulang: security 07:00 (hari berikutnya), driver 17:00, lainnya 17:30
             DateTime earlyLimit = isSecurity
                 ? DateTime(curr.year, curr.month, curr.day + 1, 7, 0, 0)
                 : DateTime(checkOutDt.year, checkOutDt.month, checkOutDt.day,
-                    17, 30, 0);
+                    17, isDriver ? 0 : 30, 0);
             if (checkOutDt.isBefore(earlyLimit)) {
               aktifitas = 'Check-out lbh awal';
             } else {

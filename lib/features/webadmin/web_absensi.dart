@@ -142,6 +142,14 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
     return jabatan == 'security';
   }
 
+  bool _isDriverItem(dynamic item) {
+    final jabatan = (item['employees']?['jabatan_name'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    return jabatan == 'driver';
+  }
+
   // Tanggal shift: untuk security, absen sebelum jam 12:00 dihitung
   // sebagai bagian dari shift hari sebelumnya (check-out pagi).
   DateTime _shiftDate(DateTime dt, bool isSecurity) {
@@ -823,6 +831,8 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
 
                                               final bool isSecurity =
                                                   _isSecurityItem(item);
+                                              final bool isDriver =
+                                                  _isDriverItem(item);
                                               String aktifitas = 'Bekerja';
                                               String notes =
                                                   (item['notes'] ?? '')
@@ -892,7 +902,7 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                           .contains('masuk');
 
                                                   if (isCheckIn) {
-                                                    // Security masuk 17:00, lainnya 08:45
+                                                    // Security masuk 17:00 (batas 17:15 dgn toleransi 15 menit), driver 08:15 (masuk 08:00 + toleransi 15 menit), lainnya 08:45
                                                     DateTime limitTime =
                                                         isSecurity
                                                             ? DateTime(
@@ -900,14 +910,16 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                                 shiftDay.month,
                                                                 shiftDay.day,
                                                                 17,
-                                                                0,
+                                                                15,
                                                                 0)
                                                             : DateTime(
                                                                 attDate.year,
                                                                 attDate.month,
                                                                 attDate.day,
                                                                 8,
-                                                                45,
+                                                                isDriver
+                                                                    ? 15
+                                                                    : 45,
                                                                 0);
 
                                                     if (attDate
@@ -960,7 +972,7 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                 if (hasCheckIn && hasCheckOut) {
                                                   if (actualCheckOutDt !=
                                                       null) {
-                                                    // Security pulang 07:00 (hari berikutnya), lainnya 17:30
+                                                    // Security pulang 07:00 (hari berikutnya), driver 17:00, lainnya 17:30
                                                     DateTime earlyLimit =
                                                         isSecurity
                                                             ? DateTime(
@@ -976,7 +988,9 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                                 dateOnly.month,
                                                                 dateOnly.day,
                                                                 17,
-                                                                30,
+                                                                isDriver
+                                                                    ? 0
+                                                                    : 30,
                                                                 0);
                                                     if (actualCheckOutDt
                                                         .isBefore(earlyLimit)) {
