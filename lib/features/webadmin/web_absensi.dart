@@ -60,11 +60,13 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
       // 2. Ambil data karyawan
       final employeesResponse = await Supabase.instance.client
           .from('employees')
-          .select('id, full_name');
+          .select('id, full_name, jabatan_name');
 
       final Map<dynamic, String> employeeMap = {};
+      final Map<dynamic, String> jabatanMap = {};
       for (var emp in employeesResponse) {
         employeeMap[emp['id']] = emp['full_name'] ?? '-';
+        jabatanMap[emp['id']] = (emp['jabatan_name'] ?? '').toString();
       }
 
       // 3. Ambil data cuti/izin (hanya yang berstatus approved)
@@ -107,6 +109,7 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
           ...item,
           'employees': {
             'full_name': employeeMap[empId] ?? 'Karyawan Tidak Ditemukan',
+            'jabatan_name': jabatanMap[empId] ?? '',
           },
         };
       }).toList();
@@ -130,6 +133,25 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
     }
   }
 
+  // Security: shift malam 17:00 (check-in) s/d 07:00 (check-out hari berikutnya)
+  bool _isSecurityItem(dynamic item) {
+    final jabatan = (item['employees']?['jabatan_name'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    return jabatan == 'security';
+  }
+
+  // Tanggal shift: untuk security, absen sebelum jam 12:00 dihitung
+  // sebagai bagian dari shift hari sebelumnya (check-out pagi).
+  DateTime _shiftDate(DateTime dt, bool isSecurity) {
+    final d = DateTime(dt.year, dt.month, dt.day);
+    if (isSecurity && dt.hour < 12) {
+      return d.subtract(const Duration(days: 1));
+    }
+    return d;
+  }
+
   void _applyLocalFilter() {
     List<dynamic> temp = List.from(_absensiList);
 
@@ -147,6 +169,7 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
         if (item['created_at'] == null) return false;
         try {
           DateTime itemDate = DateTime.parse(item['created_at']).toLocal();
+          itemDate = _shiftDate(itemDate, _isSecurityItem(item));
           return itemDate.year == _selectedDateFilter!.year &&
               itemDate.month == _selectedDateFilter!.month &&
               itemDate.day == _selectedDateFilter!.day;
@@ -798,6 +821,8 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                     ?.toLocal();
                                               }
 
+                                              final bool isSecurity =
+                                                  _isSecurityItem(item);
                                               String aktifitas = 'Bekerja';
                                               String notes =
                                                   (item['notes'] ?? '')
@@ -805,14 +830,14 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
 
                                               if (attDate != null) {
                                                 bool isLeave = false;
+                                                final DateTime shiftDay =
+                                                    _shiftDate(
+                                                        attDate, isSecurity);
 
                                                 if (empId != null &&
                                                     _approvedLeaves
                                                         .containsKey(empId)) {
-                                                  DateTime dateOnly = DateTime(
-                                                      attDate.year,
-                                                      attDate.month,
-                                                      attDate.day);
+                                                  DateTime dateOnly = shiftDay;
                                                   for (var range
                                                       in _approvedLeaves[
                                                           empId]!) {
@@ -844,7 +869,7 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                 // --- Cek Hari Libur ---
                                                 String dateKey =
                                                     DateFormat('yyyy-MM-dd')
-                                                        .format(attDate);
+                                                        .format(shiftDay);
                                                 bool isPublicHoliday =
                                                     _holidaysMap
                                                         .containsKey(dateKey);
@@ -867,14 +892,23 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                           .contains('masuk');
 
                                                   if (isCheckIn) {
+                                                    // Security masuk 17:00, lainnya 08:45
                                                     DateTime limitTime =
-                                                        DateTime(
-                                                            attDate.year,
-                                                            attDate.month,
-                                                            attDate.day,
-                                                            8,
-                                                            45,
-                                                            0);
+                                                        isSecurity
+                                                            ? DateTime(
+                                                                shiftDay.year,
+                                                                shiftDay.month,
+                                                                shiftDay.day,
+                                                                17,
+                                                                0,
+                                                                0)
+                                                            : DateTime(
+                                                                attDate.year,
+                                                                attDate.month,
+                                                                attDate.day,
+                                                                8,
+                                                                45,
+                                                                0);
 
                                                     if (attDate
                                                         .isAfter(limitTime)) {
@@ -886,10 +920,7 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                 bool hasCheckIn = false;
                                                 bool hasCheckOut = false;
                                                 DateTime? actualCheckOutDt;
-                                                DateTime dateOnly = DateTime(
-                                                    attDate.year,
-                                                    attDate.month,
-                                                    attDate.day);
+                                                DateTime dateOnly = shiftDay;
 
                                                 for (var a in _absensiList) {
                                                   if (a['employee_id'] ==
@@ -898,11 +929,15 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                     DateTime d = DateTime.parse(
                                                             a['created_at'])
                                                         .toLocal();
-                                                    if (d.year ==
+                                                    final DateTime dShift =
+                                                        _shiftDate(
+                                                            d, isSecurity);
+                                                    if (dShift.year ==
                                                             dateOnly.year &&
-                                                        d.month ==
+                                                        dShift.month ==
                                                             dateOnly.month &&
-                                                        d.day == dateOnly.day) {
+                                                        dShift.day ==
+                                                            dateOnly.day) {
                                                       String st =
                                                           (a['status'] ?? '')
                                                               .toString()
@@ -925,14 +960,24 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                 if (hasCheckIn && hasCheckOut) {
                                                   if (actualCheckOutDt !=
                                                       null) {
+                                                    // Security pulang 07:00 (hari berikutnya), lainnya 17:30
                                                     DateTime earlyLimit =
-                                                        DateTime(
-                                                            dateOnly.year,
-                                                            dateOnly.month,
-                                                            dateOnly.day,
-                                                            17,
-                                                            30,
-                                                            0);
+                                                        isSecurity
+                                                            ? DateTime(
+                                                                dateOnly.year,
+                                                                dateOnly.month,
+                                                                dateOnly.day +
+                                                                    1,
+                                                                7,
+                                                                0,
+                                                                0)
+                                                            : DateTime(
+                                                                dateOnly.year,
+                                                                dateOnly.month,
+                                                                dateOnly.day,
+                                                                17,
+                                                                30,
+                                                                0);
                                                     if (actualCheckOutDt
                                                         .isBefore(earlyLimit)) {
                                                       aktifitas =
@@ -948,6 +993,14 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                   aktifitas = 'Belum Checkout';
                                                 } else {
                                                   aktifitas = 'Hanya Checkout';
+                                                }
+
+                                                // Absen di hari Sabtu/Minggu = Lembur
+                                                if (shiftDay.weekday ==
+                                                        DateTime.saturday ||
+                                                    shiftDay.weekday ==
+                                                        DateTime.sunday) {
+                                                  aktifitas = 'Lembur';
                                                 }
                                               }
 
@@ -976,6 +1029,10 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                   'Check-out lbh awal') {
                                                 aktifitasColor =
                                                     Colors.blue[700]!;
+                                              } else if (aktifitas ==
+                                                  'Lembur') {
+                                                aktifitasColor =
+                                                    Colors.purple[700]!;
                                               }
 
                                               return DataRow(

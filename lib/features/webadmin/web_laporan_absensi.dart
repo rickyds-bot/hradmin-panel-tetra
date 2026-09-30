@@ -102,8 +102,9 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       DateTime startUtc =
           DateTime(_startDate.year, _startDate.month, _startDate.day, 0, 0, 0)
               .toUtc();
+      // Sampai H+1 jam 12:00 supaya check-out pagi shift security terbawa
       DateTime endUtc =
-          DateTime(_endDate.year, _endDate.month, _endDate.day, 23, 59, 59)
+          DateTime(_endDate.year, _endDate.month, _endDate.day + 1, 12, 0, 0)
               .toUtc();
 
       final leaveResponse = await Supabase.instance.client
@@ -211,8 +212,19 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     }
   }
 
+  bool _isSecurityJabatan(dynamic jabatan) {
+    return (jabatan ?? '').toString().trim().toLowerCase() == 'security';
+  }
+
   void _processAttendanceData(List<dynamic> rawData) {
     Map<String, Map<String, List<dynamic>>> empDatePunches = {};
+
+    // Peta id karyawan -> apakah security (shift malam 17:00 - 07:00)
+    final Map<String, bool> securityMap = {};
+    for (var emp in _employees) {
+      securityMap[emp['id'].toString()] =
+          _isSecurityJabatan(emp['jabatan_name']);
+    }
 
     for (var item in rawData) {
       final empId =
@@ -223,6 +235,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       DateTime? dt = DateTime.tryParse(createdAtStr)?.toLocal();
       if (dt == null) continue;
 
+      // Security: absen sebelum jam 12:00 masuk ke shift hari sebelumnya
+      if ((securityMap[empId] ?? false) && dt.hour < 12) {
+        dt = dt.subtract(const Duration(days: 1));
+      }
       String dateKey = DateFormat('yyyy-MM-dd').format(dt);
 
       empDatePunches.putIfAbsent(empId, () => {});
@@ -253,6 +269,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       final empDeptName = _getDepartmentName(emp['department_id']);
 
       final bool isFreeLocation = emp['is_free_location'] ?? false;
+      final bool isSecurity = _isSecurityJabatan(emp['jabatan_name']);
+      final String workHours = isSecurity ? '17:00-07:00' : '08:30-17:30';
 
       List<Map<String, dynamic>> empRows = [];
       DateTime curr = _startDate;
@@ -307,8 +325,11 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
           String lateStr = '-';
 
-          DateTime limitTime = DateTime(
-              checkInDt.year, checkInDt.month, checkInDt.day, 8, 45, 0);
+          // Batas terlambat: security 17:00, lainnya 08:45
+          DateTime limitTime = isSecurity
+              ? DateTime(curr.year, curr.month, curr.day, 17, 0, 0)
+              : DateTime(
+                  checkInDt.year, checkInDt.month, checkInDt.day, 8, 45, 0);
 
           if (checkInDt.isAfter(limitTime)) {
             Duration diff = checkInDt.difference(limitTime);
@@ -335,8 +356,11 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           }
 
           if (checkOutDt != null) {
-            DateTime earlyLimit = DateTime(
-                checkOutDt.year, checkOutDt.month, checkOutDt.day, 17, 30, 0);
+            // Batas pulang: security 07:00 (hari berikutnya), lainnya 17:30
+            DateTime earlyLimit = isSecurity
+                ? DateTime(curr.year, curr.month, curr.day + 1, 7, 0, 0)
+                : DateTime(checkOutDt.year, checkOutDt.month, checkOutDt.day,
+                    17, 30, 0);
             if (checkOutDt.isBefore(earlyLimit)) {
               aktifitas = 'Check-out lbh awal';
             } else {
@@ -344,6 +368,11 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             }
           } else {
             aktifitas = 'Belum Checkout';
+          }
+
+          // Absen di hari Sabtu/Minggu = Lembur
+          if (isWeekend) {
+            aktifitas = 'Lembur';
           }
 
           String coordinate =
@@ -362,7 +391,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'department': empDeptName,
             'day': dayName,
             'date': dateFormatted,
-            'work_hours': '08:30-17:30',
+            'work_hours': workHours,
             'check_in': checkInTime,
             'check_out': checkOutTime,
             'coordinate': coordinate,
@@ -396,7 +425,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'department': empDeptName,
             'day': dayName,
             'date': dateFormatted,
-            'work_hours': '08:30-17:30',
+            'work_hours': workHours,
             'check_in': '-',
             'check_out': '-',
             'coordinate': '-',
