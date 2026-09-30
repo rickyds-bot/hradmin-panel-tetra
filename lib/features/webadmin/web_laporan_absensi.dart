@@ -538,7 +538,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'day': dayName,
             'date': dateFormatted,
             'work_hours': isSecurity
-                ? (isNightShift ? '17:00-07:00' : '07:00-17:00')
+                ? (isNightShift ? 'Shift Malam' : 'Shift Pagi')
                 : workHours,
             'check_in': checkInTime,
             'check_out': checkOutTime,
