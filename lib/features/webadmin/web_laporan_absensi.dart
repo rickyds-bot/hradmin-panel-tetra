@@ -353,7 +353,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
               : DateTime(checkInDt.year, checkInDt.month, checkInDt.day, 8,
                   isDriver ? 15 : 45, 0);
 
-          if (checkInDt.isAfter(limitTime)) {
+          // Sabtu/Minggu (non-security) berstatus Lembur: tidak dihitung terlambat
+          final bool skipLate = isWeekend && !isSecurity;
+
+          if (!skipLate && checkInDt.isAfter(limitTime)) {
             Duration diff = checkInDt.difference(limitTime);
             int hours = diff.inHours;
             int minutes = diff.inMinutes % 60;
@@ -361,7 +364,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             lateStr =
                 '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
           } else {
-            lateStr = '00:00:00';
+            lateStr = skipLate ? '-' : '00:00:00';
           }
 
           String aktifitas = 'Bekerja';
@@ -372,7 +375,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           } else if (isPublicHoliday) {
             notes = 'Masuk di Hari Libur ($publicHolidayName)';
           } else {
-            if (checkInDt.isAfter(limitTime)) {
+            if (!skipLate && checkInDt.isAfter(limitTime)) {
               notes = 'Terlambat';
             }
           }

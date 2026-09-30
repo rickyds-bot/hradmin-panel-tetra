@@ -843,6 +843,15 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                 final DateTime shiftDay =
                                                     _shiftDate(
                                                         attDate, isSecurity);
+                                                // Sabtu/Minggu (non-security) = Lembur, tidak dihitung terlambat
+                                                final bool skipLate =
+                                                    !isSecurity &&
+                                                        (shiftDay.weekday ==
+                                                                DateTime
+                                                                    .saturday ||
+                                                            shiftDay.weekday ==
+                                                                DateTime
+                                                                    .sunday);
 
                                                 if (empId != null &&
                                                     _approvedLeaves
@@ -922,8 +931,9 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                                     : 45,
                                                                 0);
 
-                                                    if (attDate
-                                                        .isAfter(limitTime)) {
+                                                    if (!skipLate &&
+                                                        attDate.isAfter(
+                                                            limitTime)) {
                                                       notes = 'Terlambat';
                                                     }
                                                   }
