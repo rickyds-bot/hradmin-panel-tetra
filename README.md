@@ -1,4 +1,4 @@
-# Aplikasi Absensi Karyawan — PT. Tetra
+# Aplikasi Absensi Karyawan 
 
 Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, menggunakan Supabase sebagai backend.
 
@@ -62,7 +62,7 @@ Atau klik langsung:
 4. Login menggunakan akun karyawan yang sudah teregister/terdaftar
 
 ### Web Admin Dashboard
-Akses dashboard admin di: [https://hradmin.tetra.co.id] 
+Akses dashboard admin di: [https://hradmin-panel-tetra.prodigalx.workers.dev] 
 
 
 ## Struktur Project
