@@ -1,4 +1,4 @@
-# Aplikasi Absensi Karyawan (Mobile & Dahboard)
+# Aplikasi Absensi Karyawan (Mobile & Dashboard)
 
 Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, menggunakan Supabase sebagai backend.
 
