@@ -16,7 +16,7 @@ Aplikasi absensi karyawan berbasis mobile (Flutter) dengan web admin dashboard, 
 - **CI/CD mobile**: Codemagic (`codemagic.yaml`)
 - **Repo**: [rickyds-bot/hradmin-panel-tetra](https://github.com/rickyds-bot/hradmin-panel-tetra)
 
-## Fitur Utama
+## Fitur 
 
 - Register Karyawan konfirmasi by Email 
 - Register Data Wajah kebutuhan Face Detection + Liveness
