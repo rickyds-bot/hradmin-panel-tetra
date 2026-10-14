@@ -193,7 +193,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   }
 
   // =========================================================
-  // FUNGSI BARU: Ambil Data Khusus Top 10
+  // Ambil Data Khusus Top 10
   // =========================================================
   Future<void> _fetchTop10Data() async {
     setState(() => _isLoadingTop10 = true);
@@ -222,6 +222,23 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       ];
       _topEmployeesPeriod = '${namaBulan[firstDay.month - 1]} ${firstDay.year}';
 
+      // --- PERUBAHAN: Ambil data jabatan untuk mengecualikan Driver, OB, & CS ---
+      final empRes = await Supabase.instance.client
+          .from('employees')
+          .select('id, jabatan_name');
+
+      List<dynamic> excludedIds = [];
+      for (var e in empRes) {
+        String jab = (e['jabatan_name'] ?? '').toString().toLowerCase().trim();
+        if (jab == 'driver' ||
+            jab == 'ob' ||
+            jab == 'cs' ||
+            jab == 'cleaning service') {
+          excludedIds.add(e['id']);
+        }
+      }
+      // --------------------------------------------------------------------------
+
       final allAttRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id, created_at')
@@ -232,7 +249,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       for (var r in allAttRes) {
         final eId = r['employee_id'];
-        if (_nonAdminIds.contains(eId)) {
+
+        // --- PERUBAHAN: Filter agar tidak menghitung admin dan jabatan yang dieksklusi ---
+        if (_nonAdminIds.contains(eId) && !excludedIds.contains(eId)) {
           final String eIdStr = eId.toString();
           final createdAtStr = r['created_at'];
 
