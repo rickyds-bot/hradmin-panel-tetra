@@ -516,10 +516,36 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             aktifitas = 'Lembur';
           }
 
-          // Durasi kerja (check-out - check-in), aman untuk shift lewat tengah malam
-          int workSeconds = (checkOutDt != null && !onlyCheckOut)
-              ? checkOutDt.difference(checkInDt).inSeconds
-              : 0;
+          // --- PERUBAHAN: Durasi kerja dikurangi jam istirahat (12:00 - 13:00) ---
+          int workSeconds = 0;
+          if (checkOutDt != null && !onlyCheckOut) {
+            workSeconds = checkOutDt.difference(checkInDt).inSeconds;
+
+            DateTime breakStart = DateTime(
+                checkInDt.year, checkInDt.month, checkInDt.day, 12, 0, 0);
+            DateTime breakEnd = DateTime(
+                checkInDt.year, checkInDt.month, checkInDt.day, 13, 0, 0);
+
+            if (checkInDt.isBefore(breakStart) &&
+                checkOutDt.isAfter(breakEnd)) {
+              // Karyawan bekerja full melewati jam istirahat -> Kurangi 1 jam (3600 detik)
+              workSeconds -= 3600;
+            } else if (checkInDt.isBefore(breakEnd) &&
+                checkOutDt.isAfter(breakStart)) {
+              // Jika overlap parsial (misal check-out jam 12:30 atau check-in jam 12:15)
+              DateTime overlapStart =
+                  checkInDt.isAfter(breakStart) ? checkInDt : breakStart;
+              DateTime overlapEnd =
+                  checkOutDt.isBefore(breakEnd) ? checkOutDt : breakEnd;
+              int overlapSeconds =
+                  overlapEnd.difference(overlapStart).inSeconds;
+
+              if (overlapSeconds > 0) {
+                workSeconds -= overlapSeconds;
+              }
+            }
+          }
+          // ------------------------------------------------------------------------
 
           String coordinate =
               '${firstPunch['latitude'] ?? '-'}, ${firstPunch['longitude'] ?? '-'}';
