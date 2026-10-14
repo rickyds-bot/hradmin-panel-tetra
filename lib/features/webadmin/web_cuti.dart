@@ -549,7 +549,7 @@ class _WebCutiPageState extends State<WebCutiPage> {
                     DropdownMenuItem(value: 'all', child: Text('Semua Status')),
                     DropdownMenuItem(
                       value: 'pending',
-                      child: Text('Pending Saja'),
+                      child: Text('Pending'),
                     ),
                     DropdownMenuItem(
                       value: 'approved',
