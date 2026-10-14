@@ -233,6 +233,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         if (jab == 'driver' ||
             jab == 'ob' ||
             jab == 'cs' ||
+            jab == 'security' ||
             jab == 'cleaning service') {
           excludedIds.add(e['id']);
         }
