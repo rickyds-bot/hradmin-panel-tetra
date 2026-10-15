@@ -503,7 +503,7 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                   ),
                                   columns: [
                                     DataColumn(
-                                      label: const Text('NIK'),
+                                      label: const Text('No. Induk Karyawan'),
                                       onSort: (colIndex, ascending) => _sort(
                                           (d) => d['nik'] ?? '',
                                           colIndex,
