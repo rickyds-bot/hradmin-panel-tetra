@@ -1258,7 +1258,8 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
       return;
     }
 
-    if (_mode == 'Cuti') {
+    // --- LOGIKA VALIDASI H-7 HANYA UNTUK CUTI TAHUNAN ---
+    if (_mode == 'Cuti' && _selectedLeaveType == 'Cuti Tahunan') {
       DateTime now = DateTime.now();
       DateTime today = DateTime(now.year, now.month, now.day);
       DateTime startDate = DateTime(
@@ -1270,9 +1271,8 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
       if (startDate.difference(today).inDays < 7) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              "Pengajuan cuti tahunan wajib minimal 7 hari sebelumnya!",
-            ),
+            content:
+                Text("Pengajuan Cuti Tahunan wajib minimal 7 hari sebelumnya!"),
             backgroundColor: Colors.red,
           ),
         );
@@ -1280,9 +1280,19 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
       }
     }
 
-    final int duration =
-        _dateRange!.end.difference(_dateRange!.start).inDays + 1;
+    // --- LOGIKA DURASI DAN TANGGAL BERAKHIR ---
+    DateTime startDateToSave = _dateRange!.start;
+    DateTime endDateToSave = _dateRange!.end;
 
+    // Jika Cuti Melahirkan, paksa end_date menjadi 3 bulan kemudian
+    if (_selectedLeaveType == 'Cuti Melahirkan') {
+      endDateToSave = DateTime(
+          startDateToSave.year, startDateToSave.month + 3, startDateToSave.day);
+    }
+
+    final int duration = endDateToSave.difference(startDateToSave).inDays + 1;
+
+    // --- PENGECEKAN SALDO HANYA UNTUK CUTI TAHUNAN ---
     if (_selectedLeaveType == 'Cuti Tahunan' && duration > _remainingLeave) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1334,20 +1344,12 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
         'user_id': Supabase.instance.client.auth.currentUser!.id,
         'employee_id': widget.userData['id'],
         'leave_type': _selectedLeaveType,
-        'start_date': DateFormat('yyyy-MM-dd').format(_dateRange!.start),
-        'end_date': DateFormat('yyyy-MM-dd').format(_dateRange!.end),
+        'start_date': DateFormat('yyyy-MM-dd').format(startDateToSave),
+        'end_date': DateFormat('yyyy-MM-dd').format(endDateToSave),
         'reason': _reasonCtrl.text,
         'attachment_url': attachmentUrl,
         'status': 'pending',
       });
-
-      // --- LOGIKA NOTIFIKASI DIHAPUS DARI APLIKASI (FLUTTER) ---
-      // Karena telah ditangani oleh Webhook Database & Deno Edge Function
-
-      //await AppLogger.log(
-      //  activity: 'Mengajukan $_selectedLeaveType ($_mode)',
-      //  module: 'Cuti & Izin',
-      //);
 
       _riwayatKey.currentState?._loadData();
 
@@ -1361,9 +1363,10 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content:
-                Text("Pengajuan berhasil dikirim & Atasan telah diberitahu!"),
+          SnackBar(
+            content: Text(_selectedLeaveType == 'Cuti Melahirkan'
+                ? "Pengajuan dikirim! Durasi otomatis diatur 3 bulan."
+                : "Pengajuan berhasil dikirim & Atasan telah diberitahu!"),
             backgroundColor: Colors.green,
           ),
         );
@@ -1381,10 +1384,10 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
 
   @override
   Widget build(BuildContext context) {
+    // --- MENGHILANGKAN OPSI CUTI MENIKAH ---
     final List<String> opsiCuti = [
       'Cuti Tahunan',
       'Cuti Melahirkan',
-      'Cuti Menikah',
       'Cuti Khusus',
     ];
     final List<String> opsiIzin = ['Izin Pribadi', 'Izin Sakit', 'Dinas Luar'];
@@ -1561,17 +1564,39 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                       ],
                       ElevatedButton.icon(
                         onPressed: () async {
-                          DateTime firstAllowedDate = _mode == 'Cuti'
-                              ? DateTime.now().add(const Duration(days: 7))
-                              : DateTime.now()
-                                  .subtract(const Duration(days: 14));
+                          if (_selectedLeaveType == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text(
+                                      "Pilih jenis cuti/izin terlebih dahulu!")),
+                            );
+                            return;
+                          }
+
+                          DateTime firstAllowedDate;
+                          if (_mode == 'Cuti') {
+                            if (_selectedLeaveType == 'Cuti Tahunan') {
+                              firstAllowedDate =
+                                  DateTime.now().add(const Duration(days: 7));
+                            } else {
+                              // Cuti Melahirkan, Cuti Khusus, dll bisa kapan saja (mulai hari ini)
+                              firstAllowedDate = DateTime.now();
+                            }
+                          } else {
+                            firstAllowedDate = DateTime.now()
+                                .subtract(const Duration(days: 14));
+                          }
 
                           final picked = await showDateRangePicker(
                             context: context,
                             firstDate: firstAllowedDate,
                             lastDate:
                                 DateTime.now().add(const Duration(days: 365)),
+                            helpText: _selectedLeaveType == 'Cuti Melahirkan'
+                                ? 'Pilih tanggal mulai (End date otomatis 3 bulan)'
+                                : 'Pilih Rentang Tanggal',
                           );
+
                           if (picked != null)
                             setState(() => _dateRange = picked);
                         },
@@ -1579,13 +1604,14 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                         label: Text(
                           _dateRange == null
                               ? "Pilih Rentang Tanggal"
-                              : "${DateFormat('dd-MM-yyyy').format(_dateRange!.start)} s/d ${DateFormat('dd-MM-yyyy').format(_dateRange!.end)}",
+                              : "${DateFormat('dd-MM-yyyy').format(_dateRange!.start)} s/d ${_selectedLeaveType == 'Cuti Melahirkan' ? 'Otomatis 3 Bulan' : DateFormat('dd-MM-yyyy').format(_dateRange!.end)}",
                         ),
                         style: ElevatedButton.styleFrom(
                           minimumSize: const Size(double.infinity, 45),
                         ),
                       ),
-                      if (_mode == 'Cuti')
+                      if (_mode == 'Cuti' &&
+                          _selectedLeaveType == 'Cuti Tahunan')
                         const Padding(
                           padding: EdgeInsets.only(top: 4),
                           child: Center(
@@ -2731,29 +2757,32 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
           {'status': newStatus, 'approved_by': widget.managerId}).eq('id', id);
 
       if (newStatus == 'approved' && userId != null) {
-        DateTime start = DateTime.parse(startDate);
-        DateTime end = DateTime.parse(endDate);
-        int durasi = end.difference(start).inDays + 1;
+        // --- HANYA POTONG SALDO JIKA CUTI TAHUNAN ---
+        if (leaveType == 'Cuti Tahunan') {
+          DateTime start = DateTime.parse(startDate);
+          DateTime end = DateTime.parse(endDate);
+          int durasi = end.difference(start).inDays + 1;
 
-        final balanceData = await Supabase.instance.client
-            .from('leave_balance')
-            .select('*')
-            .eq('user_id', userId)
-            .maybeSingle();
+          final balanceData = await Supabase.instance.client
+              .from('leave_balance')
+              .select('*')
+              .eq('user_id', userId)
+              .maybeSingle();
 
-        if (balanceData == null) {
-          await Supabase.instance.client.from('leave_balance').insert({
-            'user_id': userId,
-            'used_leave': durasi,
-            'remaining_leave': 12 - durasi
-          });
-        } else {
-          int currentUsed = balanceData['used_leave'] ?? 0;
-          int currentRemaining = balanceData['remaining_leave'] ?? 0;
-          await Supabase.instance.client.from('leave_balance').update({
-            'used_leave': currentUsed + durasi,
-            'remaining_leave': currentRemaining - durasi
-          }).eq('user_id', userId);
+          if (balanceData == null) {
+            await Supabase.instance.client.from('leave_balance').insert({
+              'user_id': userId,
+              'used_leave': durasi,
+              'remaining_leave': 12 - durasi
+            });
+          } else {
+            int currentUsed = balanceData['used_leave'] ?? 0;
+            int currentRemaining = balanceData['remaining_leave'] ?? 0;
+            await Supabase.instance.client.from('leave_balance').update({
+              'used_leave': currentUsed + durasi,
+              'remaining_leave': currentRemaining - durasi
+            }).eq('user_id', userId);
+          }
         }
       }
       setState(() {});
