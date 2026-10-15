@@ -1,3 +1,4 @@
+import 'dart:math' show cos, asin, sqrt;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -28,7 +29,11 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
   final Map<String, String> _holidaysMap = {};
 
   final TextEditingController _searchNameCtrl = TextEditingController();
+  final TextEditingController _searchLocCtrl = TextEditingController();
   DateTime? _selectedDateFilter;
+
+  // Data lokasi kantor (untuk mencocokkan koordinat absen -> Nama Lokasi)
+  List<Map<String, dynamic>> _locations = [];
 
   int _rowsPerPage = 50;
   final List<int> _pageOptions = [50, 100, 200];
@@ -46,6 +51,7 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
   @override
   void dispose() {
     _searchNameCtrl.dispose();
+    _searchLocCtrl.dispose();
     _horizontalScroll.dispose();
     _verticalScroll.dispose();
     super.dispose();
@@ -63,13 +69,20 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
       // 2. Ambil data karyawan
       final employeesResponse = await Supabase.instance.client
           .from('employees')
-          .select('id, full_name, jabatan_name');
+          .select('id, full_name, jabatan_name, is_free_location');
+
+      // 2.5 Ambil data lokasi kantor
+      final locResponse =
+          await Supabase.instance.client.from('locations').select();
+      _locations = List<Map<String, dynamic>>.from(locResponse);
 
       final Map<dynamic, String> employeeMap = {};
       final Map<dynamic, String> jabatanMap = {};
+      final Map<dynamic, bool> freeLocMap = {};
       for (var emp in employeesResponse) {
         employeeMap[emp['id']] = emp['full_name'] ?? '-';
         jabatanMap[emp['id']] = (emp['jabatan_name'] ?? '').toString();
+        freeLocMap[emp['id']] = emp['is_free_location'] == true;
       }
 
       // 3. Ambil data cuti/izin (hanya yang berstatus approved)
@@ -108,8 +121,12 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
       // 4. Merge data
       final List<dynamic> mergedData = absensiResponse.map((item) {
         final empId = item['employee_id'];
+        final bool isFreeLocation = freeLocMap[empId] ?? false;
         return {
           ...item,
+          'location_name': isFreeLocation
+              ? 'Absen Bebas'
+              : _matchLocationName(item['latitude'], item['longitude']),
           'employees': {
             'full_name': employeeMap[empId] ?? 'Karyawan Tidak Ditemukan',
             'jabatan_name': jabatanMap[empId] ?? '',
@@ -135,6 +152,40 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  double _calculateDistance(
+      double lat1, double lon1, double lat2, double lon2) {
+    const p = 0.017453292519943295;
+    final c = cos;
+    final a = 0.5 -
+        c((lat2 - lat1) * p) / 2 +
+        c(lat1 * p) * c(lat2 * p) * (1 - c((lon2 - lon1) * p)) / 2;
+    return 1000 * 12742 * asin(sqrt(a));
+  }
+
+  // Cocokkan koordinat absen dengan tabel locations (berdasarkan radius_meter)
+  String _matchLocationName(dynamic latVal, dynamic lonVal) {
+    if (latVal == null || lonVal == null || _locations.isEmpty) return '-';
+
+    double? lat = double.tryParse(latVal.toString());
+    double? lon = double.tryParse(lonVal.toString());
+    if (lat == null || lon == null) return '-';
+
+    for (var loc in _locations) {
+      double? locLat = double.tryParse(loc['latitude']?.toString() ?? '');
+      double? locLon = double.tryParse(loc['longitude']?.toString() ?? '');
+      int radius =
+          int.tryParse(loc['radius_meter']?.toString() ?? '100') ?? 100;
+
+      if (locLat != null && locLon != null) {
+        double distance = _calculateDistance(lat, lon, locLat, locLon);
+        if (distance <= radius) {
+          return loc['name']?.toString() ?? 'Lokasi Kantor';
+        }
+      }
+    }
+    return 'Luar Area Kantor';
   }
 
   // Security: shift pagi 07:00-17:00 atau shift malam 17:00-07:00 (hari berikutnya)
@@ -277,6 +328,14 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
       }).toList();
     }
 
+    if (_searchLocCtrl.text.trim().isNotEmpty) {
+      final searchLoc = _searchLocCtrl.text.trim().toLowerCase();
+      temp = temp.where((item) {
+        final locName = (item['location_name'] ?? '').toString().toLowerCase();
+        return locName.contains(searchLoc);
+      }).toList();
+    }
+
     if (_selectedDateFilter != null) {
       temp = temp.where((item) {
         if (item['created_at'] == null) return false;
@@ -374,6 +433,7 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
   void _clearFilter() {
     setState(() {
       _searchNameCtrl.clear();
+      _searchLocCtrl.clear();
       _selectedDateFilter = null;
     });
     _applyLocalFilter();
@@ -723,6 +783,37 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
               ),
               const SizedBox(width: 12),
               Expanded(
+                flex: 2,
+                child: SizedBox(
+                  height: 42,
+                  child: TextField(
+                    controller: _searchLocCtrl,
+                    style: GoogleFonts.plusJakartaSans(fontSize: 12),
+                    decoration: InputDecoration(
+                      hintText: 'Cari nama lokasi...',
+                      hintStyle: GoogleFonts.plusJakartaSans(fontSize: 12),
+                      prefixIcon: const Icon(Icons.location_on, size: 18),
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 0,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                    ),
+                    onChanged: (val) => _applyLocalFilter(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
                 flex: 1,
                 child: SizedBox(
                   height: 42,
@@ -898,6 +989,8 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                             DataColumn(
                                                 label: Text('Bukti Foto')),
                                             DataColumn(label: Text('Lokasi')),
+                                            DataColumn(
+                                                label: Text('Nama Lokasi')),
                                             DataColumn(
                                                 label: Text('Aktifitas')),
                                             DataColumn(label: Text('Notes')),
@@ -1302,6 +1395,11 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                             ),
                                                           )
                                                         : const Text('-'),
+                                                  ),
+                                                  DataCell(
+                                                    Text(
+                                                        item['location_name'] ??
+                                                            '-'),
                                                   ),
                                                   DataCell(
                                                     Text(
