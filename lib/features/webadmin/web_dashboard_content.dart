@@ -23,6 +23,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   int _totalKontrak = 0;
   int _totalMagang = 0;
   int _totalHadirHariIni = 0;
+  int _totalTidakHadirHariIni = 0;
+  List<Map<String, dynamic>> _tidakHadirList = [];
   int _totalCutiHariIni = 0;
   int _totalPendingLembur = 0;
 
@@ -79,11 +81,12 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       // 2. Ambil data karyawan
       final karyawanRes = await Supabase.instance.client.from('employees').select(
-          'id, full_name, gender, employee_status, role, contract_number, contract_end');
+          'id, full_name, gender, employee_status, role, contract_number, contract_end, is_active, jabatan_name');
 
       int l = 0, p = 0, tetap = 0, kontrak = 0, magang = 0;
       _nonAdminIds.clear();
       List<Map<String, dynamic>> tempExpiring = [];
+      final List<Map<String, dynamic>> activeEmps = [];
 
       final DateTime now = DateTime.now();
       final DateTime todayLocal = DateTime(now.year, now.month, now.day);
@@ -93,6 +96,15 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         if (role == 'admin') continue;
 
         _nonAdminIds.add(emp['id']);
+
+        // Karyawan non-aktif tidak ikut dihitung sebagai "tidak hadir"
+        if (emp['is_active'] != false) {
+          activeEmps.add({
+            'id': emp['id'],
+            'name': emp['full_name'] ?? 'Tanpa Nama',
+            'jabatan': (emp['jabatan_name'] ?? '-').toString(),
+          });
+        }
 
         final gender = (emp['gender'] ?? '').toString().trim().toLowerCase();
         if (gender == 'l' ||
@@ -169,6 +181,23 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       _totalCutiHariIni =
           cutiRes.where((e) => _nonAdminIds.contains(e['employee_id'])).length;
+
+      // 4.5 Karyawan aktif yang belum check-in hari ini
+      final Set cutiIds = cutiRes.map((e) => e['employee_id']).toSet();
+      final tidakHadir = activeEmps
+          .where((e) => !uniqueHadir.contains(e['id']))
+          .map((e) => {
+                'name': e['name'],
+                'jabatan': e['jabatan'],
+                'on_leave': cutiIds.contains(e['id']),
+              })
+          .toList();
+      tidakHadir.sort((a, b) => a['name']
+          .toString()
+          .toLowerCase()
+          .compareTo(b['name'].toString().toLowerCase()));
+      _tidakHadirList = tidakHadir;
+      _totalTidakHadirHariIni = tidakHadir.length;
 
       // 5. Lembur Pending
       final lemburRes = await Supabase.instance.client
@@ -502,6 +531,15 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                             Icons.how_to_reg_outlined,
                             Colors.green,
                             width),
+                        _buildStatCard(
+                          'Tidak Hadir Hari Ini',
+                          _totalTidakHadirHariIni.toString(),
+                          'Belum check-in (klik lihat nama)',
+                          Icons.person_off_outlined,
+                          Colors.red,
+                          width,
+                          onTap: _showTidakHadirDialog,
+                        ),
                         _buildStatCard(
                             'Cuti / Izin Aktif',
                             _totalCutiHariIni.toString(),
@@ -850,15 +888,132 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
+  // Popup daftar karyawan yang belum check-in hari ini
+  void _showTidakHadirDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.person_off_outlined, color: Colors.red, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Tidak Hadir Hari Ini (${_tidakHadirList.length})',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 420,
+          height: 400,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                DateFormat('dd-MM-yyyy').format(DateTime.now()),
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 11,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: _tidakHadirList.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Semua karyawan sudah check-in.',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: _tidakHadirList.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final emp = _tidakHadirList[index];
+                          final bool onLeave = emp['on_leave'] == true;
+                          return ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: CircleAvatar(
+                              radius: 14,
+                              backgroundColor: Colors.red[50],
+                              child: Text(
+                                '${index + 1}',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11,
+                                  color: Colors.red[700],
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            title: Text(
+                              emp['name'].toString(),
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: Text(
+                              emp['jabatan'].toString(),
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 11,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            trailing: onLeave
+                                ? Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange[50],
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      'Cuti/Izin',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 10,
+                                        color: Colors.orange[800],
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  )
+                                : null,
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child:
+                Text('Tutup', style: GoogleFonts.plusJakartaSans(fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStatCard(
     String title,
     String value,
     String subtitle,
     IconData icon,
     Color color,
-    double width,
-  ) {
-    return Container(
+    double width, {
+    VoidCallback? onTap,
+  }) {
+    final card = Container(
       width: width > 0 ? width : 200,
       decoration: BoxDecoration(
         color: Colors.white,
@@ -935,6 +1090,12 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           ),
         ),
       ),
+    );
+
+    if (onTap == null) return card;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(onTap: onTap, child: card),
     );
   }
 
