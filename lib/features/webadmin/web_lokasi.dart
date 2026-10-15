@@ -481,6 +481,44 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
     }
   }
 
+  // Parse koordinat ketikan manual (koma otomatis dianggap titik desimal)
+  double? _parseCoordinate(String? text) {
+    return double.tryParse((text ?? '').trim().replaceAll(',', '.'));
+  }
+
+  String? _validateCoordinate(String? value, double limit, String label) {
+    final d = _parseCoordinate(value);
+    if (d == null) return 'Isi angka yang valid';
+    if (d < -limit || d > limit)
+      return '$label harus -${limit.toInt()} s/d ${limit.toInt()}';
+    return null;
+  }
+
+  // Dipanggil saat latitude/longitude diketik manual: pindahkan pin & kamera
+  // peta ke titik tersebut (tanpa menimpa teks yang sedang diketik).
+  void _applyManualCoordinate() {
+    final lat = _parseCoordinate(_latCtrl.text);
+    final lng = _parseCoordinate(_lngCtrl.text);
+    if (lat == null || lng == null || lat.abs() > 90 || lng.abs() > 180) return;
+
+    final position = LatLng(lat, lng);
+    setState(() {
+      _currentLat = lat;
+      _currentLng = lng;
+      _markers = {
+        Marker(
+          markerId: const MarkerId('picked_location'),
+          position: position,
+          draggable: true,
+          onDragEnd: (newPosition) {
+            _updatePosition(newPosition);
+          },
+        ),
+      };
+    });
+    _mapController?.animateCamera(CameraUpdate.newLatLngZoom(position, 16));
+  }
+
   Future<void> _searchAddressOnMap(String address) async {
     if (address.isEmpty || address.length < 3) return;
 
@@ -584,8 +622,8 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
         'name': _nameCtrl.text,
         'location_type': _selectedType,
         'address': _addressCtrl.text,
-        'latitude': double.parse(_latCtrl.text),
-        'longitude': double.parse(_lngCtrl.text),
+        'latitude': _parseCoordinate(_latCtrl.text),
+        'longitude': _parseCoordinate(_lngCtrl.text),
         'radius_meter': int.parse(_radiusCtrl.text),
         'start_time': startStr,
         'end_time': endStr,
@@ -754,7 +792,12 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
                                   child: _buildTextField(
                                     _latCtrl,
                                     'Latitude',
-                                    isReadOnly: true,
+                                    isCoordinate: true,
+                                    onChanged: (_) => _applyManualCoordinate(),
+                                    onSubmitted: (_) =>
+                                        _applyManualCoordinate(),
+                                    validator: (v) =>
+                                        _validateCoordinate(v, 90, 'Latitude'),
                                   ),
                                 ),
                                 const SizedBox(width: 16),
@@ -762,7 +805,12 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
                                   child: _buildTextField(
                                     _lngCtrl,
                                     'Longitude',
-                                    isReadOnly: true,
+                                    isCoordinate: true,
+                                    onChanged: (_) => _applyManualCoordinate(),
+                                    onSubmitted: (_) =>
+                                        _applyManualCoordinate(),
+                                    validator: (v) => _validateCoordinate(
+                                        v, 180, 'Longitude'),
                                   ),
                                 ),
                               ],
@@ -794,7 +842,7 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Ketik alamat di kiri atau klik/geser pada peta.',
+                            'Ketik alamat atau isi Latitude/Longitude manual di kiri, atau klik/geser pada peta.',
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 12,
                               color: Colors.grey[600],
@@ -952,9 +1000,11 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
     bool isNumber = false,
     int maxLines = 1,
     bool isReadOnly = false,
+    bool isCoordinate = false,
     Widget? suffixIcon,
     ValueChanged<String>? onSubmitted,
     ValueChanged<String>? onChanged,
+    String? Function(String?)? validator,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -962,7 +1012,9 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
         controller: ctrl,
         readOnly: isReadOnly,
         maxLines: maxLines,
-        keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+        keyboardType: isCoordinate
+            ? const TextInputType.numberWithOptions(decimal: true, signed: true)
+            : (isNumber ? TextInputType.number : TextInputType.text),
         onFieldSubmitted: onSubmitted,
         onChanged: onChanged,
         style: GoogleFonts.plusJakartaSans(fontSize: 13),
@@ -988,9 +1040,10 @@ class _AddLokasiDialogState extends State<AddLokasiDialog> {
             borderSide: BorderSide(color: Colors.grey[300]!),
           ),
         ),
-        validator: isRequired
-            ? (val) => val == null || val.isEmpty ? 'Wajib diisi' : null
-            : null,
+        validator: validator ??
+            (isRequired
+                ? (val) => val == null || val.isEmpty ? 'Wajib diisi' : null
+                : null),
       ),
     );
   }
