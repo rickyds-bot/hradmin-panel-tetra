@@ -597,11 +597,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
           .single();
 
       final bool isFreeLocation = empData['is_free_location'] == true;
-      final locId = empData['location_id'];
-
-      if (!isFreeLocation && locId == null) {
-        throw 'Lokasi kerja belum diatur.';
-      }
 
       if (empData['is_face_registered'] != true ||
           empData['face_embedding'] == null) {
@@ -617,21 +612,50 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
       }
 
       if (!isFreeLocation) {
-        final locData = await Supabase.instance.client
+        // Multi lokasi: karyawan boleh absen di SALAH SATU lokasi yang sudah
+        // ditentukan di Web Dashboard (menu Lokasi), selama masuk radiusnya.
+        final locList = await Supabase.instance.client
             .from('locations')
-            .select('*')
-            .eq('id', locId)
-            .single();
+            .select('name, latitude, longitude, radius_meter');
 
-        double distance = Geolocator.distanceBetween(
-          currentPos.latitude,
-          currentPos.longitude,
-          double.parse(locData['latitude'].toString()),
-          double.parse(locData['longitude'].toString()),
-        );
+        if (locList.isEmpty) {
+          throw 'Lokasi absen belum diatur. Hubungi admin.';
+        }
 
-        if (distance > (locData['radius_meter'] ?? 50)) {
-          throw 'Anda di luar radius (${distance.toStringAsFixed(0)}m).';
+        bool inRange = false;
+        double nearestDistance = double.infinity;
+        String nearestName = '-';
+
+        for (final loc in locList) {
+          final double? lat = double.tryParse(loc['latitude'].toString());
+          final double? lng = double.tryParse(loc['longitude'].toString());
+          if (lat == null || lng == null) continue;
+
+          final double radius =
+              double.tryParse(loc['radius_meter']?.toString() ?? '') ?? 50;
+
+          final double distance = Geolocator.distanceBetween(
+            currentPos.latitude,
+            currentPos.longitude,
+            lat,
+            lng,
+          );
+
+          if (distance <= radius) {
+            inRange = true;
+            break;
+          }
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestName = (loc['name'] ?? '-').toString();
+          }
+        }
+
+        if (!inRange) {
+          if (nearestDistance.isInfinite) {
+            throw 'Data koordinat lokasi tidak valid. Hubungi admin.';
+          }
+          throw 'Anda di luar radius. Lokasi terdekat: "$nearestName" (${nearestDistance.toStringAsFixed(0)}m).';
         }
       }
 
