@@ -19,6 +19,8 @@ class _AdminPageState extends State<AdminPage> {
   int _totalTetap = 0;
   int _totalKontrak = 0;
   int _totalHadirHariIni = 0;
+  int _totalTidakHadirHariIni = 0;
+  List<Map<String, dynamic>> _tidakHadirList = [];
   int _totalCutiHariIni = 0;
   int _totalPendingLembur = 0;
 
@@ -34,16 +36,27 @@ class _AdminPageState extends State<AdminPage> {
       // 1. Ambil data karyawan (Filter non-admin)
       final karyawanRes = await Supabase.instance.client
           .from('employees')
-          .select('id, employee_status, role');
+          .select(
+              'id, full_name, employee_status, role, is_active, jabatan_name');
 
       int tetap = 0, kontrak = 0;
       List<dynamic> nonAdminIds = [];
+      final List<Map<String, dynamic>> activeEmps = [];
 
       for (var emp in karyawanRes) {
         final role = (emp['role'] ?? '').toString().trim().toLowerCase();
         if (role == 'admin') continue;
 
         nonAdminIds.add(emp['id']);
+
+        // Karyawan non-aktif tidak ikut dihitung sebagai "tidak hadir"
+        if (emp['is_active'] != false) {
+          activeEmps.add({
+            'id': emp['id'],
+            'name': emp['full_name'] ?? 'Tanpa Nama',
+            'jabatan': (emp['jabatan_name'] ?? '-').toString(),
+          });
+        }
 
         final empStatus =
             (emp['employee_status'] ?? '').toString().trim().toLowerCase();
@@ -81,6 +94,21 @@ class _AdminPageState extends State<AdminPage> {
           .lte('start_date', todayStr)
           .gte('end_date', todayStr);
 
+      // 3.5 Karyawan aktif yang belum check-in hari ini
+      final Set cutiIds = cutiRes.map((e) => e['employee_id']).toSet();
+      final tidakHadir = activeEmps
+          .where((e) => !uniqueHadir.contains(e['id']))
+          .map((e) => {
+                'name': e['name'],
+                'jabatan': e['jabatan'],
+                'on_leave': cutiIds.contains(e['id']),
+              })
+          .toList();
+      tidakHadir.sort((a, b) => a['name']
+          .toString()
+          .toLowerCase()
+          .compareTo(b['name'].toString().toLowerCase()));
+
       // 4. Lembur Pending
       final lemburRes = await Supabase.instance.client
           .from('overtime_requests')
@@ -93,6 +121,8 @@ class _AdminPageState extends State<AdminPage> {
           _totalTetap = tetap;
           _totalKontrak = kontrak;
           _totalHadirHariIni = uniqueHadir.length;
+          _tidakHadirList = tidakHadir;
+          _totalTidakHadirHariIni = tidakHadir.length;
           _totalCutiHariIni = cutiRes
               .where((e) => nonAdminIds.contains(e['employee_id']))
               .length;
@@ -108,9 +138,114 @@ class _AdminPageState extends State<AdminPage> {
     }
   }
 
-  Widget _buildStatCard(
-      String title, String value, IconData icon, Color color) {
-    return Container(
+  // Popup daftar karyawan yang belum check-in hari ini
+  void _showTidakHadirDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.person_off_outlined, color: Colors.red, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Tidak Hadir Hari Ini (${_tidakHadirList.length})',
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                DateFormat('dd-MM-yyyy').format(DateTime.now()),
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: _tidakHadirList.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'Semua karyawan sudah check-in.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: _tidakHadirList.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final emp = _tidakHadirList[index];
+                          final bool onLeave = emp['on_leave'] == true;
+                          return ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: CircleAvatar(
+                              radius: 14,
+                              backgroundColor: Colors.red[50],
+                              child: Text(
+                                '${index + 1}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.red[700],
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            title: Text(
+                              emp['name'].toString(),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: Text(
+                              emp['jabatan'].toString(),
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey[600]),
+                            ),
+                            trailing: onLeave
+                                ? Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange[50],
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      'Cuti/Izin',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.orange[800],
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  )
+                                : null,
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tutup', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard(String title, String value, IconData icon, Color color,
+      {VoidCallback? onTap}) {
+    final card = Container(
       width: 140, // Lebar dibuat compact agar pas di layar HP
       margin: const EdgeInsets.only(right: 12),
       decoration: BoxDecoration(
@@ -183,6 +318,9 @@ class _AdminPageState extends State<AdminPage> {
         ),
       ),
     );
+
+    if (onTap == null) return card;
+    return GestureDetector(onTap: onTap, child: card);
   }
 
   Widget _buildStatsHeader() {
@@ -211,6 +349,12 @@ class _AdminPageState extends State<AdminPage> {
                 Icons.assignment_ind_outlined, Colors.teal),
             _buildStatCard('Hadir Hari Ini', _totalHadirHariIni.toString(),
                 Icons.how_to_reg_outlined, Colors.green),
+            _buildStatCard(
+                'Tidak Hadir Hari Ini',
+                _totalTidakHadirHariIni.toString(),
+                Icons.person_off_outlined,
+                Colors.red,
+                onTap: _showTidakHadirDialog),
             _buildStatCard('Cuti / Izin Aktif', _totalCutiHariIni.toString(),
                 Icons.event_busy_outlined, Colors.orange),
             _buildStatCard('Lembur Pending', _totalPendingLembur.toString(),

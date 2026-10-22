@@ -906,11 +906,23 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         ),
       );
 
+  // Label status di beranda: "Aktif - Tetap" / "Aktif - Kontrak"
+  // (diambil dari kolom employees.employee_status)
+  String _statusLabel() {
+    final raw = (widget.userData['employee_status'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    if (raw.isEmpty) return 'Aktif';
+    final jenis = raw[0].toUpperCase() + raw.substring(1);
+    return 'Aktif - $jenis';
+  }
+
   Widget _buildQuickMetrics() => Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            _metricCard("Status", "Aktif", Icons.verified, Colors.green),
+            _metricCard("Status", _statusLabel(), Icons.verified, Colors.green),
             const SizedBox(width: 10),
             _metricCard(
                 "Waktu", _timeString, Icons.timer, Colors.blue.shade900),
@@ -931,12 +943,22 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
               children: [
                 Icon(i, color: c),
                 const SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(t, style: TextStyle(fontSize: 10, color: Colors.grey)),
-                    Text(v, style: TextStyle(fontWeight: FontWeight.bold)),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(t,
+                          style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      // FittedBox: teks panjang (mis. "Aktif - Kontrak")
+                      // mengecil otomatis, tidak overflow
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(v,
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -3288,11 +3310,33 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
     );
   }
 
+  /// Hapus foto lama dari bucket profile_photos berdasarkan URL-nya.
+  /// Kalau gagal, hanya dicatat di log, tidak mengganggu proses upload.
+  Future<void> _hapusFotoLama(String? oldUrl) async {
+    if (oldUrl == null || oldUrl.isEmpty) return;
+
+    try {
+      final uri = Uri.parse(oldUrl);
+      final segments = uri.pathSegments; // query "?v=..." otomatis terbuang
+      final idx = segments.indexOf('profile_photos');
+      if (idx == -1 || idx == segments.length - 1) return;
+
+      final oldFileName = segments.sublist(idx + 1).join('/');
+
+      await Supabase.instance.client.storage
+          .from('profile_photos')
+          .remove([oldFileName]);
+    } catch (e) {
+      debugPrint("Peringatan: gagal hapus foto lama: $e");
+    }
+  }
+
   Future<void> _uploadFotoProfil() async {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 50,
+      maxWidth: 1024,
+      maxHeight: 1024,
     );
 
     if (image == null) return;
@@ -3300,8 +3344,27 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
     setState(() => _isUploadingPhoto = true);
 
     try {
-      final bytes = await image.readAsBytes();
-      final fileExt = image.name.split('.').last;
+      // Simpan URL foto lama sebelum diganti
+      final String? oldPhotoUrl =
+          _profileImageUrl ?? widget.userData['photo_url'];
+
+      Uint8List? bytes = await FlutterImageCompress.compressWithFile(
+        image.path,
+        minWidth: 800,
+        minHeight: 800,
+        quality: 70,
+        format: CompressFormat.jpeg,
+      );
+
+      String fileExt = 'jpg';
+      String contentType = 'image/jpeg';
+
+      if (bytes == null) {
+        bytes = await image.readAsBytes();
+        fileExt = image.name.split('.').last.toLowerCase();
+        contentType = image.mimeType ?? 'image/$fileExt';
+      }
+
       final fileName =
           'profil_${widget.userData['id']}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
 
@@ -3310,13 +3373,8 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
           .uploadBinary(
             fileName,
             bytes,
-            fileOptions: const FileOptions(
-              upsert: true,
-              contentType: 'image/jpeg',
-            ),
+            fileOptions: FileOptions(contentType: contentType),
           );
-
-      await Future.delayed(const Duration(milliseconds: 2000));
 
       final imageUrl = Supabase.instance.client.storage
               .from('profile_photos')
@@ -3327,29 +3385,30 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
           .from('employees')
           .update({'photo_url': imageUrl}).eq('id', widget.userData['id']);
 
-      setState(() {
-        _profileImageUrl = imageUrl;
-      });
+      // Hapus foto lama SETELAH database berhasil diupdate
+      await _hapusFotoLama(oldPhotoUrl);
+
+      if (!mounted) return;
+      setState(() => _profileImageUrl = imageUrl);
 
       widget.onProfileUpdated();
 
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Foto profil berhasil diperbarui!"),
-            backgroundColor: Colors.green,
-          ),
-        );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Foto profil berhasil diperbarui!"),
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Gagal upload: $e"),
-            backgroundColor: Colors.red,
-          ),
-        );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Gagal upload: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
-      setState(() => _isUploadingPhoto = false);
+      if (mounted) setState(() => _isUploadingPhoto = false);
     }
   }
 
