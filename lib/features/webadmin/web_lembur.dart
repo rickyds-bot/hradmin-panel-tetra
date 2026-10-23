@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'sticky_header_table.dart';
 import 'package:flutter/gestures.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -476,10 +477,9 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                     child: Scrollbar(
                                       controller: _verticalScroll,
                                       thumbVisibility: true,
-                                      child: SingleChildScrollView(
+                                      child: StickyHeaderTable(
                                         controller: _verticalScroll,
-                                        scrollDirection: Axis.vertical,
-                                        child: DataTable(
+                                        table: DataTable(
                                           showCheckboxColumn: false,
                                           headingRowColor:
                                               WidgetStateProperty.all(

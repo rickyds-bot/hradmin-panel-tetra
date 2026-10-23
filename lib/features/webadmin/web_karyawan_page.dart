@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'sticky_header_table.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -485,9 +486,8 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                 minWidth:
                                     MediaQuery.of(context).size.width - 80,
                               ),
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.vertical,
-                                child: DataTable(
+                              child: StickyHeaderTable(
+                                table: DataTable(
                                   sortColumnIndex: _sortColumnIndex,
                                   sortAscending: _sortAscending,
                                   headingRowColor:

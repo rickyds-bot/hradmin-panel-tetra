@@ -1,5 +1,6 @@
 import 'dart:math' show cos, asin, sqrt;
 import 'package:flutter/material.dart';
+import 'sticky_header_table.dart';
 import 'package:flutter/gestures.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -958,10 +959,9 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                     child: Scrollbar(
                                       controller: _verticalScroll,
                                       thumbVisibility: true,
-                                      child: SingleChildScrollView(
+                                      child: StickyHeaderTable(
                                         controller: _verticalScroll,
-                                        scrollDirection: Axis.vertical,
-                                        child: DataTable(
+                                        table: DataTable(
                                           showCheckboxColumn: false,
                                           headingRowColor:
                                               WidgetStateProperty.all(

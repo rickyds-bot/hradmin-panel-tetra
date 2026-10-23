@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'sticky_header_table.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_absensi/features/core/utils/app_logger.dart';
@@ -273,8 +274,8 @@ class _WebPemberitahuanPageState extends State<WebPemberitahuanPage> {
                         )
                       : SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
-                          child: SingleChildScrollView(
-                            child: DataTable(
+                          child: StickyHeaderTable(
+                            table: DataTable(
                               showCheckboxColumn: false,
                               headingRowColor: WidgetStateProperty.all(
                                 Colors.grey[50],
