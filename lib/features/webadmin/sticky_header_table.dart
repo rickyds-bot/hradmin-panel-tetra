@@ -47,10 +47,11 @@ class StickyHeaderTable extends StatelessWidget {
             child: SizedBox(
               height: headingHeight,
               child: ClipRect(
-                child: OverflowBox(
-                  alignment: Alignment.topLeft,
-                  minHeight: 0,
-                  maxHeight: double.infinity,
+                // Scroll vertikal dimatikan: selalu menampilkan baris
+                // paling atas (header) dari tabel yang sama.
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  physics: const NeverScrollableScrollPhysics(),
                   child: table,
                 ),
               ),
