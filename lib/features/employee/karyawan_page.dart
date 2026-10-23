@@ -3961,7 +3961,7 @@ class _ProfilKaryawanTabState extends State<ProfilKaryawanTab> {
                                 _buildDropdown(
                                   "Status Pernikahan",
                                   _selectedStatus,
-                                  ['Single', 'Menikah', 'Bercerai'],
+                                  ['Single', 'Menikah', 'Bercerai/Janda/Duda'],
                                   (val) =>
                                       setState(() => _selectedStatus = val!),
                                 ),

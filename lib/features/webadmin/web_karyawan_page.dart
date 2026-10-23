@@ -1141,7 +1141,7 @@ class _AddKaryawanDialogState extends State<AddKaryawanDialog> {
   final _addressNowCtrl = TextEditingController();
 
   String _selectedMaritalStatus = 'Single';
-  final List<String> _maritalStatusOptions = ['Single', 'Menikah', 'Bercerai'];
+  final List<String> _maritalStatusOptions = ['Single', 'Menikah', 'Bercerai/Janda/Duda'];
 
   final _spouseNameCtrl = TextEditingController();
   final _spouseBirthDateCtrl = TextEditingController();
