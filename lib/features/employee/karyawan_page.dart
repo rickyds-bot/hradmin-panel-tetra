@@ -76,18 +76,24 @@ class _KaryawanPageState extends State<KaryawanPage>
         final notifService = NotificationService();
         await notifService.initialize();
 
-        final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        final nowLocal = DateTime.now();
+        final startToday =
+            DateTime(nowLocal.year, nowLocal.month, nowLocal.day);
+        final startTomorrow = startToday.add(const Duration(days: 1));
         final absensiToday = await Supabase.instance.client
             .from('attendance')
-            .select('status')
+            .select('status, created_at')
             .eq('employee_id', userData!['id'])
-            .gte('created_at', '${todayStr}T00:00:00')
-            .lte('created_at', '${todayStr}T23:59:59');
+            .gte('created_at', startToday.toUtc().toIso8601String())
+            .lt('created_at', startTomorrow.toUtc().toIso8601String())
+            .order('created_at', ascending: true);
 
         bool hasCheckIn = absensiToday
             .any((e) => e['status'].toString().toLowerCase() == 'check-in');
-        bool hasCheckOut = absensiToday
-            .any((e) => e['status'].toString().toLowerCase() == 'check-out');
+        // Pengingat sore dilewati hanya jika record terakhir hari ini adalah
+        // check-out (check-out lewat tengah malam tidak ikut dihitung).
+        bool hasCheckOut = absensiToday.isNotEmpty &&
+            absensiToday.last['status'].toString().toLowerCase() == 'check-out';
 
         // Simpan supaya bisa dipakai ulang di didChangeAppLifecycleState.
         _skipMorningNotif = hasCheckIn;
@@ -546,36 +552,72 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
     }
   }
 
+  // Batas maksimal 1 sesi kerja (check-in -> check-out)
+  static const Duration _maxSessionDuration = Duration(hours: 20);
+
+  // Apakah sudah ada absen [tipe] pada tanggal kalender hari ini (waktu lokal)
+  Future<bool> _hasPunchToday(String tipe) async {
+    final rows = await Supabase.instance.client
+        .from('attendance')
+        .select('created_at')
+        .eq('employee_id', userId)
+        .ilike('status', tipe)
+        .order('created_at', ascending: false)
+        .limit(5);
+
+    final now = DateTime.now();
+    for (var row in rows) {
+      if (row['created_at'] == null) continue;
+      final t = DateTime.parse(row['created_at'].toString()).toLocal();
+      if (t.year == now.year && t.month == now.month && t.day == now.day) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Validasi urutan absen berdasarkan record TERAKHIR (sesi), bukan tanggal.
+  Future<void> _validateAbsenRule(String tipe) async {
+    final last = await Supabase.instance.client
+        .from('attendance')
+        .select('status, created_at')
+        .eq('employee_id', userId)
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    bool sessionOpen = false;
+    DateTime? lastAt;
+    if (last != null && last['created_at'] != null) {
+      lastAt = DateTime.parse(last['created_at'].toString()).toLocal();
+      final bool lastIsIn =
+          !last['status'].toString().toLowerCase().contains('out');
+      sessionOpen =
+          lastIsIn && DateTime.now().difference(lastAt) <= _maxSessionDuration;
+    }
+
+    if (tipe == 'check-in') {
+      if (sessionOpen) {
+        throw 'Anda masih tercatat Check-In sejak ${DateFormat('dd-MM-yyyy HH:mm').format(lastAt!)}. Silakan Check-Out terlebih dahulu.';
+      }
+      if (await _hasPunchToday('check-in')) {
+        throw 'Anda sudah melakukan CHECK-IN hari ini. Absen hanya dapat dilakukan 1 kali sehari.';
+      }
+    } else {
+      // Check-out: boleh jika ada sesi yang masih terbuka (termasuk lewat
+      // tengah malam). Tanpa sesi terbuka, tetap 1x per hari seperti sebelumnya.
+      if (!sessionOpen && await _hasPunchToday('check-out')) {
+        throw 'Anda sudah melakukan CHECK-OUT hari ini. Absen hanya dapat dilakukan 1 kali sehari.';
+      }
+    }
+  }
+
   Future<void> _absen(BuildContext context, String tipe) async {
     setState(() => _isLoading = true);
     try {
-      final existingAbsen = await Supabase.instance.client
-          .from('attendance')
-          .select('created_at, status')
-          .eq('employee_id', userId)
-          .ilike('status', tipe)
-          .order('created_at', ascending: false)
-          .limit(5);
-
-      final now = DateTime.now();
-      bool hasAbsenToday = false;
-
-      for (var row in existingAbsen) {
-        if (row['created_at'] != null) {
-          final createdAtLocal =
-              DateTime.parse(row['created_at'].toString()).toLocal();
-          if (createdAtLocal.year == now.year &&
-              createdAtLocal.month == now.month &&
-              createdAtLocal.day == now.day) {
-            hasAbsenToday = true;
-            break;
-          }
-        }
-      }
-
-      if (hasAbsenToday) {
-        throw 'Anda sudah melakukan ${tipe.toUpperCase()} hari ini. Absen hanya dapat dilakukan 1 kali sehari.';
-      }
+      // Aturan absen berbasis sesi (check-in -> check-out), bukan tanggal kalender,
+      // supaya check-out lewat tengah malam tidak mengunci check-out hari berikutnya.
+      await _validateAbsenRule(tipe);
 
       var cameraStatus = await Permission.camera.request();
       if (!cameraStatus.isGranted)

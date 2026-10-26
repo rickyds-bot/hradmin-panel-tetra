@@ -236,11 +236,14 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
     _secShiftInfo.clear();
     final Map<dynamic, List<dynamic>> byEmp = {};
     for (var item in _absensiList) {
-      if (!_isSecurityItem(item) || item['created_at'] == null) continue;
+      if (item['created_at'] == null) continue;
       byEmp.putIfAbsent(item['employee_id'], () => []).add(item);
     }
 
     byEmp.forEach((empId, list) {
+      // Aturan khusus security (check-out pagi tanpa check-in = sisa shift
+      // malam kemarin) hanya berlaku untuk security.
+      final bool isSec = _isSecurityItem(list.first);
       list.sort((x, y) => DateTime.parse(x['created_at'])
           .compareTo(DateTime.parse(y['created_at'])));
 
@@ -262,8 +265,8 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
           shift = firstDt.hour < 12 ? 'day' : 'night';
         } else {
           // check-out tanpa check-in: pagi = sisa shift malam, sore = shift pagi
-          shift = firstDt.hour < 12 ? 'night' : 'day';
-          if (firstDt.hour < 12) {
+          shift = isSec && firstDt.hour < 12 ? 'night' : 'day';
+          if (isSec && firstDt.hour < 12) {
             shiftDay = shiftDay.subtract(const Duration(days: 1));
           }
         }
@@ -310,10 +313,8 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
 
   // Tanggal shift sebuah record absen (security: berdasarkan pasangan shift)
   DateTime _rowShiftDay(dynamic item, DateTime dt, bool isSecurity) {
-    if (isSecurity) {
-      final info = _secShiftInfo[item['id']];
-      if (info != null) return info['date'] as DateTime;
-    }
+    final info = _secShiftInfo[item['id']];
+    if (info != null) return info['date'] as DateTime;
     return _shiftDate(dt, isSecurity);
   }
 
@@ -355,6 +356,129 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
     setState(() {
       _filteredList = temp;
     });
+  }
+
+  // Edit manual absensi oleh admin (wajib isi alasan koreksi)
+  Future<void> _editAbsensi(Map<String, dynamic> item) async {
+    final empName = item['employees']?['full_name'] ?? 'Karyawan';
+    DateTime dt = DateTime.parse(item['created_at']).toLocal();
+
+    // Ambil teks status asli dari data (menjaga huruf besar/kecil sesuai DB)
+    String? findStatus(String kind) {
+      for (var a in _absensiList) {
+        if (_punchKind(a) == kind) return a['status'].toString();
+      }
+      return null;
+    }
+
+    final inValue = findStatus('in') ?? 'Check-in';
+    final outValue = findStatus('out') ?? 'Check-out';
+    String status = _punchKind(item) == 'out' ? outValue : inValue;
+    final noteCtrl = TextEditingController();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: Text(
+            'Edit Absen - $empName',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: SizedBox(
+            width: 340,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: status,
+                  decoration: const InputDecoration(labelText: 'Status'),
+                  items: [inValue, outValue]
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: (v) => setD(() => status = v!),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.schedule, size: 16),
+                  label: Text(DateFormat('dd-MM-yyyy HH:mm').format(dt)),
+                  onPressed: () async {
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: dt,
+                      firstDate: DateTime(2024),
+                      lastDate: DateTime.now().add(const Duration(days: 1)),
+                    );
+                    if (d == null) return;
+                    final t = await showTimePicker(
+                      context: ctx,
+                      initialTime: TimeOfDay.fromDateTime(dt),
+                    );
+                    if (t == null) return;
+                    setD(() => dt =
+                        DateTime(d.year, d.month, d.day, t.hour, t.minute));
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: noteCtrl,
+                  onChanged: (_) => setD(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'Alasan koreksi (wajib)',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              onPressed: noteCtrl.text.trim().isEmpty
+                  ? null
+                  : () => Navigator.of(ctx).pop(true),
+              child: const Text('Simpan'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (ok != true) return;
+    final reason = noteCtrl.text.trim();
+    try {
+      final client = Supabase.instance.client;
+      await client.from('attendance').update({
+        'status': status,
+        'created_at': dt.toUtc().toIso8601String(),
+        'edit_note': reason,
+        'edited_at': DateTime.now().toUtc().toIso8601String(),
+        'edited_by': client.auth.currentUser?.id,
+      }).eq('id', item['id']);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Data absensi berhasil diperbarui'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+      await _fetchAbsensiData();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memperbarui: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _deleteAbsensi(Map<String, dynamic> item) async {
@@ -1263,6 +1387,19 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                 }
                                               }
 
+                                              final String editNote =
+                                                  (item['edit_note'] ?? '')
+                                                      .toString()
+                                                      .trim();
+                                              if (editNote.isNotEmpty) {
+                                                final base = (notes.isEmpty ||
+                                                        notes == 'null')
+                                                    ? ''
+                                                    : '$notes • ';
+                                                notes =
+                                                    '${base}Diedit: $editNote';
+                                              }
+
                                               if (notes.isEmpty ||
                                                   notes == 'null') notes = '-';
 
@@ -1422,14 +1559,35 @@ class _WebAbsensiPageState extends State<WebAbsensiPage> {
                                                     ),
                                                   ),
                                                   DataCell(
-                                                    IconButton(
-                                                      icon: const Icon(
-                                                        Icons.delete_outline,
-                                                        color: Colors.red,
-                                                        size: 18,
-                                                      ),
-                                                      onPressed: () =>
-                                                          _deleteAbsensi(item),
+                                                    Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        IconButton(
+                                                          icon: const Icon(
+                                                            Icons.edit_outlined,
+                                                            color: Colors
+                                                                .blueAccent,
+                                                            size: 18,
+                                                          ),
+                                                          tooltip: 'Edit',
+                                                          onPressed: () =>
+                                                              _editAbsensi(
+                                                                  item),
+                                                        ),
+                                                        IconButton(
+                                                          icon: const Icon(
+                                                            Icons
+                                                                .delete_outline,
+                                                            color: Colors.red,
+                                                            size: 18,
+                                                          ),
+                                                          tooltip: 'Hapus',
+                                                          onPressed: () =>
+                                                              _deleteAbsensi(
+                                                                  item),
+                                                        ),
+                                                      ],
                                                     ),
                                                   ),
                                                 ],
