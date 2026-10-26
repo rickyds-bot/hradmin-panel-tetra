@@ -1702,7 +1702,11 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
   late TextEditingController _addressNowCtrl;
 
   late String _selectedMaritalStatus;
-  final List<String> _maritalStatusOptions = ['Single', 'Menikah', 'Bercerai'];
+  final List<String> _maritalStatusOptions = [
+    'Single',
+    'Menikah',
+    'Janda/Duda'
+  ];
 
   late TextEditingController _spouseNameCtrl;
   late TextEditingController _spouseBirthDateCtrl;
