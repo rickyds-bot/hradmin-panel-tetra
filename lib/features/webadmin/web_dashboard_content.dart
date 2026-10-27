@@ -49,6 +49,13 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   DateTime _top10CurrentDate =
       DateTime(DateTime.now().year, DateTime.now().month, 1);
   bool _isLoadingTop10 = false;
+
+  // Top 10 Paling Sering Terlambat (navigasi bulan sendiri)
+  List<Map<String, dynamic>> _topLateEmployees = [];
+  String _topLatePeriod = '';
+  DateTime _topLateCurrentDate =
+      DateTime(DateTime.now().year, DateTime.now().month, 1);
+  bool _isLoadingTopLate = false;
   List<dynamic> _nonAdminIds =
       []; // Disimpan di level class agar bisa digunakan ulang
 
@@ -214,6 +221,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       // 7. Ambil Data Top 10 Paling Tepat Waktu (Terpisah ke fungsi tersendiri)
       await _fetchTop10Data();
+
+      // 8. Top 10 Paling Sering Terlambat
+      await _fetchTopLateData();
     } catch (e) {
       debugPrint('Error fetching dashboard stats: $e');
     } finally {
@@ -271,7 +281,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       final allAttRes = await Supabase.instance.client
           .from('attendance')
-          .select('employee_id, created_at')
+          .select('employee_id, created_at, status')
           .gte('created_at', startUtc)
           .lte('created_at', endUtc);
 
@@ -279,6 +289,11 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       for (var r in allAttRes) {
         final eId = r['employee_id'];
+
+        // Hanya check-in yang dihitung (check-out dini hari bukan "tepat waktu")
+        if ((r['status'] ?? '').toString().toLowerCase().contains('out')) {
+          continue;
+        }
 
         // --- PERUBAHAN: Filter agar tidak menghitung admin dan jabatan yang dieksklusi ---
         if (_nonAdminIds.contains(eId) && !excludedIds.contains(eId)) {
@@ -332,6 +347,129 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       debugPrint('Error fetching top 10 stats: $e');
     } finally {
       if (mounted) setState(() => _isLoadingTop10 = false);
+    }
+  }
+
+  // =========================================================
+  // Ambil Data Top 10 Paling Sering Terlambat
+  // Terlambat = check-in pertama di hari kerja setelah 08:45 (WIB).
+  // Sabtu/Minggu & libur nasional tidak dihitung (sama dengan laporan absensi).
+  // =========================================================
+  static const List<String> _namaBulanTop = [
+    'Januari',
+    'Februari',
+    'Maret',
+    'April',
+    'Mei',
+    'Juni',
+    'Juli',
+    'Agustus',
+    'September',
+    'Oktober',
+    'November',
+    'Desember'
+  ];
+
+  Future<void> _fetchTopLateData() async {
+    setState(() => _isLoadingTopLate = true);
+    try {
+      final firstDay =
+          DateTime(_topLateCurrentDate.year, _topLateCurrentDate.month, 1);
+      final lastDay = DateTime(_topLateCurrentDate.year,
+          _topLateCurrentDate.month + 1, 0, 23, 59, 59);
+      _topLatePeriod = '${_namaBulanTop[firstDay.month - 1]} ${firstDay.year}';
+
+      // Jabatan yang dikecualikan sama seperti Top 10 Tepat Waktu
+      final empRes = await Supabase.instance.client
+          .from('employees')
+          .select('id, jabatan_name');
+      final Set<dynamic> excludedIds = {};
+      for (var e in empRes) {
+        final jab = (e['jabatan_name'] ?? '').toString().toLowerCase().trim();
+        if (jab == 'driver' ||
+            jab == 'ob' ||
+            jab == 'cs' ||
+            jab == 'security' ||
+            jab == 'cleaning service') {
+          excludedIds.add(e['id']);
+        }
+      }
+
+      final attRes = await Supabase.instance.client
+          .from('attendance')
+          .select('employee_id, created_at, status')
+          .gte('created_at', firstDay.toUtc().toIso8601String())
+          .lte('created_at', lastDay.toUtc().toIso8601String());
+
+      // id karyawan -> (tanggal -> menit check-in paling awal pada tanggal itu)
+      final Map<String, Map<String, int>> firstCheckIn = {};
+      for (var r in attRes) {
+        final eId = r['employee_id'];
+        if (!_nonAdminIds.contains(eId) || excludedIds.contains(eId)) continue;
+
+        // Hanya check-in
+        if ((r['status'] ?? '').toString().toLowerCase().contains('out')) {
+          continue;
+        }
+        final createdAt = r['created_at'];
+        if (createdAt == null) continue;
+
+        DateTime t;
+        try {
+          t = DateTime.parse(createdAt.toString()).toLocal();
+        } catch (_) {
+          continue;
+        }
+
+        final bool isWeekend =
+            t.weekday == DateTime.saturday || t.weekday == DateTime.sunday;
+        final String dateKey = DateFormat('yyyy-MM-dd').format(t);
+        if (isWeekend || _holidaysMap.containsKey(dateKey)) continue;
+
+        final int minutes = t.hour * 60 + t.minute;
+        final days = firstCheckIn.putIfAbsent(eId.toString(), () => {});
+        if (!days.containsKey(dateKey) || minutes < days[dateKey]!) {
+          days[dateKey] = minutes;
+        }
+      }
+
+      const int limitMinutes = 8 * 60 + 45; // 08:45
+      final Map<String, int> lateCounts = {};
+      firstCheckIn.forEach((eId, days) {
+        final n = days.values.where((m) => m > limitMinutes).length;
+        if (n > 0) lateCounts[eId] = n;
+      });
+
+      final sortedKeys = lateCounts.keys.toList()
+        ..sort((a, b) => lateCounts[b]!.compareTo(lateCounts[a]!));
+      final top10Keys = sortedKeys.take(10).toList();
+
+      if (top10Keys.isNotEmpty) {
+        final topEmpData = await Supabase.instance.client
+            .from('employees')
+            .select('id, full_name, photo_url, jabatan_name')
+            .inFilter('id', top10Keys);
+
+        final List<Map<String, dynamic>> tempTop = [];
+        for (var key in top10Keys) {
+          final emp = topEmpData.firstWhere((e) => e['id'].toString() == key,
+              orElse: () => <String, dynamic>{});
+          if (emp.isNotEmpty) {
+            tempTop.add({
+              'name': emp['full_name'] ?? 'Karyawan',
+              'photo': emp['photo_url'],
+              'count': '${lateCounts[key]}x Terlambat'
+            });
+          }
+        }
+        _topLateEmployees = tempTop;
+      } else {
+        _topLateEmployees = [];
+      }
+    } catch (e) {
+      debugPrint('Error fetching top late stats: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingTopLate = false);
     }
   }
 
@@ -665,14 +803,16 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
                     if (isWide) {
                       return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          chartSection,
+                          const SizedBox(height: 16),
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(flex: 2, child: chartSection),
+                              Expanded(child: _buildTopEmployeesCard()),
                               const SizedBox(width: 16),
-                              Expanded(
-                                  flex: 1, child: _buildTopEmployeesCard()),
+                              Expanded(child: _buildTopLateCard()),
                             ],
                           ),
                           const SizedBox(height: 16),
@@ -694,6 +834,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                           chartSection,
                           const SizedBox(height: 16),
                           _buildTopEmployeesCard(),
+                          const SizedBox(height: 16),
+                          _buildTopLateCard(),
                           const SizedBox(height: 16),
                           _buildExpiringContractsCard(),
                           const SizedBox(height: 16),
@@ -1100,9 +1242,74 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   }
 
   // =========================================================
-  // Widget Top 10 dengan Kontrol Prev & Next Bulan
+  // Kartu Top 10 (format sama untuk Tepat Waktu & Terlambat),
+  // dengan kontrol geser bulan sebelumnya / berikutnya
   // =========================================================
   Widget _buildTopEmployeesCard() {
+    return _buildRankCard(
+      title: 'Top 10 Paling Tepat Waktu',
+      subtitle: 'Batas Masuk 08:30 (Toleransi s/d 08:45)',
+      icon: Icons.verified_rounded,
+      accent: Colors.indigo,
+      employees: _topEmployees,
+      period: _topEmployeesPeriod,
+      currentMonth: _top10CurrentDate,
+      isLoading: _isLoadingTop10,
+      emptyText: 'Belum ada data kedisiplinan pada bulan ini.',
+      onPrev: () {
+        _top10CurrentDate =
+            DateTime(_top10CurrentDate.year, _top10CurrentDate.month - 1, 1);
+        _fetchTop10Data();
+      },
+      onNext: () {
+        _top10CurrentDate =
+            DateTime(_top10CurrentDate.year, _top10CurrentDate.month + 1, 1);
+        _fetchTop10Data();
+      },
+    );
+  }
+
+  Widget _buildTopLateCard() {
+    return _buildRankCard(
+      title: 'Top 10 Paling Sering Terlambat',
+      subtitle: 'Check-in setelah 08:45 (hari kerja)',
+      icon: Icons.watch_later_rounded,
+      accent: Colors.red,
+      employees: _topLateEmployees,
+      period: _topLatePeriod,
+      currentMonth: _topLateCurrentDate,
+      isLoading: _isLoadingTopLate,
+      emptyText: 'Tidak ada keterlambatan pada bulan ini.',
+      onPrev: () {
+        _topLateCurrentDate = DateTime(
+            _topLateCurrentDate.year, _topLateCurrentDate.month - 1, 1);
+        _fetchTopLateData();
+      },
+      onNext: () {
+        _topLateCurrentDate = DateTime(
+            _topLateCurrentDate.year, _topLateCurrentDate.month + 1, 1);
+        _fetchTopLateData();
+      },
+    );
+  }
+
+  Widget _buildRankCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required MaterialColor accent,
+    required List<Map<String, dynamic>> employees,
+    required String period,
+    required DateTime currentMonth,
+    required bool isLoading,
+    required String emptyText,
+    required VoidCallback onPrev,
+    required VoidCallback onNext,
+  }) {
+    final DateTime now = DateTime.now();
+    final bool isCurrentMonth =
+        currentMonth.year == now.year && currentMonth.month == now.month;
+
     return Container(
       width: double.infinity,
       height: 400,
@@ -1125,21 +1332,27 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  const Icon(Icons.verified_rounded,
-                      color: Colors.indigo, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Top 10 Paling Tepat Waktu',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(icon, color: accent, size: 20),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               // KONTROL GESER BULAN
               Row(
                 children: [
@@ -1147,19 +1360,15 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                     icon: const Icon(Icons.chevron_left, size: 22),
-                    onPressed: () {
-                      _top10CurrentDate = DateTime(_top10CurrentDate.year,
-                          _top10CurrentDate.month - 1, 1);
-                      _fetchTop10Data();
-                    },
+                    onPressed: onPrev,
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    _topEmployeesPeriod,
+                    period,
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      color: Colors.indigo[700],
+                      color: accent[700],
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -1169,20 +1378,12 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                     icon: Icon(
                       Icons.chevron_right,
                       size: 22,
-                      color: (_top10CurrentDate.year == DateTime.now().year &&
-                              _top10CurrentDate.month == DateTime.now().month)
-                          ? Colors.grey[300]
-                          : Colors.black87,
+                      color: isCurrentMonth ? Colors.grey[300] : Colors.black87,
                     ),
                     onPressed: () {
-                      DateTime now = DateTime.now();
                       // Mencegah untuk melihat bulan di masa depan
-                      if (_top10CurrentDate.year == now.year &&
-                          _top10CurrentDate.month == now.month) return;
-
-                      _top10CurrentDate = DateTime(_top10CurrentDate.year,
-                          _top10CurrentDate.month + 1, 1);
-                      _fetchTop10Data();
+                      if (isCurrentMonth) return;
+                      onNext();
                     },
                   ),
                 ],
@@ -1191,7 +1392,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Batas Masuk 08:30 (Toleransi s/d 08:45)',
+            subtitle,
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               color: Colors.grey[500],
@@ -1201,18 +1402,18 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
           // TAMPILAN LIST (Dengan Indikator Loading khusus)
           Expanded(
-            child: _isLoadingTop10
+            child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : SingleChildScrollView(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (_topEmployees.isEmpty)
+                        if (employees.isEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 20.0),
                             child: Center(
                               child: Text(
-                                'Belum ada data kedisiplinan pada bulan ini.',
+                                emptyText,
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 12,
                                   color: Colors.grey,
@@ -1221,7 +1422,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                             ),
                           )
                         else
-                          ..._topEmployees.asMap().entries.map((entry) {
+                          ...employees.asMap().entries.map((entry) {
                             final int index = entry.key;
                             final emp = entry.value;
                             final photoUrl = emp['photo'];
@@ -1248,15 +1449,15 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                   ),
                                   CircleAvatar(
                                     radius: 16,
-                                    backgroundColor: Colors.indigo[50],
+                                    backgroundColor: accent[50],
                                     backgroundImage: (photoUrl != null &&
                                             photoUrl.toString().isNotEmpty)
                                         ? NetworkImage(photoUrl.toString())
                                         : null,
                                     child: (photoUrl == null ||
                                             photoUrl.toString().isEmpty)
-                                        ? const Icon(Icons.person,
-                                            size: 16, color: Colors.indigo)
+                                        ? Icon(Icons.person,
+                                            size: 16, color: accent)
                                         : null,
                                   ),
                                   const SizedBox(width: 10),
@@ -1277,7 +1478,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 10, vertical: 4),
                                     decoration: BoxDecoration(
-                                      color: Colors.indigo[50],
+                                      color: accent[50],
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Text(
@@ -1285,7 +1486,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 11,
                                         fontWeight: FontWeight.bold,
-                                        color: Colors.indigo[700],
+                                        color: accent[700],
                                       ),
                                     ),
                                   ),

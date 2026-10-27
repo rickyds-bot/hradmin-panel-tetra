@@ -99,9 +99,11 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     setState(() => _isLoading = true);
 
     try {
-      DateTime startUtc =
-          DateTime(_startDate.year, _startDate.month, _startDate.day, 0, 0, 0)
-              .toUtc();
+      // Mulai dari H-1 jam 12:00 supaya check-out lewat tengah malam pada
+      // tanggal awal bisa dipasangkan dengan check-in hari sebelumnya.
+      DateTime startUtc = DateTime(
+              _startDate.year, _startDate.month, _startDate.day - 1, 12, 0, 0)
+          .toUtc();
       // Sampai H+1 jam 12:00 supaya check-out pagi shift security terbawa
       DateTime endUtc =
           DateTime(_endDate.year, _endDate.month, _endDate.day + 1, 12, 0, 0)
@@ -252,7 +254,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
   // Security punya 2 shift: pagi 07:00-17:00 dan malam 17:00-07:00.
   // Check-in memulai shift, check-out berikutnya menutupnya.
   // Hasil: tanggal shift (yyyy-MM-dd) -> {punches, hasIn, shift}
-  Map<String, Map<String, dynamic>> _groupSecurityShifts(List<dynamic> list) {
+  Map<String, Map<String, dynamic>> _groupSecurityShifts(List<dynamic> list,
+      {bool isSec = true}) {
     final Map<String, Map<String, dynamic>> result = {};
     list.sort((x, y) => DateTime.parse(x['created_at'])
         .compareTo(DateTime.parse(y['created_at'])));
@@ -269,8 +272,9 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         shift = firstDt.hour < 12 ? 'day' : 'night';
       } else {
         // check-out tanpa check-in: pagi = sisa shift malam, sore = shift pagi
-        shift = firstDt.hour < 12 ? 'night' : 'day';
-        if (firstDt.hour < 12) {
+        // (aturan ini hanya untuk security)
+        shift = isSec && firstDt.hour < 12 ? 'night' : 'day';
+        if (isSec && firstDt.hour < 12) {
           shiftDay = shiftDay.subtract(const Duration(days: 1));
         }
       }
@@ -337,21 +341,15 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       DateTime? dt = DateTime.tryParse(createdAtStr)?.toLocal();
       if (dt == null) continue;
 
-      // Security dikelompokkan per shift (pagi/malam) setelah loop ini
-      if (securityMap[empId] == true) {
-        secRaw.putIfAbsent(empId, () => []).add(item);
-        continue;
-      }
-
-      String dateKey = DateFormat('yyyy-MM-dd').format(dt);
-
-      empDatePunches.putIfAbsent(empId, () => {});
-      empDatePunches[empId]!.putIfAbsent(dateKey, () => []);
-      empDatePunches[empId]![dateKey]!.add(item);
+      // Semua karyawan dikelompokkan per sesi (check-in -> check-out) setelah
+      // loop ini, bukan per tanggal kalender, agar check-out lewat tengah malam
+      // masuk ke tanggal check-in-nya.
+      secRaw.putIfAbsent(empId, () => []).add(item);
     }
 
     secRaw.forEach((empId, list) {
-      final groups = _groupSecurityShifts(list);
+      final groups =
+          _groupSecurityShifts(list, isSec: securityMap[empId] == true);
       secShifts[empId] = groups;
       empDatePunches[empId] = {};
       groups.forEach((dk, g) {
@@ -497,8 +495,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                 ? (isNightShift
                     ? DateTime(curr.year, curr.month, curr.day + 1, 7, 0, 0)
                     : DateTime(curr.year, curr.month, curr.day, 17, 0, 0))
-                : DateTime(checkOutDt.year, checkOutDt.month, checkOutDt.day,
-                    17, isDriver ? 0 : 30, 0);
+                : DateTime(
+                    curr.year, curr.month, curr.day, 17, isDriver ? 0 : 30, 0);
             if (checkOutDt.isBefore(earlyLimit)) {
               aktifitas = 'Check-out lbh awal';
             } else {
