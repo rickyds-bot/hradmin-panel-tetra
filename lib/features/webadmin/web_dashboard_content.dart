@@ -216,7 +216,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           .where((e) => _nonAdminIds.contains(e['employee_id']))
           .length;
 
-      // 6. Data Grafik Kehadiran 30 Hari Terakhir
+      // 6. Data Grafik Kehadiran 15 Hari Terakhir
       await _fetchChartData(_nonAdminIds);
 
       // 7. Ambil Data Top 10 Paling Tepat Waktu (Terpisah ke fungsi tersendiri)
@@ -352,8 +352,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
   // =========================================================
   // Ambil Data Top 10 Paling Sering Terlambat
-  // Terlambat = check-in pertama di hari kerja setelah 08:45 (WIB).
-  // Sabtu/Minggu & libur nasional tidak dihitung (sama dengan laporan absensi).
   // =========================================================
   static const List<String> _namaBulanTop = [
     'Januari',
@@ -473,29 +471,37 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     }
   }
 
-  // Jumlah hari yang ditampilkan pada grafik kehadiran.
-  static const int _chartDaysRange = 30;
+  // Ubah jumlah hari yang ditampilkan pada grafik kehadiran menjadi 15 hari.
+  static const int _chartDaysRange = 15;
 
   Future<void> _fetchChartData(List<dynamic> validIds) async {
     final now = DateTime.now();
     final startOfRangeLocal = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: _chartDaysRange - 1));
+        .subtract(const Duration(days: _chartDaysRange - 1));
     final startOfRangeUtcStr = startOfRangeLocal.toUtc().toIso8601String();
 
     final weeklyRes = await Supabase.instance.client
         .from('attendance')
-        .select('employee_id, created_at')
+        .select('employee_id, created_at, status')
         .gte('created_at', startOfRangeUtcStr);
 
-    Map<String, Set<dynamic>> dailyHadir = {};
+    // Inisialisasi pengelompokan harian
+    Map<String, Map<String, Set<dynamic>>> dailyData = {};
     for (int i = 0; i < _chartDaysRange; i++) {
       final d = startOfRangeLocal.add(Duration(days: i));
-      dailyHadir[DateFormat('yyyy-MM-dd').format(d)] = {};
+      dailyData[DateFormat('yyyy-MM-dd').format(d)] = {
+        'tepat_waktu': <dynamic>{},
+        'terlambat': <dynamic>{},
+      };
     }
 
+    // Proses pemisahan status kehadiran (Tepat Waktu vs Terlambat)
     for (var row in weeklyRes) {
       final empId = row['employee_id'];
       if (!validIds.contains(empId)) continue;
+      
+      // Abaikan data check-out
+      if ((row['status'] ?? '').toString().toLowerCase().contains('out')) continue;
 
       final createdAt = row['created_at'];
       if (createdAt != null) {
@@ -503,8 +509,15 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           DateTime localDate = DateTime.parse(createdAt.toString()).toLocal();
           final dateStr = DateFormat('yyyy-MM-dd').format(localDate);
 
-          if (dailyHadir.containsKey(dateStr)) {
-            dailyHadir[dateStr]!.add(empId);
+          if (dailyData.containsKey(dateStr)) {
+            int totalMinutes = localDate.hour * 60 + localDate.minute;
+            const int limitMinutes = 8 * 60 + 45; // Batas 08:45
+
+            if (totalMinutes <= limitMinutes) {
+              dailyData[dateStr]!['tepat_waktu']!.add(empId);
+            } else {
+              dailyData[dateStr]!['terlambat']!.add(empId);
+            }
           }
         } catch (_) {}
       }
@@ -515,36 +528,47 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     double maxVal = 0;
     int index = 0;
 
-    dailyHadir.forEach((dateStr, empSet) {
-      final count = empSet.length.toDouble();
-      if (count > maxVal) maxVal = count;
-
+    dailyData.forEach((dateStr, stats) {
+      final double countTepat = stats['tepat_waktu']!.length.toDouble();
+      final double countTelat = stats['terlambat']!.length.toDouble();
+      
+      // Hitung Tidak Hadir (Hanya jika bukan weekend atau hari libur)
       final dateObj = DateTime.parse(dateStr);
+      bool isWeekend = dateObj.weekday == DateTime.saturday || dateObj.weekday == DateTime.sunday;
+      bool isHoliday = _holidaysMap.containsKey(dateStr);
+      
+      double countAbsen = 0;
+      if (!isWeekend && !isHoliday) {
+        countAbsen = (_totalKaryawan - (countTepat + countTelat)).toDouble();
+        if (countAbsen < 0) countAbsen = 0;
+      }
+
+      if (countTepat > maxVal) maxVal = countTepat;
+      if (countTelat > maxVal) maxVal = countTelat;
+      if (countAbsen > maxVal) maxVal = countAbsen;
+
       tempLabels.add(DateFormat('dd MMM').format(dateObj));
 
+      // Buat Grup Bar dengan 3 kategori per hari
       tempChartData.add(
         BarChartGroupData(
           x: index,
+          barsSpace: 2, // Jarak antar batang dalam 1 grup
           barRods: [
             BarChartRodData(
-              toY: count,
-              width: 25,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(6),
-                topRight: Radius.circular(6),
-              ),
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [Colors.indigo[600]!, Colors.blue[400]!],
-              ),
-              backDrawRodData: BackgroundBarChartRodData(
-                show: true,
-                toY: _totalKaryawan.toDouble() > 0
-                    ? _totalKaryawan.toDouble()
-                    : 10,
-                color: Colors.grey[100],
-              ),
+              toY: countTepat,
+              color: const Color(0xFF10B981), // Hijau untuk Tepat Waktu
+              borderRadius: const BorderRadius.only(topLeft: Radius.circular(3), topRight: Radius.circular(3)),
+            ),
+            BarChartRodData(
+              toY: countTelat,
+              color: const Color(0xFFF59E0B), // Kuning untuk Terlambat
+              borderRadius: const BorderRadius.only(topLeft: Radius.circular(3), topRight: Radius.circular(3)),
+            ),
+            BarChartRodData(
+              toY: countAbsen,
+              color: const Color(0xFF3B82F6), // Biru untuk Tidak Hadir (Sesuai referensi gambar)
+              borderRadius: const BorderRadius.only(topLeft: Radius.circular(3), topRight: Radius.circular(3)),
             ),
           ],
         ),
@@ -555,10 +579,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     _attendanceChartData = tempChartData;
     _chartLabels = tempLabels;
 
-    final double baseMax =
-        _totalKaryawan > 0 ? _totalKaryawan.toDouble() : maxVal;
-    final double target = baseMax > maxVal ? baseMax : maxVal;
-    _maxYChart = (target * 1.25).clamp(10, double.infinity);
+    final double targetMax = _totalKaryawan > 0 ? _totalKaryawan.toDouble() : maxVal;
+    _maxYChart = (targetMax * 1.2).clamp(10, double.infinity);
   }
 
   bool _isPublicHoliday(DateTime day) {
@@ -752,6 +774,17 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                   ],
                                 ),
                               ),
+                              // BAGIAN LEGEND
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 4,
+                                alignment: WrapAlignment.end,
+                                children: [
+                                  _buildChartLegend(const Color(0xFF10B981), 'Tepat Waktu'),
+                                  _buildChartLegend(const Color(0xFFF59E0B), 'Terlambat'),
+                                  _buildChartLegend(const Color(0xFF3B82F6), 'Tidak Hadir'),
+                                ],
+                              ),
                             ],
                           ),
                           const SizedBox(height: 20),
@@ -851,20 +884,40 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Komponen Grafik (fl_chart)
+  // Helper Komponen Chart Legend
+  Widget _buildChartLegend(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 11,
+            color: Colors.grey[600],
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Komponen Grafik (fl_chart) dengan 3 bar kategori
   Widget _buildAttendanceChart() {
     return LayoutBuilder(builder: (context, constraints) {
-      // Lebar bar menyesuaikan lebar kartu & jumlah hari supaya tetap rapat.
-      final int n =
-          _chartLabels.isEmpty ? _chartDaysRange : _chartLabels.length;
+      final int n = _chartLabels.isEmpty ? _chartDaysRange : _chartLabels.length;
       final double slot = (constraints.maxWidth - 40) / n;
-      final double barWidth = (slot * 0.62).clamp(5.0, 22.0).toDouble();
-      // Label tanggal ditampilkan berselang agar tidak saling menimpa.
-      final int labelStep = slot >= 46 ? 1 : (46 / slot).ceil();
+      // Lebar batang disesuaikan karena ada 3 batang per grup
+      final double barWidth = (slot * 0.25).clamp(4.0, 12.0).toDouble(); 
+      
       final List<BarChartGroupData> groups = _attendanceChartData
           .map((g) => g.copyWith(
-                barRods:
-                    g.barRods.map((r) => r.copyWith(width: barWidth)).toList(),
+                barRods: g.barRods.map((r) => r.copyWith(width: barWidth)).toList(),
               ))
           .toList();
 
@@ -880,9 +933,14 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
               touchTooltipData: BarTouchTooltipData(
                 getTooltipColor: (group) => Colors.blueGrey[800]!,
                 tooltipBorderRadius: BorderRadius.circular(8),
-                tooltipPadding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                tooltipPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                  // Membaca label kategori berdasarkan urutan indeks batang (0 = Tepat, 1 = Telat, 2 = Absen)
+                  String label = '';
+                  if (rodIndex == 0) label = 'Tepat Waktu';
+                  else if (rodIndex == 1) label = 'Terlambat';
+                  else if (rodIndex == 2) label = 'Tidak Hadir';
+
                   return BarTooltipItem(
                     '${_chartLabels[group.x.toInt()]}\n',
                     GoogleFonts.plusJakartaSans(
@@ -892,9 +950,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                     ),
                     children: <TextSpan>[
                       TextSpan(
-                        text: '${rod.toY.toInt()} Hadir',
+                        text: '$label: ${rod.toY.toInt()}',
                         style: GoogleFonts.plusJakartaSans(
-                          color: Colors.amber[300],
+                          color: rod.color, // Mengikuti warna batang
                           fontWeight: FontWeight.w600,
                           fontSize: 11,
                         ),
@@ -912,10 +970,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                   getTitlesWidget: (double value, TitleMeta meta) {
                     final int index = value.toInt();
                     if (index >= 0 && index < _chartLabels.length) {
-                      if (index % labelStep !=
-                          (_chartLabels.length - 1) % labelStep) {
-                        return const SizedBox();
-                      }
                       return Padding(
                         padding: const EdgeInsets.only(top: 10.0),
                         child: Text(
@@ -952,10 +1006,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                   },
                 ),
               ),
-              topTitles:
-                  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              rightTitles:
-                  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
             ),
             gridData: FlGridData(
               show: true,

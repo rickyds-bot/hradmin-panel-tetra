@@ -67,15 +67,12 @@ class _AdminPageState extends State<AdminPage> {
         }
       }
 
-      // PERBAIKAN ZONA WAKTU (TIMEZONE)
       final DateTime now = DateTime.now();
       final DateTime todayLocal = DateTime(now.year, now.month, now.day);
-
-      // Ubah jam 00:00 lokal ke format UTC yang dikenali Supabase
       final String startOfTodayUtcStr = todayLocal.toUtc().toIso8601String();
       final String todayStr = todayLocal.toIso8601String().split('T')[0];
 
-      // 2. Absen Hari Ini (Check-In) - Menggunakan startOfTodayUtcStr
+      // 2. Absen Hari Ini
       final absensiRes = await Supabase.instance.client
           .from('attendance')
           .select('employee_id')
@@ -86,7 +83,7 @@ class _AdminPageState extends State<AdminPage> {
           .where((id) => nonAdminIds.contains(id))
           .toSet();
 
-      // 3. Cuti Hari Ini (Approved & Sedang Aktif)
+      // 3. Cuti Hari Ini
       final cutiRes = await Supabase.instance.client
           .from('leave_requests')
           .select('employee_id')
@@ -94,7 +91,6 @@ class _AdminPageState extends State<AdminPage> {
           .lte('start_date', todayStr)
           .gte('end_date', todayStr);
 
-      // 3.5 Karyawan aktif yang belum check-in hari ini
       final Set cutiIds = cutiRes.map((e) => e['employee_id']).toSet();
       final tidakHadir = activeEmps
           .where((e) => !uniqueHadir.contains(e['id']))
@@ -138,7 +134,6 @@ class _AdminPageState extends State<AdminPage> {
     }
   }
 
-  // Popup daftar karyawan yang belum check-in hari ini
   void _showTidakHadirDialog() {
     showDialog(
       context: context,
@@ -243,11 +238,12 @@ class _AdminPageState extends State<AdminPage> {
     );
   }
 
+  // --- PERUBAHAN: Ukuran card dibuat lebih kecil ---
   Widget _buildStatCard(String title, String value, IconData icon, Color color,
       {VoidCallback? onTap}) {
     final card = Container(
-      width: 140, // Lebar dibuat compact agar pas di layar HP
-      margin: const EdgeInsets.only(right: 12),
+      width: 115, // Lebar diperkecil dari 140
+      margin: const EdgeInsets.only(right: 10), // Margin lebih rapat
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
@@ -260,16 +256,15 @@ class _AdminPageState extends State<AdminPage> {
         ],
         border: Border.all(color: Colors.grey.shade200),
       ),
-      // ClipRRect agar garis kiri melengkung mengikuti ujung card
       child: ClipRRect(
         borderRadius: BorderRadius.circular(10),
         child: Container(
           decoration: BoxDecoration(
             border: Border(
-              left: BorderSide(color: color, width: 4.0), // Garis warna di kiri
+              left: BorderSide(color: color, width: 3.5), // Garis di kiri
             ),
           ),
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(10), // Padding diperkecil dari 12
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -282,8 +277,7 @@ class _AdminPageState extends State<AdminPage> {
                     child: Text(
                       title.toUpperCase(),
                       style: TextStyle(
-                        fontSize:
-                            9, // Font lebih kecil agar tidak terlalu memakan tempat
+                        fontSize: 8.5, // Font judul diperkecil
                         color: Colors.grey[600],
                         fontWeight: FontWeight.bold,
                         letterSpacing: 0.5,
@@ -292,23 +286,23 @@ class _AdminPageState extends State<AdminPage> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  // Icon diletakkan di kanan atas
+                  const SizedBox(width: 6),
                   Container(
-                    padding: const EdgeInsets.all(6),
+                    padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
                       color: color.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Icon(icon, color: color, size: 16),
+                    child:
+                        Icon(icon, color: color, size: 14), // Ikon diperkecil
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 value,
                 style: const TextStyle(
-                  fontSize: 22, // Angka diperbesar
+                  fontSize: 20, // Angka diperkecil sedikit dari 22
                   fontWeight: FontWeight.bold,
                   color: Colors.black87,
                 ),
@@ -333,7 +327,6 @@ class _AdminPageState extends State<AdminPage> {
 
     return Container(
       decoration: const BoxDecoration(
-        // Background transparan
         color: Colors.transparent,
       ),
       child: SingleChildScrollView(
@@ -397,10 +390,7 @@ class _AdminPageState extends State<AdminPage> {
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Statistik Karyawan di bagian atas (Transparan)
             _buildStatsHeader(),
-
-            // TabBar Menu yang dipindahkan dari AppBar
             Container(
               color: Colors.black,
               child: const TabBar(
@@ -419,8 +409,6 @@ class _AdminPageState extends State<AdminPage> {
                 ],
               ),
             ),
-
-            // TabBar View
             const Expanded(
               child: TabBarView(
                 children: [
@@ -439,7 +427,7 @@ class _AdminPageState extends State<AdminPage> {
 }
 
 // ==========================================
-// TAB 1: KARYAWAN (DENGAN POPUP DETAIL SESUAI WEB)
+// TAB 1: KARYAWAN
 // ==========================================
 class KaryawanTab extends StatefulWidget {
   const KaryawanTab({Key? key}) : super(key: key);
@@ -462,7 +450,8 @@ class _KaryawanTabState extends State<KaryawanTab> {
       _karyawanFuture = Supabase.instance.client
           .from('employees')
           .select()
-          .order('full_name', ascending: true);
+          .order('full_name', ascending: true)
+          .limit(100); // --- PERUBAHAN: Limit 100 baris pencarian ---
     });
   }
 
@@ -576,9 +565,9 @@ class _KaryawanTabState extends State<KaryawanTab> {
   }
 }
 
-// ============================================================================
+// ==========================================
 // POPUP DETAIL / FULL BIODATA KARYAWAN
-// ============================================================================
+// ==========================================
 class _DetailKaryawanDialog extends StatefulWidget {
   final Map<String, dynamic> karyawan;
   const _DetailKaryawanDialog({required this.karyawan});
@@ -916,7 +905,7 @@ class _DetailKaryawanDialogState extends State<_DetailKaryawanDialog> {
 }
 
 // ==========================================
-// TAB 2: AKTIVITAS (DENGAN FILTER TANGGAL, NAMA & LIMIT 30)
+// TAB 2: AKTIVITAS (DENGAN POPUP FOTO & LOKASI)
 // ==========================================
 class AktivitasTab extends StatefulWidget {
   const AktivitasTab({Key? key}) : super(key: key);
@@ -954,8 +943,9 @@ class _AktivitasTabState extends State<AktivitasTab> {
             .lte('created_at', '${endStr}T23:59:59');
       }
 
+      // Limit 100 baris riwayat
       final attResponse =
-          await query.order('created_at', ascending: false).limit(30);
+          await query.order('created_at', ascending: false).limit(100);
 
       if (mounted) {
         setState(() {
@@ -980,6 +970,138 @@ class _AktivitasTabState extends State<AktivitasTab> {
       orElse: () => <String, dynamic>{},
     );
     return match['full_name'] ?? "Tanpa Nama";
+  }
+
+  // --- FITUR BARU: Menampilkan Popup Detail Kehadiran (Foto & Lokasi) ---
+  void _showDetailAktivitas(Map<String, dynamic> item, String namaKaryawan) {
+    final photoUrl =
+        item['photo_url']; // Pastikan nama kolom di Supabase sesuai
+    final lat = item['latitude'];
+    final lng = item['longitude'];
+    final status = item['status'].toString().toUpperCase();
+
+    final DateTime? createdAt =
+        DateTime.tryParse(item['created_at'].toString())?.toLocal();
+    final waktu = createdAt != null
+        ? DateFormat('dd-MM-yyyy HH:mm').format(createdAt)
+        : "-";
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: Text(
+            'Detail Kehadiran',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize:
+                MainAxisSize.min, // Agar tinggi dialog menyesuaikan isi
+            children: [
+              // Foto Kehadiran
+              if (photoUrl != null && photoUrl.toString().isNotEmpty)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    photoUrl.toString(),
+                    height: 150, // Ukuran tidak terlalu besar
+                    width: 150,
+                    fit: BoxFit.cover,
+                    errorBuilder: (c, e, s) => const Icon(Icons.broken_image,
+                        size: 50, color: Colors.grey),
+                  ),
+                )
+              else
+                Container(
+                  height: 100,
+                  width: 100,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.person_off,
+                      size: 50, color: Colors.grey),
+                ),
+              const SizedBox(height: 16),
+
+              // Nama & Waktu
+              Text(
+                namaKaryawan,
+                style:
+                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "$status • $waktu",
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              ),
+
+              const Divider(height: 20),
+
+              // Lokasi yang bisa diklik ke Maps
+              if (lat != null && lng != null)
+                InkWell(
+                  onTap: () async {
+                    final url =
+                        'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+                    final uri = Uri.parse(url);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri,
+                          mode: LaunchMode.externalApplication);
+                    } else {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Tidak dapat membuka Maps')),
+                        );
+                      }
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(6),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 8.0, horizontal: 4.0),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.location_on,
+                            color: Colors.blue, size: 24),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Buka di Google Maps',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          '$lat, $lng',
+                          style:
+                              const TextStyle(fontSize: 10, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                const Text(
+                  'Titik lokasi tidak tersedia',
+                  style: TextStyle(fontSize: 12, color: Colors.red),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Tutup'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -1112,6 +1234,8 @@ class _AktivitasTabState extends State<AktivitasTab> {
                           horizontal: 10,
                           vertical: 0,
                         ),
+                        // --- FUNGSI ONTAP DI SINI ---
+                        onTap: () => _showDetailAktivitas(item, namaKaryawan),
                         leading: CircleAvatar(
                           radius: 14,
                           backgroundColor: isCheckIn
@@ -1155,7 +1279,7 @@ class _AktivitasTabState extends State<AktivitasTab> {
 }
 
 // ==========================================
-// TAB 3: PENGAJUAN (DENGAN FITUR PENCARIAN NAMA & APPROVAL)
+// TAB 3: PENGAJUAN
 // ==========================================
 class PengajuanTab extends StatelessWidget {
   const PengajuanTab({Key? key}) : super(key: key);
@@ -1231,10 +1355,13 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
   Future<void> _refreshData() async {
     final empResponse =
         await Supabase.instance.client.from('employees').select();
+
+    // --- PERUBAHAN: Tambah limit 100 baris ---
     final reqResponse = await Supabase.instance.client
         .from(widget.tableName)
         .select()
-        .order('created_at', ascending: false);
+        .order('created_at', ascending: false)
+        .limit(100);
 
     if (mounted) {
       setState(() {
@@ -1696,6 +1823,21 @@ class _LokasiTabState extends State<LokasiTab> {
     });
   }
 
+  // --- PERUBAHAN: Fungsi untuk buka Google Maps ---
+  Future<void> _openGoogleMaps(double lat, double lng) async {
+    final url = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Tidak dapat membuka Google Maps')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1716,6 +1858,9 @@ class _LokasiTabState extends State<LokasiTab> {
               itemCount: list.length,
               itemBuilder: (c, i) {
                 final item = list[i];
+                final lat = item['latitude']; // Ambil koordinat
+                final lng = item['longitude'];
+
                 return Card(
                   margin: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -1746,9 +1891,26 @@ class _LokasiTabState extends State<LokasiTab> {
                             fontWeight: FontWeight.w500,
                           ),
                         ),
+                        // --- PERUBAHAN: Tampilkan Lat & Long ---
+                        if (lat != null && lng != null)
+                          Text(
+                            "Lat: $lat, Lng: $lng",
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.blueAccent,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                       ],
                     ),
                     isThreeLine: true,
+                    // --- PERUBAHAN: Klik diarahkan ke Maps ---
+                    onTap: () {
+                      if (lat != null && lng != null) {
+                        _openGoogleMaps(double.parse(lat.toString()),
+                            double.parse(lng.toString()));
+                      }
+                    },
                   ),
                 );
               },
