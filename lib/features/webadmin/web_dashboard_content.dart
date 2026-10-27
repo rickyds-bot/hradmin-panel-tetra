@@ -216,7 +216,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           .where((e) => _nonAdminIds.contains(e['employee_id']))
           .length;
 
-      // 6. Data Grafik Kehadiran 10 Hari Terakhir
+      // 6. Data Grafik Kehadiran 30 Hari Terakhir
       await _fetchChartData(_nonAdminIds);
 
       // 7. Ambil Data Top 10 Paling Tepat Waktu (Terpisah ke fungsi tersendiri)
@@ -474,7 +474,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   }
 
   // Jumlah hari yang ditampilkan pada grafik kehadiran.
-  static const int _chartDaysRange = 10;
+  static const int _chartDaysRange = 30;
 
   Future<void> _fetchChartData(List<dynamic> validIds) async {
     final now = DateTime.now();
@@ -742,7 +742,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      '10 Hari Terakhir',
+                                      '$_chartDaysRange Hari Terakhir',
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 11,
                                         color: Colors.grey[500],
@@ -853,106 +853,126 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
   // Komponen Grafik (fl_chart)
   Widget _buildAttendanceChart() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4, right: 8),
-      child: BarChart(
-        BarChartData(
-          alignment: BarChartAlignment.spaceAround,
-          maxY: _maxYChart,
-          minY: 0,
-          barTouchData: BarTouchData(
-            enabled: true,
-            touchTooltipData: BarTouchTooltipData(
-              getTooltipColor: (group) => Colors.blueGrey[800]!,
-              tooltipBorderRadius: BorderRadius.circular(8),
-              tooltipPadding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                return BarTooltipItem(
-                  '${_chartLabels[group.x.toInt()]}\n',
-                  GoogleFonts.plusJakartaSans(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                  children: <TextSpan>[
-                    TextSpan(
-                      text: '${rod.toY.toInt()} Hadir',
-                      style: GoogleFonts.plusJakartaSans(
-                        color: Colors.amber[300],
-                        fontWeight: FontWeight.w600,
-                        fontSize: 11,
-                      ),
+    return LayoutBuilder(builder: (context, constraints) {
+      // Lebar bar menyesuaikan lebar kartu & jumlah hari supaya tetap rapat.
+      final int n =
+          _chartLabels.isEmpty ? _chartDaysRange : _chartLabels.length;
+      final double slot = (constraints.maxWidth - 40) / n;
+      final double barWidth = (slot * 0.62).clamp(5.0, 22.0).toDouble();
+      // Label tanggal ditampilkan berselang agar tidak saling menimpa.
+      final int labelStep = slot >= 46 ? 1 : (46 / slot).ceil();
+      final List<BarChartGroupData> groups = _attendanceChartData
+          .map((g) => g.copyWith(
+                barRods:
+                    g.barRods.map((r) => r.copyWith(width: barWidth)).toList(),
+              ))
+          .toList();
+
+      return Padding(
+        padding: const EdgeInsets.only(top: 4, right: 8),
+        child: BarChart(
+          BarChartData(
+            alignment: BarChartAlignment.spaceAround,
+            maxY: _maxYChart,
+            minY: 0,
+            barTouchData: BarTouchData(
+              enabled: true,
+              touchTooltipData: BarTouchTooltipData(
+                getTooltipColor: (group) => Colors.blueGrey[800]!,
+                tooltipBorderRadius: BorderRadius.circular(8),
+                tooltipPadding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                  return BarTooltipItem(
+                    '${_chartLabels[group.x.toInt()]}\n',
+                    GoogleFonts.plusJakartaSans(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
                     ),
-                  ],
-                );
-              },
-            ),
-          ),
-          titlesData: FlTitlesData(
-            show: true,
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (double value, TitleMeta meta) {
-                  final int index = value.toInt();
-                  if (index >= 0 && index < _chartLabels.length) {
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 10.0),
-                      child: Text(
-                        _chartLabels[index],
+                    children: <TextSpan>[
+                      TextSpan(
+                        text: '${rod.toY.toInt()} Hadir',
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 10,
-                          color: Colors.grey[500],
+                          color: Colors.amber[300],
                           fontWeight: FontWeight.w600,
+                          fontSize: 11,
                         ),
                       ),
-                    );
-                  }
-                  return const SizedBox();
-                },
-                reservedSize: 30,
-              ),
-            ),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 32,
-                interval: _maxYChart > 20 ? 10 : 2,
-                getTitlesWidget: (value, meta) {
-                  if (value == meta.max) return const SizedBox();
-                  return Text(
-                    value.toInt().toString(),
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 10,
-                      color: Colors.grey[400],
-                      fontWeight: FontWeight.w500,
-                    ),
-                    textAlign: TextAlign.left,
+                    ],
                   );
                 },
               ),
             ),
-            topTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            horizontalInterval: _maxYChart > 20 ? 10 : 2,
-            getDrawingHorizontalLine: (value) => FlLine(
-              color: Colors.grey[200],
-              strokeWidth: 1,
-              dashArray: [6, 4],
+            titlesData: FlTitlesData(
+              show: true,
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  getTitlesWidget: (double value, TitleMeta meta) {
+                    final int index = value.toInt();
+                    if (index >= 0 && index < _chartLabels.length) {
+                      if (index % labelStep !=
+                          (_chartLabels.length - 1) % labelStep) {
+                        return const SizedBox();
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 10.0),
+                        child: Text(
+                          _chartLabels[index],
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 10,
+                            color: Colors.grey[500],
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      );
+                    }
+                    return const SizedBox();
+                  },
+                  reservedSize: 30,
+                ),
+              ),
+              leftTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 32,
+                  interval: _maxYChart > 20 ? 10 : 2,
+                  getTitlesWidget: (value, meta) {
+                    if (value == meta.max) return const SizedBox();
+                    return Text(
+                      value.toInt().toString(),
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 10,
+                        color: Colors.grey[400],
+                        fontWeight: FontWeight.w500,
+                      ),
+                      textAlign: TextAlign.left,
+                    );
+                  },
+                ),
+              ),
+              topTitles:
+                  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles:
+                  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
             ),
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              horizontalInterval: _maxYChart > 20 ? 10 : 2,
+              getDrawingHorizontalLine: (value) => FlLine(
+                color: Colors.grey[200],
+                strokeWidth: 1,
+                dashArray: [6, 4],
+              ),
+            ),
+            borderData: FlBorderData(show: false),
+            barGroups: groups,
           ),
-          borderData: FlBorderData(show: false),
-          barGroups: _attendanceChartData,
         ),
-      ),
-    );
+      );
+    });
   }
 
   Widget _buildCalendar() {
