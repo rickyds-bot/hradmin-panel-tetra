@@ -521,8 +521,26 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         if (countAbsen < 0) countAbsen = 0;
       }
 
+      const List<String> bulanIndoSingkat = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'Mei',
+        'Jun',
+        'Jul',
+        'Agt',
+        'Sep',
+        'Okt',
+        'Nov',
+        'Des'
+      ];
+      String tgl =
+          dateObj.day.toString().padLeft(2, '0'); // Contoh format: 01, 09, 15
+      String bln = bulanIndoSingkat[dateObj.month - 1];
+
       tempDotData.add({
-        'dateLabel': DateFormat('dd MMM').format(dateObj),
+        'dateLabel': '$tgl $bln',
         'absen': countAbsen,
         'telat': countTelat,
         'tepat': countTepat,
