@@ -454,7 +454,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     }
   }
 
-  static const int _chartDaysRange = 10;
+  static const int _chartDaysRange = 12;
 
   Future<void> _fetchChartData(List<dynamic> validIds) async {
     final now = DateTime.now();
