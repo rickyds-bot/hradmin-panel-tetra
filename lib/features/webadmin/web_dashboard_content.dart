@@ -551,16 +551,20 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       tempLabels.add(DateFormat('dd MMM').format(dateObj));
 
-      // Bar dibuat dulu tanpa ukuran lebar spesifik di sini,
-      // pengaturan lebar (width) yang berbeda akan diaplikasikan di bagian _buildAttendanceChart
+      // URUTAN BAR SESUAI PERMINTAAN:
+      // 0: Tidak Hadir (Biru)
+      // 1: Terlambat (Kuning)
+      // 2: Tepat Waktu (Hijau)
+      // 3: Total Hadir (Ungu)
+      // 4: Total Karyawan (Biru Muda Tipis)
       tempChartData.add(
         BarChartGroupData(
           x: index,
           barsSpace: 2,
           barRods: [
             BarChartRodData(
-              toY: countTepat,
-              color: const Color(0xFF10B981),
+              toY: countAbsen,
+              color: const Color(0xFF3B82F6),
               borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(3), topRight: Radius.circular(3)),
             ),
@@ -571,20 +575,20 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                   topLeft: Radius.circular(3), topRight: Radius.circular(3)),
             ),
             BarChartRodData(
-              toY: countTotalHadir,
-              color: const Color(0xFF8B5CF6), // Ungu untuk Total Hadir
+              toY: countTepat,
+              color: const Color(0xFF10B981),
               borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(3), topRight: Radius.circular(3)),
             ),
             BarChartRodData(
-              toY: countAbsen,
-              color: const Color(0xFF3B82F6),
+              toY: countTotalHadir,
+              color: const Color(0xFF8B5CF6),
               borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(3), topRight: Radius.circular(3)),
             ),
             BarChartRodData(
               toY: _totalKaryawan.toDouble(),
-              color: const Color(0xFFBAE6FD), // Biru muda tipis
+              color: const Color(0xFFBAE6FD),
               borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(3), topRight: Radius.circular(3)),
             ),
@@ -793,20 +797,20 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                   ],
                                 ),
                               ),
-                              // BAGIAN LEGEND (Ditambahkan Total Hadir)
+                              // BAGIAN LEGEND (Urutan disesuaikan: Tidak Hadir, Terlambat, Tepat Waktu, Total Hadir, Total Karyawan)
                               Wrap(
                                 spacing: 12,
                                 runSpacing: 4,
                                 alignment: WrapAlignment.end,
                                 children: [
                                   _buildChartLegend(
-                                      const Color(0xFF10B981), 'Tepat Waktu'),
+                                      const Color(0xFF3B82F6), 'Tidak Hadir'),
                                   _buildChartLegend(
                                       const Color(0xFFF59E0B), 'Terlambat'),
                                   _buildChartLegend(
-                                      const Color(0xFF8B5CF6), 'Total Hadir'),
+                                      const Color(0xFF10B981), 'Tepat Waktu'),
                                   _buildChartLegend(
-                                      const Color(0xFF3B82F6), 'Tidak Hadir'),
+                                      const Color(0xFF8B5CF6), 'Total Hadir'),
                                   _buildChartLegend(const Color(0xFFBAE6FD),
                                       'Total Karyawan'),
                                 ],
@@ -940,7 +944,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           _chartLabels.isEmpty ? _chartDaysRange : _chartLabels.length;
       final double slot = (constraints.maxWidth - 40) / n;
 
-      // Ukuran batang normal (Tepat waktu, Terlambat, Tidak Hadir)
+      // Ukuran batang normal (Tidak Hadir, Terlambat, Tepat Waktu)
       final double baseBarWidth = (slot * 0.12).clamp(4.0, 12.0).toDouble();
       // Ukuran batang lebih tebal/lebar (Total Hadir, Total Karyawan)
       final double wideBarWidth = (slot * 0.22).clamp(6.0, 20.0).toDouble();
@@ -951,9 +955,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                   final int index = entry.key;
                   final BarChartRodData rod = entry.value;
 
-                  // Index 2 = Total Hadir, Index 4 = Total Karyawan
+                  // Index 3 = Total Hadir, Index 4 = Total Karyawan
                   final double finalWidth =
-                      (index == 2 || index == 4) ? wideBarWidth : baseBarWidth;
+                      (index == 3 || index == 4) ? wideBarWidth : baseBarWidth;
                   return rod.copyWith(width: finalWidth);
                 }).toList(),
               ))
@@ -974,16 +978,16 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 tooltipPadding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                  // Membaca label kategori untuk 5 bar
+                  // Membaca label kategori sesuai urutan bar baru
                   String label = '';
                   if (rodIndex == 0)
-                    label = 'Tepat Waktu';
+                    label = 'Tidak Hadir';
                   else if (rodIndex == 1)
                     label = 'Terlambat';
                   else if (rodIndex == 2)
-                    label = 'Total Hadir';
+                    label = 'Tepat Waktu';
                   else if (rodIndex == 3)
-                    label = 'Tidak Hadir';
+                    label = 'Total Hadir';
                   else if (rodIndex == 4) label = 'Total Karyawan';
 
                   return BarTooltipItem(
