@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 class WebDashboardContent extends StatefulWidget {
@@ -28,10 +27,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   int _totalCutiHariIni = 0;
   int _totalPendingLembur = 0;
 
-  // Data Grafik
-  List<BarChartGroupData> _attendanceChartData = [];
-  List<String> _chartLabels = [];
-  double _maxYChart = 10;
+  // Data Grafik (Dot Chart Custom)
+  List<Map<String, dynamic>> _dotChartData = [];
 
   // Data Kalender & Hari Libur
   DateTime _focusedDay = DateTime.now();
@@ -56,8 +53,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   DateTime _topLateCurrentDate =
       DateTime(DateTime.now().year, DateTime.now().month, 1);
   bool _isLoadingTopLate = false;
-  List<dynamic> _nonAdminIds =
-      []; // Disimpan di level class agar bisa digunakan ulang
+  List<dynamic> _nonAdminIds = [];
 
   @override
   void initState() {
@@ -216,10 +212,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           .where((e) => _nonAdminIds.contains(e['employee_id']))
           .length;
 
-      // 6. Data Grafik Tren Kehadiran (Rentang hari yang telah disesuaikan)
+      // 6. Data Grafik Tren Kehadiran
       await _fetchChartData(_nonAdminIds);
 
-      // 7. Ambil Data Top 10 Paling Tepat Waktu (Terpisah ke fungsi tersendiri)
+      // 7. Ambil Data Top 10 Paling Tepat Waktu
       await _fetchTop10Data();
 
       // 8. Top 10 Paling Sering Terlambat
@@ -231,9 +227,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     }
   }
 
-  // =========================================================
-  // Ambil Data Khusus Top 10
-  // =========================================================
   Future<void> _fetchTop10Data() async {
     setState(() => _isLoadingTop10 = true);
     try {
@@ -261,7 +254,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       ];
       _topEmployeesPeriod = '${namaBulan[firstDay.month - 1]} ${firstDay.year}';
 
-      // --- PERUBAHAN: Ambil data jabatan untuk mengecualikan Driver, OB, & CS ---
       final empRes = await Supabase.instance.client
           .from('employees')
           .select('id, jabatan_name');
@@ -277,7 +269,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           excludedIds.add(e['id']);
         }
       }
-      // --------------------------------------------------------------------------
 
       final allAttRes = await Supabase.instance.client
           .from('attendance')
@@ -290,12 +281,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       for (var r in allAttRes) {
         final eId = r['employee_id'];
 
-        // Hanya check-in yang dihitung (check-out dini hari bukan "tepat waktu")
         if ((r['status'] ?? '').toString().toLowerCase().contains('out')) {
           continue;
         }
 
-        // --- PERUBAHAN: Filter agar tidak menghitung admin dan jabatan yang dieksklusi ---
         if (_nonAdminIds.contains(eId) && !excludedIds.contains(eId)) {
           final String eIdStr = eId.toString();
           final createdAtStr = r['created_at'];
@@ -306,7 +295,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                   DateTime.parse(createdAtStr.toString()).toLocal();
               int totalMinutes =
                   checkInTimeLocal.hour * 60 + checkInTimeLocal.minute;
-              const int limitMinutes = 8 * 60 + 45; // 08:45 Waktu Lokal
+              const int limitMinutes = 8 * 60 + 45;
 
               if (totalMinutes <= limitMinutes) {
                 onTimeCounts[eIdStr] = (onTimeCounts[eIdStr] ?? 0) + 1;
@@ -350,9 +339,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     }
   }
 
-  // =========================================================
-  // Ambil Data Top 10 Paling Sering Terlambat
-  // =========================================================
   static const List<String> _namaBulanTop = [
     'Januari',
     'Februari',
@@ -377,7 +363,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           _topLateCurrentDate.month + 1, 0, 23, 59, 59);
       _topLatePeriod = '${_namaBulanTop[firstDay.month - 1]} ${firstDay.year}';
 
-      // Jabatan yang dikecualikan sama seperti Top 10 Tepat Waktu
       final empRes = await Supabase.instance.client
           .from('employees')
           .select('id, jabatan_name');
@@ -399,13 +384,11 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           .gte('created_at', firstDay.toUtc().toIso8601String())
           .lte('created_at', lastDay.toUtc().toIso8601String());
 
-      // id karyawan -> (tanggal -> menit check-in paling awal pada tanggal itu)
       final Map<String, Map<String, int>> firstCheckIn = {};
       for (var r in attRes) {
         final eId = r['employee_id'];
         if (!_nonAdminIds.contains(eId) || excludedIds.contains(eId)) continue;
 
-        // Hanya check-in
         if ((r['status'] ?? '').toString().toLowerCase().contains('out')) {
           continue;
         }
@@ -431,7 +414,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         }
       }
 
-      const int limitMinutes = 8 * 60 + 45; // 08:45
+      const int limitMinutes = 8 * 60 + 45;
       final Map<String, int> lateCounts = {};
       firstCheckIn.forEach((eId, days) {
         final n = days.values.where((m) => m > limitMinutes).length;
@@ -471,7 +454,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     }
   }
 
-  // DIUBAH MENJADI 10 HARI
   static const int _chartDaysRange = 10;
 
   Future<void> _fetchChartData(List<dynamic> validIds) async {
@@ -485,7 +467,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         .select('employee_id, created_at, status')
         .gte('created_at', startOfRangeUtcStr);
 
-    // Inisialisasi pengelompokan harian
     Map<String, Map<String, Set<dynamic>>> dailyData = {};
     for (int i = 0; i < _chartDaysRange; i++) {
       final d = startOfRangeLocal.add(Duration(days: i));
@@ -495,7 +476,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       };
     }
 
-    // Proses pemisahan status kehadiran
     for (var row in weeklyRes) {
       final empId = row['employee_id'];
       if (!validIds.contains(empId)) continue;
@@ -511,7 +491,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
           if (dailyData.containsKey(dateStr)) {
             int totalMinutes = localDate.hour * 60 + localDate.minute;
-            const int limitMinutes = 8 * 60 + 45; // Batas 08:45
+            const int limitMinutes = 8 * 60 + 45;
 
             if (totalMinutes <= limitMinutes) {
               dailyData[dateStr]!['tepat_waktu']!.add(empId);
@@ -523,15 +503,12 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       }
     }
 
-    List<BarChartGroupData> tempChartData = [];
-    List<String> tempLabels = [];
-    double maxVal = 0;
-    int index = 0;
+    List<Map<String, dynamic>> tempDotData = [];
 
     dailyData.forEach((dateStr, stats) {
       final double countTepat = stats['tepat_waktu']!.length.toDouble();
       final double countTelat = stats['terlambat']!.length.toDouble();
-      final double countTotalHadir = countTepat + countTelat; // TOTAL HADIR
+      final double countTotalHadir = countTepat + countTelat;
 
       final dateObj = DateTime.parse(dateStr);
       bool isWeekend = dateObj.weekday == DateTime.saturday ||
@@ -544,66 +521,17 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         if (countAbsen < 0) countAbsen = 0;
       }
 
-      if (countTepat > maxVal) maxVal = countTepat;
-      if (countTelat > maxVal) maxVal = countTelat;
-      if (countTotalHadir > maxVal) maxVal = countTotalHadir;
-      if (countAbsen > maxVal) maxVal = countAbsen;
-
-      tempLabels.add(DateFormat('dd MMM').format(dateObj));
-
-      // URUTAN BAR SESUAI PERMINTAAN:
-      // 0: Tidak Hadir (Biru)
-      // 1: Terlambat (Kuning)
-      // 2: Tepat Waktu (Hijau)
-      // 3: Total Hadir (Ungu)
-      // 4: Total Karyawan (Biru Muda Tipis)
-      tempChartData.add(
-        BarChartGroupData(
-          x: index,
-          barsSpace: 2,
-          barRods: [
-            BarChartRodData(
-              toY: countAbsen,
-              color: const Color(0xFF3B82F6),
-              borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(3), topRight: Radius.circular(3)),
-            ),
-            BarChartRodData(
-              toY: countTelat,
-              color: const Color(0xFFF59E0B),
-              borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(3), topRight: Radius.circular(3)),
-            ),
-            BarChartRodData(
-              toY: countTepat,
-              color: const Color(0xFF10B981),
-              borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(3), topRight: Radius.circular(3)),
-            ),
-            BarChartRodData(
-              toY: countTotalHadir,
-              color: const Color(0xFF8B5CF6),
-              borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(3), topRight: Radius.circular(3)),
-            ),
-            BarChartRodData(
-              toY: _totalKaryawan.toDouble(),
-              color: const Color(0xFFBAE6FD),
-              borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(3), topRight: Radius.circular(3)),
-            ),
-          ],
-        ),
-      );
-      index++;
+      tempDotData.add({
+        'dateLabel': DateFormat('dd MMM').format(dateObj),
+        'absen': countAbsen,
+        'telat': countTelat,
+        'tepat': countTepat,
+        'hadir': countTotalHadir,
+        'total': _totalKaryawan.toDouble(),
+      });
     });
 
-    _attendanceChartData = tempChartData;
-    _chartLabels = tempLabels;
-
-    final double targetMax =
-        _totalKaryawan > 0 ? _totalKaryawan.toDouble() : maxVal;
-    _maxYChart = (targetMax * 1.2).clamp(10, double.infinity);
+    _dotChartData = tempDotData;
   }
 
   bool _isPublicHoliday(DateTime day) {
@@ -797,7 +725,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                   ],
                                 ),
                               ),
-                              // BAGIAN LEGEND (Urutan disesuaikan: Tidak Hadir, Terlambat, Tepat Waktu, Total Hadir, Total Karyawan)
+                              // BAGIAN LEGEND:
                               Wrap(
                                 spacing: 12,
                                 runSpacing: 4,
@@ -811,8 +739,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                       const Color(0xFF10B981), 'Tepat Waktu'),
                                   _buildChartLegend(
                                       const Color(0xFF8B5CF6), 'Total Hadir'),
-                                  _buildChartLegend(const Color(0xFFBAE6FD),
-                                      'Total Karyawan'),
+                                  _buildChartLegend(
+                                      Colors.grey[300]!, 'Total Karyawan'),
                                 ],
                               ),
                             ],
@@ -820,7 +748,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                           const SizedBox(height: 20),
                           Divider(height: 1, color: Colors.grey[100]),
                           const SizedBox(height: 20),
-                          Expanded(child: _buildAttendanceChart()),
+                          Expanded(child: _buildDotAttendanceChart()),
                         ],
                       ),
                     );
@@ -937,145 +865,105 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Komponen Grafik (fl_chart) dengan ukuran bar yang dinamis
-  Widget _buildAttendanceChart() {
-    return LayoutBuilder(builder: (context, constraints) {
-      final int n =
-          _chartLabels.isEmpty ? _chartDaysRange : _chartLabels.length;
-      final double slot = (constraints.maxWidth - 40) / n;
+  // =========================================================
+  // KOMPONEN GRAFIK DOT-CHART CUSTOM BARU
+  // =========================================================
+  Widget _buildDotAttendanceChart() {
+    if (_dotChartData.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-      // Ukuran batang normal (Tidak Hadir, Terlambat, Tepat Waktu)
-      final double baseBarWidth = (slot * 0.12).clamp(4.0, 12.0).toDouble();
-      // Ukuran batang lebih tebal/lebar (Total Hadir, Total Karyawan)
-      final double wideBarWidth = (slot * 0.22).clamp(6.0, 20.0).toDouble();
-
-      final List<BarChartGroupData> groups = _attendanceChartData
-          .map((g) => g.copyWith(
-                barRods: g.barRods.asMap().entries.map((entry) {
-                  final int index = entry.key;
-                  final BarChartRodData rod = entry.value;
-
-                  // Index 3 = Total Hadir, Index 4 = Total Karyawan
-                  final double finalWidth =
-                      (index == 3 || index == 4) ? wideBarWidth : baseBarWidth;
-                  return rod.copyWith(width: finalWidth);
-                }).toList(),
-              ))
-          .toList();
-
-      return Padding(
-        padding: const EdgeInsets.only(top: 4, right: 8),
-        child: BarChart(
-          BarChartData(
-            alignment: BarChartAlignment.spaceAround,
-            maxY: _maxYChart,
-            minY: 0,
-            barTouchData: BarTouchData(
-              enabled: true,
-              touchTooltipData: BarTouchTooltipData(
-                getTooltipColor: (group) => Colors.blueGrey[800]!,
-                tooltipBorderRadius: BorderRadius.circular(8),
-                tooltipPadding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                  // Membaca label kategori sesuai urutan bar baru
-                  String label = '';
-                  if (rodIndex == 0)
-                    label = 'Tidak Hadir';
-                  else if (rodIndex == 1)
-                    label = 'Terlambat';
-                  else if (rodIndex == 2)
-                    label = 'Tepat Waktu';
-                  else if (rodIndex == 3)
-                    label = 'Total Hadir';
-                  else if (rodIndex == 4) label = 'Total Karyawan';
-
-                  return BarTooltipItem(
-                    '${_chartLabels[group.x.toInt()]}\n',
-                    GoogleFonts.plusJakartaSans(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                    children: <TextSpan>[
-                      TextSpan(
-                        text: '$label: ${rod.toY.toInt()}',
-                        style: GoogleFonts.plusJakartaSans(
-                          color: rod.color,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 11,
-                        ),
-                      ),
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, right: 8, bottom: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: _dotChartData.map((data) {
+          return Tooltip(
+            message: '${data['dateLabel']}\n'
+                'Tidak Hadir: ${data['absen'].toInt()}\n'
+                'Terlambat: ${data['telat'].toInt()}\n'
+                'Tepat Waktu: ${data['tepat'].toInt()}\n'
+                'Total Hadir: ${data['hadir'].toInt()}\n'
+                'Total Karyawan: ${data['total'].toInt()}',
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blueGrey[900],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            textStyle: GoogleFonts.plusJakartaSans(
+              color: Colors.white,
+              fontSize: 12,
+              height: 1.5,
+            ),
+            preferBelow: false,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _buildSingleDotBar(data['absen'], data['total'],
+                          const Color(0xFF3B82F6)),
+                      const SizedBox(width: 4),
+                      _buildSingleDotBar(data['telat'], data['total'],
+                          const Color(0xFFF59E0B)),
+                      const SizedBox(width: 4),
+                      _buildSingleDotBar(data['tepat'], data['total'],
+                          const Color(0xFF10B981)),
+                      const SizedBox(width: 4),
+                      _buildSingleDotBar(data['hadir'], data['total'],
+                          const Color(0xFF8B5CF6)),
                     ],
-                  );
-                },
-              ),
-            ),
-            titlesData: FlTitlesData(
-              show: true,
-              bottomTitles: AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: true,
-                  getTitlesWidget: (double value, TitleMeta meta) {
-                    final int index = value.toInt();
-                    if (index >= 0 && index < _chartLabels.length) {
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 10.0),
-                        child: Text(
-                          _chartLabels[index],
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 10,
-                            color: Colors.grey[500],
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      );
-                    }
-                    return const SizedBox();
-                  },
-                  reservedSize: 30,
+                  ),
                 ),
-              ),
-              leftTitles: AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: true,
-                  reservedSize: 32,
-                  interval: _maxYChart > 20 ? 10 : 2,
-                  getTitlesWidget: (value, meta) {
-                    if (value == meta.max) return const SizedBox();
-                    return Text(
-                      value.toInt().toString(),
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 10,
-                        color: Colors.grey[400],
-                        fontWeight: FontWeight.w500,
-                      ),
-                      textAlign: TextAlign.left,
-                    );
-                  },
+                const SizedBox(height: 12),
+                Text(
+                  data['dateLabel'],
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 10,
+                    color: Colors.grey[500],
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              topTitles:
-                  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              rightTitles:
-                  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              ],
             ),
-            gridData: FlGridData(
-              show: true,
-              drawVerticalLine: false,
-              horizontalInterval: _maxYChart > 20 ? 10 : 2,
-              getDrawingHorizontalLine: (value) => FlLine(
-                color: Colors.grey[200],
-                strokeWidth: 1,
-                dashArray: [6, 4],
-              ),
-            ),
-            borderData: FlBorderData(show: false),
-            barGroups: groups,
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // Builder untuk satu tiang/kolom dots
+  Widget _buildSingleDotBar(double value, double total, Color activeColor) {
+    int maxVerticalDots =
+        18; // Menentukan tinggi maksimal dots agar proporsional
+    int actualDots = total > maxVerticalDots ? maxVerticalDots : total.toInt();
+    if (actualDots <= 0) actualDots = 1; // Mencegah eror kalkulasi jika total=0
+
+    double scale = actualDots / (total <= 0 ? 1 : total);
+    int activeDotsCount = (value * scale).round();
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: List.generate(actualDots, (index) {
+        // Render dari bawah ke atas
+        int reverseIndex = actualDots - 1 - index;
+        bool isActive = reverseIndex < activeDotsCount;
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 2.5),
+          width: 8, // Ukuran dot
+          height: 8,
+          decoration: BoxDecoration(
+            color: isActive
+                ? activeColor
+                : Colors.grey[200], // Grey untuk slot karyawan kosong
+            shape: BoxShape.circle,
           ),
-        ),
-      );
-    });
+        );
+      }),
+    );
   }
 
   Widget _buildCalendar() {
@@ -1153,7 +1041,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Popup daftar karyawan yang belum check-in hari ini
   void _showTidakHadirDialog() {
     showDialog(
       context: context,
@@ -1364,10 +1251,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // =========================================================
-  // Kartu Top 10 (format sama untuk Tepat Waktu & Terlambat),
-  // dengan kontrol geser bulan sebelumnya / berikutnya
-  // =========================================================
   Widget _buildTopEmployeesCard() {
     return _buildRankCard(
       title: 'Top 10 Paling Tepat Waktu',
@@ -1476,7 +1359,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 ),
               ),
               const SizedBox(width: 8),
-              // KONTROL GESER BULAN
               Row(
                 children: [
                   IconButton(
@@ -1504,7 +1386,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                       color: isCurrentMonth ? Colors.grey[300] : Colors.black87,
                     ),
                     onPressed: () {
-                      // Mencegah untuk melihat bulan di masa depan
                       if (isCurrentMonth) return;
                       onNext();
                     },
@@ -1522,8 +1403,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             ),
           ),
           const Divider(height: 20),
-
-          // TAMPILAN LIST (Dengan Indikator Loading khusus)
           Expanded(
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
@@ -1626,7 +1505,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Widget daftar Karyawan Kontrak Akan Berakhir
   Widget _buildExpiringContractsCard() {
     return Container(
       width: double.infinity,
