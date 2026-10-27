@@ -216,7 +216,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           .where((e) => _nonAdminIds.contains(e['employee_id']))
           .length;
 
-      // 6. Data Grafik Kehadiran (Rentang hari yang telah disesuaikan)
+      // 6. Data Grafik Tren Kehadiran (Rentang hari yang telah disesuaikan)
       await _fetchChartData(_nonAdminIds);
 
       // 7. Ambil Data Top 10 Paling Tepat Waktu (Terpisah ke fungsi tersendiri)
