@@ -216,7 +216,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           .where((e) => _nonAdminIds.contains(e['employee_id']))
           .length;
 
-      // 6. Data Grafik Kehadiran 15 Hari Terakhir
+      // 6. Data Grafik Kehadiran (Rentang hari yang telah disesuaikan)
       await _fetchChartData(_nonAdminIds);
 
       // 7. Ambil Data Top 10 Paling Tepat Waktu (Terpisah ke fungsi tersendiri)
@@ -471,7 +471,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     }
   }
 
-  static const int _chartDaysRange = 15;
+  // DIUBAH MENJADI 10 HARI
+  static const int _chartDaysRange = 10;
 
   Future<void> _fetchChartData(List<dynamic> validIds) async {
     final now = DateTime.now();
@@ -530,6 +531,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     dailyData.forEach((dateStr, stats) {
       final double countTepat = stats['tepat_waktu']!.length.toDouble();
       final double countTelat = stats['terlambat']!.length.toDouble();
+      final double countTotalHadir = countTepat + countTelat; // TOTAL HADIR
 
       final dateObj = DateTime.parse(dateStr);
       bool isWeekend = dateObj.weekday == DateTime.saturday ||
@@ -538,17 +540,19 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       double countAbsen = 0;
       if (!isWeekend && !isHoliday) {
-        countAbsen = (_totalKaryawan - (countTepat + countTelat)).toDouble();
+        countAbsen = (_totalKaryawan - countTotalHadir).toDouble();
         if (countAbsen < 0) countAbsen = 0;
       }
 
       if (countTepat > maxVal) maxVal = countTepat;
       if (countTelat > maxVal) maxVal = countTelat;
+      if (countTotalHadir > maxVal) maxVal = countTotalHadir;
       if (countAbsen > maxVal) maxVal = countAbsen;
 
       tempLabels.add(DateFormat('dd MMM').format(dateObj));
 
-      // 4 Bar per grup (Tepat, Telat, Absen, Total Karyawan)
+      // Bar dibuat dulu tanpa ukuran lebar spesifik di sini,
+      // pengaturan lebar (width) yang berbeda akan diaplikasikan di bagian _buildAttendanceChart
       tempChartData.add(
         BarChartGroupData(
           x: index,
@@ -567,6 +571,12 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                   topLeft: Radius.circular(3), topRight: Radius.circular(3)),
             ),
             BarChartRodData(
+              toY: countTotalHadir,
+              color: const Color(0xFF8B5CF6), // Ungu untuk Total Hadir
+              borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(3), topRight: Radius.circular(3)),
+            ),
+            BarChartRodData(
               toY: countAbsen,
               color: const Color(0xFF3B82F6),
               borderRadius: const BorderRadius.only(
@@ -574,8 +584,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
             ),
             BarChartRodData(
               toY: _totalKaryawan.toDouble(),
-              color:
-                  const Color(0xFFBAE6FD), // Biru muda tipis (Tailwind sky-200)
+              color: const Color(0xFFBAE6FD), // Biru muda tipis
               borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(3), topRight: Radius.circular(3)),
             ),
@@ -765,7 +774,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Grafik Kehadiran',
+                                      'Grafik Tren Kehadiran',
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 14,
                                         color: const Color(0xFF1E293B),
@@ -784,7 +793,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                   ],
                                 ),
                               ),
-                              // BAGIAN LEGEND (Ditambahkan Total Karyawan)
+                              // BAGIAN LEGEND (Ditambahkan Total Hadir)
                               Wrap(
                                 spacing: 12,
                                 runSpacing: 4,
@@ -794,6 +803,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                       const Color(0xFF10B981), 'Tepat Waktu'),
                                   _buildChartLegend(
                                       const Color(0xFFF59E0B), 'Terlambat'),
+                                  _buildChartLegend(
+                                      const Color(0xFF8B5CF6), 'Total Hadir'),
                                   _buildChartLegend(
                                       const Color(0xFF3B82F6), 'Tidak Hadir'),
                                   _buildChartLegend(const Color(0xFFBAE6FD),
@@ -922,19 +933,29 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Komponen Grafik (fl_chart) dengan 4 bar kategori
+  // Komponen Grafik (fl_chart) dengan ukuran bar yang dinamis
   Widget _buildAttendanceChart() {
     return LayoutBuilder(builder: (context, constraints) {
       final int n =
           _chartLabels.isEmpty ? _chartDaysRange : _chartLabels.length;
       final double slot = (constraints.maxWidth - 40) / n;
-      // Lebar batang diperkecil sedikit menjadi 0.18 agar 4 bar muat di satu slot
-      final double barWidth = (slot * 0.18).clamp(3.0, 10.0).toDouble();
+
+      // Ukuran batang normal (Tepat waktu, Terlambat, Tidak Hadir)
+      final double baseBarWidth = (slot * 0.12).clamp(4.0, 12.0).toDouble();
+      // Ukuran batang lebih tebal/lebar (Total Hadir, Total Karyawan)
+      final double wideBarWidth = (slot * 0.22).clamp(6.0, 20.0).toDouble();
 
       final List<BarChartGroupData> groups = _attendanceChartData
           .map((g) => g.copyWith(
-                barRods:
-                    g.barRods.map((r) => r.copyWith(width: barWidth)).toList(),
+                barRods: g.barRods.asMap().entries.map((entry) {
+                  final int index = entry.key;
+                  final BarChartRodData rod = entry.value;
+
+                  // Index 2 = Total Hadir, Index 4 = Total Karyawan
+                  final double finalWidth =
+                      (index == 2 || index == 4) ? wideBarWidth : baseBarWidth;
+                  return rod.copyWith(width: finalWidth);
+                }).toList(),
               ))
           .toList();
 
@@ -953,15 +974,17 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 tooltipPadding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                  // Membaca label kategori untuk 4 bar
+                  // Membaca label kategori untuk 5 bar
                   String label = '';
                   if (rodIndex == 0)
                     label = 'Tepat Waktu';
                   else if (rodIndex == 1)
                     label = 'Terlambat';
                   else if (rodIndex == 2)
+                    label = 'Total Hadir';
+                  else if (rodIndex == 3)
                     label = 'Tidak Hadir';
-                  else if (rodIndex == 3) label = 'Total Karyawan';
+                  else if (rodIndex == 4) label = 'Total Karyawan';
 
                   return BarTooltipItem(
                     '${_chartLabels[group.x.toInt()]}\n',
