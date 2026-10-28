@@ -27,7 +27,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   int _totalCutiHariIni = 0;
   int _totalPendingLembur = 0;
 
-  // Data Grafik (Dot Chart Custom)
+  // Data Grafik (Square Chart Custom)
   List<Map<String, dynamic>> _dotChartData = [];
 
   // Data Kalender & Hari Libur
@@ -39,7 +39,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   List<Map<String, dynamic>> _expiringContracts = [];
 
   // =========================================================
-  // Variabel Baru Khusus Top 10 Karyawan Paling Tepat Waktu
+  // Variabel Khusus Top 10 Karyawan Paling Tepat Waktu
   // =========================================================
   List<Map<String, dynamic>> _topEmployees = [];
   String _topEmployeesPeriod = '';
@@ -93,6 +93,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
       final DateTime now = DateTime.now();
       final DateTime todayLocal = DateTime(now.year, now.month, now.day);
+      final String todayStr = DateFormat('yyyy-MM-dd').format(todayLocal);
 
       for (var emp in karyawanRes) {
         final role = (emp['role'] ?? '').toString().trim().toLowerCase();
@@ -160,7 +161,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       _totalKontrak = kontrak;
       _totalMagang = magang;
 
-      // 3. Absen Hari Ini (Check-In)
+      // 3. Absen Hari Ini (Check-In) - Disinkronkan dengan logika grafik
       final String startOfTodayUtcStr = todayLocal.toUtc().toIso8601String();
       final absensiRes = await Supabase.instance.client
           .from('attendance')
@@ -172,10 +173,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         final id = e['employee_id'];
         final status = (e['status'] ?? '').toString().toLowerCase();
 
-        // Skip jika admin
         if (!_nonAdminIds.contains(id)) continue;
-
-        // Skip jika statusnya Check-Out
         if (status.contains('out')) continue;
 
         if (e['created_at'] != null) {
@@ -184,7 +182,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 DateTime.parse(e['created_at'].toString()).toLocal();
             String dateStr = DateFormat('yyyy-MM-dd').format(localDate);
 
-            // Pastikan tanggalnya cocok dengan hari ini (WIB)
             if (dateStr == todayStr) {
               uniqueHadir.add(id);
             }
@@ -194,7 +191,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       _totalHadirHariIni = uniqueHadir.length;
 
       // 4. Cuti Hari Ini
-      final todayStr = todayLocal.toIso8601String().split('T')[0];
       final cutiRes = await Supabase.instance.client
           .from('leave_requests')
           .select('employee_id')
@@ -474,7 +470,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     }
   }
 
-  static const int _chartDaysRange = 15;
+  // Rentang Hari Ditentukan 12 Hari
+  static const int _chartDaysRange = 12;
 
   Future<void> _fetchChartData(List<dynamic> validIds) async {
     final now = DateTime.now();
@@ -500,8 +497,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       final empId = row['employee_id'];
       if (!validIds.contains(empId)) continue;
 
-      if ((row['status'] ?? '').toString().toLowerCase().contains('out'))
+      if ((row['status'] ?? '').toString().toLowerCase().contains('out')) {
         continue;
+      }
 
       final createdAt = row['created_at'];
       if (createdAt != null) {
@@ -541,6 +539,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         if (countAbsen < 0) countAbsen = 0;
       }
 
+      // Format Bulan Bahasa Indonesia
       const List<String> bulanIndoSingkat = [
         'Jan',
         'Feb',
@@ -555,8 +554,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         'Nov',
         'Des'
       ];
-      String tgl =
-          dateObj.day.toString().padLeft(2, '0'); // Contoh format: 01, 09, 15
+      String tgl = dateObj.day.toString().padLeft(2, '0');
       String bln = bulanIndoSingkat[dateObj.month - 1];
 
       tempDotData.add({
@@ -763,7 +761,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                   ],
                                 ),
                               ),
-                              // BAGIAN LEGEND:
+                              // BAGIAN LEGEND (Bentuk Kotak)
                               Wrap(
                                 spacing: 12,
                                 runSpacing: 4,
@@ -880,7 +878,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Helper Komponen Chart Legend
+  // Helper Komponen Chart Legend dengan Bentuk Kotak
   Widget _buildChartLegend(Color color, String label) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -890,7 +888,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           height: 10,
           decoration: BoxDecoration(
             color: color,
-            // Hapus shape: BoxShape.circle dan ganti dengan borderRadius
             borderRadius: BorderRadius.circular(2),
           ),
         ),
@@ -908,7 +905,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   }
 
   // =========================================================
-  // KOMPONEN GRAFIK DOT-CHART CUSTOM BARU
+  // KOMPONEN GRAFIK KOTAK-KOTAK CUSTOM
   // =========================================================
   Widget _buildDotAttendanceChart() {
     if (_dotChartData.isEmpty) {
@@ -979,10 +976,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
   // Builder untuk satu tiang/kolom kotak
   Widget _buildSingleDotBar(double value, double total, Color activeColor) {
-    int maxVerticalDots =
-        18; // Menentukan tinggi maksimal kotak agar proporsional
+    int maxVerticalDots = 18;
     int actualDots = total > maxVerticalDots ? maxVerticalDots : total.toInt();
-    if (actualDots <= 0) actualDots = 1; // Mencegah eror kalkulasi jika total=0
+    if (actualDots <= 0) actualDots = 1;
 
     double scale = actualDots / (total <= 0 ? 1 : total);
     int activeDotsCount = (value * scale).round();
@@ -990,16 +986,14 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: List.generate(actualDots, (index) {
-        // Render dari bawah ke atas
         int reverseIndex = actualDots - 1 - index;
         bool isActive = reverseIndex < activeDotsCount;
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 2.5),
-          width: 8, // Lebar kotak
-          height: 8, // Tinggi kotak
+          width: 8,
+          height: 8,
           decoration: BoxDecoration(
             color: isActive ? activeColor : Colors.grey[200],
-            // Hapus shape: BoxShape.circle, lalu gunakan borderRadius agar sudut kotak sedikit tumpul
             borderRadius: BorderRadius.circular(2),
           ),
         );
