@@ -164,13 +164,33 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       final String startOfTodayUtcStr = todayLocal.toUtc().toIso8601String();
       final absensiRes = await Supabase.instance.client
           .from('attendance')
-          .select('employee_id')
+          .select('employee_id, status, created_at')
           .gte('created_at', startOfTodayUtcStr);
 
-      Set uniqueHadir = absensiRes
-          .map((e) => e['employee_id'])
-          .where((id) => _nonAdminIds.contains(id))
-          .toSet();
+      Set uniqueHadir = {};
+      for (var e in absensiRes) {
+        final id = e['employee_id'];
+        final status = (e['status'] ?? '').toString().toLowerCase();
+
+        // Skip jika admin
+        if (!_nonAdminIds.contains(id)) continue;
+
+        // Skip jika statusnya Check-Out
+        if (status.contains('out')) continue;
+
+        if (e['created_at'] != null) {
+          try {
+            DateTime localDate =
+                DateTime.parse(e['created_at'].toString()).toLocal();
+            String dateStr = DateFormat('yyyy-MM-dd').format(localDate);
+
+            // Pastikan tanggalnya cocok dengan hari ini (WIB)
+            if (dateStr == todayStr) {
+              uniqueHadir.add(id);
+            }
+          } catch (_) {}
+        }
+      }
       _totalHadirHariIni = uniqueHadir.length;
 
       // 4. Cuti Hari Ini
