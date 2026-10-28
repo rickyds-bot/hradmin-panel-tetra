@@ -767,14 +767,16 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                 runSpacing: 4,
                                 alignment: WrapAlignment.end,
                                 children: [
+                                  // Ubah Tidak Hadir menjadi Ungu (0xFF8B5CF6)
                                   _buildChartLegend(
-                                      const Color(0xFF3B82F6), 'Tidak Hadir'),
+                                      const Color(0xFF8B5CF6), 'Tidak Hadir'),
                                   _buildChartLegend(
                                       const Color(0xFFF59E0B), 'Terlambat'),
                                   _buildChartLegend(
                                       const Color(0xFF10B981), 'Tepat Waktu'),
+                                  // Ubah Total Hadir menjadi Biru (0xFF3B82F6)
                                   _buildChartLegend(
-                                      const Color(0xFF8B5CF6), 'Total Hadir'),
+                                      const Color(0xFF3B82F6), 'Total Hadir'),
                                   _buildChartLegend(
                                       Colors.grey[300]!, 'Total Karyawan'),
                                 ],
@@ -943,8 +945,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
+                      // Ubah Tidak Hadir (absen) menjadi Ungu
                       _buildSingleDotBar(data['absen'], data['total'],
-                          const Color(0xFF3B82F6)),
+                          const Color(0xFF8B5CF6)),
                       const SizedBox(width: 4),
                       _buildSingleDotBar(data['telat'], data['total'],
                           const Color(0xFFF59E0B)),
@@ -952,8 +955,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                       _buildSingleDotBar(data['tepat'], data['total'],
                           const Color(0xFF10B981)),
                       const SizedBox(width: 4),
+                      // Ubah Total Hadir (hadir) menjadi Biru
                       _buildSingleDotBar(data['hadir'], data['total'],
-                          const Color(0xFF8B5CF6)),
+                          const Color(0xFF3B82F6)),
                     ],
                   ),
                 ),
