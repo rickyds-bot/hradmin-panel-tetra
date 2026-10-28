@@ -868,7 +868,11 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         Container(
           width: 10,
           height: 10,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          decoration: BoxDecoration(
+            color: color,
+            // Hapus shape: BoxShape.circle dan ganti dengan borderRadius
+            borderRadius: BorderRadius.circular(2),
+          ),
         ),
         const SizedBox(width: 6),
         Text(
@@ -955,7 +959,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
 
   // Builder untuk satu tiang/kolom kotak
   Widget _buildSingleDotBar(double value, double total, Color activeColor) {
-    int maxVerticalDots = 18; // Menentukan tinggi maksimal kotak agar proporsional
+    int maxVerticalDots =
+        18; // Menentukan tinggi maksimal kotak agar proporsional
     int actualDots = total > maxVerticalDots ? maxVerticalDots : total.toInt();
     if (actualDots <= 0) actualDots = 1; // Mencegah eror kalkulasi jika total=0
 
@@ -975,7 +980,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           decoration: BoxDecoration(
             color: isActive ? activeColor : Colors.grey[200],
             // Hapus shape: BoxShape.circle, lalu gunakan borderRadius agar sudut kotak sedikit tumpul
-            borderRadius: BorderRadius.circular(2), 
+            borderRadius: BorderRadius.circular(2),
           ),
         );
       }),
