@@ -953,10 +953,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     );
   }
 
-  // Builder untuk satu tiang/kolom dots
+  // Builder untuk satu tiang/kolom kotak
   Widget _buildSingleDotBar(double value, double total, Color activeColor) {
-    int maxVerticalDots =
-        18; // Menentukan tinggi maksimal dots agar proporsional
+    int maxVerticalDots = 18; // Menentukan tinggi maksimal kotak agar proporsional
     int actualDots = total > maxVerticalDots ? maxVerticalDots : total.toInt();
     if (actualDots <= 0) actualDots = 1; // Mencegah eror kalkulasi jika total=0
 
@@ -971,13 +970,12 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         bool isActive = reverseIndex < activeDotsCount;
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 2.5),
-          width: 8, // Ukuran dot
-          height: 8,
+          width: 8, // Lebar kotak
+          height: 8, // Tinggi kotak
           decoration: BoxDecoration(
-            color: isActive
-                ? activeColor
-                : Colors.grey[200], // Grey untuk slot karyawan kosong
-            shape: BoxShape.circle,
+            color: isActive ? activeColor : Colors.grey[200],
+            // Hapus shape: BoxShape.circle, lalu gunakan borderRadius agar sudut kotak sedikit tumpul
+            borderRadius: BorderRadius.circular(2), 
           ),
         );
       }),
