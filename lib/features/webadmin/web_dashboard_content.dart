@@ -471,7 +471,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   }
 
   // Rentang Hari Ditentukan 12 Hari
-  static const int _chartDaysRange = 12;
+  static const int _chartDaysRange = 15;
 
   Future<void> _fetchChartData(List<dynamic> validIds) async {
     final now = DateTime.now();
