@@ -24,7 +24,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   int _totalHadirHariIni = 0;
   int _totalTidakHadirHariIni = 0;
   List<Map<String, dynamic>> _tidakHadirList = [];
-  int _totalCutiHariIni = 0;
+  int _totalPendingCuti = 0;
   int _totalPendingLembur = 0;
 
   // Data Grafik (Square Chart Custom)
@@ -200,16 +200,19 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       final Set cutiIds =
           cutiBerlangsungRes.map((e) => e['employee_id']).toSet();
 
-      // 4.1 Pengajuan Cuti/Izin MASUK Hari Ini (Untuk angka di Card, mencakup SEMUA status)
-      final pengajuanHariIniRes = await Supabase.instance.client
+      // 4.1 Pengajuan Cuti/Izin yang masih PENDING (belum di-approve/reject)
+      // Dihitung per karyawan unik, tanpa batasan tanggal pengajuan.
+      final pengajuanPendingRes = await Supabase.instance.client
           .from('leave_requests')
           .select('employee_id')
-          .gte('created_at', startOfTodayUtcStr);
+          .ilike('status', 'pending');
 
       final List<String> nonAdminStrings =
           _nonAdminIds.map((id) => id.toString()).toList();
-      _totalCutiHariIni = pengajuanHariIniRes
-          .where((e) => nonAdminStrings.contains(e['employee_id'].toString()))
+      _totalPendingCuti = pengajuanPendingRes
+          .map((e) => e['employee_id'].toString())
+          .where((id) => nonAdminStrings.contains(id))
+          .toSet()
           .length;
 
       // 4.5 Karyawan aktif yang belum check-in hari ini
@@ -228,14 +231,16 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       _tidakHadirList = tidakHadir;
       _totalTidakHadirHariIni = tidakHadir.length;
 
-      // 5. Lembur Pending
+      // 5. Lembur Pending (belum di-approve/reject), per karyawan unik
       final lemburRes = await Supabase.instance.client
           .from('overtime_requests')
           .select('employee_id')
-          .eq('status', 'pending');
+          .ilike('status', 'pending');
 
       _totalPendingLembur = lemburRes
-          .where((e) => _nonAdminIds.contains(e['employee_id']))
+          .map((e) => e['employee_id'].toString())
+          .where((id) => nonAdminStrings.contains(id))
+          .toSet()
           .length;
 
       // 6. Data Grafik Tren Kehadiran
@@ -698,10 +703,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                           onTap: _showTidakHadirDialog,
                         ),
                         _buildStatCard(
-                            'Pengajuan Cuti/Izin',
-                            _totalCutiHariIni.toString(),
-                            'Masuk hari ini (Semua Status)',
-                            Icons.event_note_outlined,
+                            'Cuti/Izin Pending',
+                            _totalPendingCuti.toString(),
+                            'Menunggu approval',
+                            Icons.pending_actions_outlined,
                             Colors.orange,
                             width),
                         _buildStatCard(
