@@ -190,19 +190,29 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       }
       _totalHadirHariIni = uniqueHadir.length;
 
-      // 4. Cuti Hari Ini
-      final cutiRes = await Supabase.instance.client
+      // 4. Karyawan yang SEDANG Cuti/Izin Hari Ini (Hanya untuk label daftar "Tidak Hadir")
+      final cutiBerlangsungRes = await Supabase.instance.client
           .from('leave_requests')
           .select('employee_id')
-          .eq('status', 'approved')
+          .ilike('status', 'approved')
           .lte('start_date', todayStr)
           .gte('end_date', todayStr);
+      final Set cutiIds =
+          cutiBerlangsungRes.map((e) => e['employee_id']).toSet();
 
-      _totalCutiHariIni =
-          cutiRes.where((e) => _nonAdminIds.contains(e['employee_id'])).length;
+      // 4.1 Pengajuan Cuti/Izin MASUK Hari Ini (Untuk angka di Card, mencakup SEMUA status)
+      final pengajuanHariIniRes = await Supabase.instance.client
+          .from('leave_requests')
+          .select('employee_id')
+          .gte('created_at', startOfTodayUtcStr);
+
+      final List<String> nonAdminStrings =
+          _nonAdminIds.map((id) => id.toString()).toList();
+      _totalCutiHariIni = pengajuanHariIniRes
+          .where((e) => nonAdminStrings.contains(e['employee_id'].toString()))
+          .length;
 
       // 4.5 Karyawan aktif yang belum check-in hari ini
-      final Set cutiIds = cutiRes.map((e) => e['employee_id']).toSet();
       final tidakHadir = activeEmps
           .where((e) => !uniqueHadir.contains(e['id']))
           .map((e) => {
@@ -688,10 +698,10 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                           onTap: _showTidakHadirDialog,
                         ),
                         _buildStatCard(
-                            'Cuti / Izin Aktif',
+                            'Pengajuan Cuti/Izin',
                             _totalCutiHariIni.toString(),
-                            'Disetujui hari ini',
-                            Icons.event_busy_outlined,
+                            'Masuk hari ini (Semua Status)',
+                            Icons.event_note_outlined,
                             Colors.orange,
                             width),
                         _buildStatCard(
