@@ -21,7 +21,7 @@ class _AdminPageState extends State<AdminPage> {
   int _totalHadirHariIni = 0;
   int _totalTidakHadirHariIni = 0;
   List<Map<String, dynamic>> _tidakHadirList = [];
-  int _totalCutiHariIni = 0;
+  int _totalPendingCuti = 0;
   int _totalPendingLembur = 0;
 
   @override
@@ -83,7 +83,7 @@ class _AdminPageState extends State<AdminPage> {
           .where((id) => nonAdminIds.contains(id))
           .toSet();
 
-      // 3. Cuti Hari Ini
+      // 3. Karyawan yang SEDANG cuti/izin hari ini (approved) - hanya untuk label "Tidak Hadir"
       final cutiRes = await Supabase.instance.client
           .from('leave_requests')
           .select('employee_id')
@@ -105,11 +105,30 @@ class _AdminPageState extends State<AdminPage> {
           .toLowerCase()
           .compareTo(b['name'].toString().toLowerCase()));
 
-      // 4. Lembur Pending
+      final List<String> nonAdminStrings =
+          nonAdminIds.map((id) => id.toString()).toList();
+
+      // 4. Cuti/Izin Pending (belum di-approve/reject), per karyawan unik
+      final cutiPendingRes = await Supabase.instance.client
+          .from('leave_requests')
+          .select('employee_id')
+          .ilike('status', 'pending');
+      final int totalPendingCuti = cutiPendingRes
+          .map((e) => e['employee_id'].toString())
+          .where((id) => nonAdminStrings.contains(id))
+          .toSet()
+          .length;
+
+      // 5. Lembur Pending (belum di-approve/reject), per karyawan unik
       final lemburRes = await Supabase.instance.client
           .from('overtime_requests')
           .select('employee_id')
-          .eq('status', 'pending');
+          .ilike('status', 'pending');
+      final int totalPendingLembur = lemburRes
+          .map((e) => e['employee_id'].toString())
+          .where((id) => nonAdminStrings.contains(id))
+          .toSet()
+          .length;
 
       if (mounted) {
         setState(() {
@@ -119,12 +138,8 @@ class _AdminPageState extends State<AdminPage> {
           _totalHadirHariIni = uniqueHadir.length;
           _tidakHadirList = tidakHadir;
           _totalTidakHadirHariIni = tidakHadir.length;
-          _totalCutiHariIni = cutiRes
-              .where((e) => nonAdminIds.contains(e['employee_id']))
-              .length;
-          _totalPendingLembur = lemburRes
-              .where((e) => nonAdminIds.contains(e['employee_id']))
-              .length;
+          _totalPendingCuti = totalPendingCuti;
+          _totalPendingLembur = totalPendingLembur;
           _isLoadingStats = false;
         });
       }
@@ -348,8 +363,8 @@ class _AdminPageState extends State<AdminPage> {
                 Icons.person_off_outlined,
                 Colors.red,
                 onTap: _showTidakHadirDialog),
-            _buildStatCard('Cuti / Izin Aktif', _totalCutiHariIni.toString(),
-                Icons.event_busy_outlined, Colors.orange),
+            _buildStatCard('Cuti / Izin Pending', _totalPendingCuti.toString(),
+                Icons.pending_actions_outlined, Colors.orange),
             _buildStatCard('Lembur Pending', _totalPendingLembur.toString(),
                 Icons.timer_outlined, Colors.purple),
           ],

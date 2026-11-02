@@ -784,7 +784,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                 children: [
                                   // Ubah Tidak Hadir menjadi Ungu (0xFF8B5CF6)
                                   _buildChartLegend(
-                                      const Color(0xFF8B5CF6), 'Tidak Hadir'),
+                                      const Color(0xFFEF4444), 'Tidak Hadir'),
                                   _buildChartLegend(
                                       const Color(0xFFF59E0B), 'Terlambat'),
                                   _buildChartLegend(
@@ -962,7 +962,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                     children: [
                       // Ubah Tidak Hadir (absen) menjadi Ungu
                       _buildSingleDotBar(data['absen'], data['total'],
-                          const Color(0xFF8B5CF6)),
+                          const Color(0xFFEF4444)),
                       const SizedBox(width: 4),
                       _buildSingleDotBar(data['telat'], data['total'],
                           const Color(0xFFF59E0B)),
