@@ -165,10 +165,10 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
               if (endDt.isBefore(startDt)) {
                 endDt = endDt.add(const Duration(days: 1));
               }
-              double calculatedHours =
-                  endDt.difference(startDt).inMinutes / 60.0;
+              final int totalMinutes = endDt.difference(startDt).inMinutes;
+              newItem['duration_minutes'] = totalMinutes;
               newItem['duration_hours'] =
-                  double.parse(calculatedHours.toStringAsFixed(1));
+                  double.parse((totalMinutes / 60.0).toStringAsFixed(1));
             }
           }
         } catch (_) {}
@@ -229,17 +229,32 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
     return DateFormat('EEEE', 'id_ID').format(dt);
   }
 
-  Map<String, double> _calculateTotalHours() {
-    double weekdayTotal = 0.0;
-    double weekendTotal = 0.0;
+  // Ubah total menit menjadi teks, contoh: 90 -> "1 Jam 30 Menit"
+  String _formatDuration(dynamic minutesValue) {
+    if (minutesValue == null) return '-';
+    final int totalMinutes = minutesValue is num
+        ? minutesValue.round()
+        : (int.tryParse(minutesValue.toString()) ?? 0);
+    final int hours = totalMinutes ~/ 60;
+    final int minutes = totalMinutes % 60;
+    if (hours == 0 && minutes == 0) return '0 Menit';
+    if (hours == 0) return '$minutes Menit';
+    if (minutes == 0) return '$hours Jam';
+    return '$hours Jam $minutes Menit';
+  }
+
+  // Total dalam satuan menit agar tidak ada selisih pembulatan
+  Map<String, int> _calculateTotalMinutes() {
+    int weekdayTotal = 0;
+    int weekendTotal = 0;
     for (var item in _laporanList) {
-      double hours =
-          double.tryParse(item['duration_hours']?.toString() ?? '0') ?? 0.0;
+      final int minutes =
+          int.tryParse(item['duration_minutes']?.toString() ?? '0') ?? 0;
       String dayName = _getDayName(item['start_time']).toLowerCase();
       if (dayName == 'sabtu' || dayName == 'minggu') {
-        weekendTotal += hours;
+        weekendTotal += minutes;
       } else {
-        weekdayTotal += hours;
+        weekdayTotal += minutes;
       }
     }
     return {'weekday': weekdayTotal, 'weekend': weekendTotal};
@@ -285,26 +300,25 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
         excel_lib.TextCellValue(item['reason'] ?? '-'),
         excel_lib.TextCellValue(_formatTime(item['start_time'])),
         excel_lib.TextCellValue(_formatTime(item['end_time'])),
-        excel_lib.TextCellValue('${item['duration_hours'] ?? '-'} Jam'),
+        excel_lib.TextCellValue(_formatDuration(item['duration_minutes'])),
         excel_lib.TextCellValue(item['status'] ?? 'Pending'),
         excel_lib.TextCellValue(approver),
         excel_lib.TextCellValue(item['notes']?.toString() ?? '-'),
       ]);
     }
 
-    final totals = _calculateTotalHours();
+    final totals = _calculateTotalMinutes();
 
     List<excel_lib.CellValue?> totalRow = List.filled(11, null);
     totalRow[6] = excel_lib.TextCellValue('Total Jam Lembur:');
-    totalRow[7] =
-        excel_lib.TextCellValue('${totals['weekday']?.toStringAsFixed(1)} Jam');
+    totalRow[7] = excel_lib.TextCellValue(_formatDuration(totals['weekday']));
     sheet.appendRow(totalRow);
 
     List<excel_lib.CellValue?> totalWeekendRow = List.filled(11, null);
     totalWeekendRow[6] =
         excel_lib.TextCellValue('Total Jam Lembur (Hari Libur):');
     totalWeekendRow[7] =
-        excel_lib.TextCellValue('${totals['weekend']?.toStringAsFixed(1)} Jam');
+        excel_lib.TextCellValue(_formatDuration(totals['weekend']));
     sheet.appendRow(totalWeekendRow);
 
     String empName = _selectedEmployee['id'] == 'all'
@@ -342,7 +356,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
     String subHeaderTitle = _selectedEmployee['id'] == 'all'
         ? 'Semua Karyawan'
         : 'Karyawan: ${_selectedEmployee['full_name']}';
-    final totals = _calculateTotalHours();
+    final totals = _calculateTotalMinutes();
 
     final pdf = pw.Document();
 
@@ -405,7 +419,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                   item['reason'] ?? '-',
                   _formatTime(item['start_time']),
                   _formatTime(item['end_time']),
-                  '${item['duration_hours'] ?? '-'} Jam',
+                  _formatDuration(item['duration_minutes']),
                   item['status'] ?? 'Pending',
                   approver,
                   item['notes']?.toString() ?? '-',
@@ -446,7 +460,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                       decoration:
                           const pw.BoxDecoration(color: PdfColors.grey200),
                       child: pw.Text(
-                        'Total Jam Lembur: ${totals['weekday']?.toStringAsFixed(1)} Jam',
+                        'Total Jam Lembur: ${_formatDuration(totals['weekday'])}',
                         style: pw.TextStyle(
                             fontSize: 11, fontWeight: pw.FontWeight.bold),
                       ),
@@ -458,7 +472,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                       decoration:
                           const pw.BoxDecoration(color: PdfColors.grey200),
                       child: pw.Text(
-                        'Total Jam Lembur (Hari Libur): ${totals['weekend']?.toStringAsFixed(1)} Jam',
+                        'Total Jam Lembur (Hari Libur): ${_formatDuration(totals['weekend'])}',
                         style: pw.TextStyle(
                             fontSize: 11, fontWeight: pw.FontWeight.bold),
                       ),
@@ -493,7 +507,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
 
   @override
   Widget build(BuildContext context) {
-    final totals = _calculateTotalHours();
+    final totals = _calculateTotalMinutes();
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -784,8 +798,8 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                                                   Text(item['reason'] ?? '-')),
                                               DataCell(Text(startTimeStr)),
                                               DataCell(Text(endTimeStr)),
-                                              DataCell(Text(
-                                                  '${item['duration_hours'] ?? '-'} Jam')),
+                                              DataCell(Text(_formatDuration(
+                                                  item['duration_minutes']))),
                                               DataCell(
                                                 Container(
                                                   padding: const EdgeInsets
@@ -843,7 +857,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            'Total Jam Lembur: ${totals['weekday']?.toStringAsFixed(1)} Jam',
+                            'Total Jam Lembur: ${_formatDuration(totals['weekday'])}',
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
@@ -852,7 +866,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Total Jam Lembur (Hari Libur): ${totals['weekend']?.toStringAsFixed(1)} Jam',
+                            'Total Jam Lembur (Hari Libur): ${_formatDuration(totals['weekend'])}',
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
