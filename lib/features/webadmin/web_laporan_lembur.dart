@@ -1108,7 +1108,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                           Text(
                             'Total Jam Lembur: ${_formatDuration(totals['weekday'])}',
                             style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
+                              fontSize: 11,
                               fontWeight: FontWeight.bold,
                               color: Colors.blue[900],
                             ),
@@ -1117,7 +1117,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                           Text(
                             'Total Jam Lembur (Hari Libur): ${_formatDuration(totals['weekend'])}',
                             style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
+                              fontSize: 11,
                               fontWeight: FontWeight.bold,
                               color: Colors.blue[900],
                             ),
