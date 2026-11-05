@@ -444,7 +444,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
     final lines = <String>[];
     if (s.rawWeekday != s.netWeekday) {
       lines.add(
-          'Total lembur hari biasa sebelum potongan: ${_formatDuration(s.rawWeekday)}');
+          'Total lembur (hari biasa) sebelum potongan: ${_formatDuration(s.rawWeekday)}');
     }
     if (s.belowMinCount > 0) {
       lines.add(
