@@ -26,9 +26,30 @@ class _WebLemburPageState extends State<WebLemburPage> {
   final ScrollController _horizontalScroll = ScrollController();
   final ScrollController _verticalScroll = ScrollController();
 
+  int? _adminEmployeeId;
+
   @override
   void initState() {
     super.initState();
+    _loadAdminAndData();
+  }
+
+  Future<void> _loadAdminAndData() async {
+    try {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser != null) {
+        final adminData = await Supabase.instance.client
+            .from('employees')
+            .select('id')
+            .eq('email', currentUser.email!)
+            .maybeSingle();
+        if (adminData != null) {
+          _adminEmployeeId = adminData['id'];
+        }
+      }
+    } catch (e) {
+      debugPrint("Gagal mengambil ID admin: $e");
+    }
     _fetchLemburData();
   }
 
@@ -96,6 +117,21 @@ class _WebLemburPageState extends State<WebLemburPage> {
     }
   }
 
+  // Fungsi helper untuk menghapus format Timezone (UTC) dari String
+  DateTime _parseRawTime(String? dtStr) {
+    if (dtStr == null || dtStr.isEmpty) return DateTime.now();
+    try {
+      String cleanStr = dtStr;
+      if (cleanStr.contains('+')) {
+        cleanStr = cleanStr.substring(0, cleanStr.indexOf('+'));
+      }
+      cleanStr = cleanStr.replaceAll('Z', '');
+      return DateTime.parse(cleanStr);
+    } catch (_) {
+      return DateTime.now();
+    }
+  }
+
   void _applyLocalFilter() {
     List<dynamic> temp = List.from(_lemburList);
 
@@ -114,7 +150,7 @@ class _WebLemburPageState extends State<WebLemburPage> {
       temp = temp.where((item) {
         if (item['start_time'] == null) return false;
         try {
-          final dt = DateTime.parse(item['start_time']).toLocal();
+          final dt = _parseRawTime(item['start_time']);
           final itemDateStr = DateFormat('yyyy-MM-dd').format(dt);
           return itemDateStr == filterDateStr;
         } catch (_) {
@@ -126,6 +162,43 @@ class _WebLemburPageState extends State<WebLemburPage> {
     setState(() {
       _filteredList = temp;
     });
+  }
+
+  Future<void> _updateStatusLembur(
+      int id, String newStatus, dynamic employeeId, double durasi) async {
+    try {
+      await Supabase.instance.client.from('overtime_requests').update({
+        'status': newStatus,
+        'approved_by': _adminEmployeeId,
+      }).eq('id', id);
+
+      if (newStatus == 'approved' && employeeId != null) {
+        final empData = await Supabase.instance.client
+            .from('employees')
+            .select('total_overtime_hours')
+            .eq('id', employeeId)
+            .single();
+        double currentTotal =
+            double.parse((empData['total_overtime_hours'] ?? 0).toString());
+        await Supabase.instance.client
+            .from('employees')
+            .update({'total_overtime_hours': currentTotal + durasi}).eq(
+                'id', employeeId);
+      }
+
+      _fetchLemburData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Pengajuan lembur berhasil diproses!")),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   Future<void> _deleteLembur(Map<String, dynamic> item) async {
@@ -231,7 +304,7 @@ class _WebLemburPageState extends State<WebLemburPage> {
           return '${parts[0]}:${parts[1]}';
         }
       }
-      final parsed = DateTime.parse(dateStr);
+      final parsed = _parseRawTime(dateStr);
       return DateFormat('HH:mm').format(parsed);
     } catch (_) {
       return '-';
@@ -254,18 +327,14 @@ class _WebLemburPageState extends State<WebLemburPage> {
   String _formatDurasi(dynamic durationValue) {
     if (durationValue == null) return '-';
 
-    // Parse nilai durasi menjadi double
     double doubleVal = double.tryParse(durationValue.toString()) ?? 0.0;
     if (doubleVal == 0.0) return '0 Jam';
 
-    // Konversi jam desimal ke total menit
     int totalMinutes = (doubleVal * 60).round();
 
-    // Dapatkan jam dan sisa menit
     int hours = totalMinutes ~/ 60;
     int minutes = totalMinutes % 60;
 
-    // Format teks keluaran
     if (hours > 0 && minutes > 0) {
       return '$hours Jam $minutes Menit';
     } else if (hours > 0) {
@@ -511,7 +580,7 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                               WidgetStateProperty.all(
                                             Colors.grey[50],
                                           ),
-                                          dataRowMaxHeight: 48,
+                                          dataRowMaxHeight: 56,
                                           headingTextStyle:
                                               GoogleFonts.plusJakartaSans(
                                             fontSize: 12,
@@ -535,9 +604,7 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                             DataColumn(label: Text('Status')),
                                             DataColumn(
                                                 label: Text('Approved By')),
-                                            DataColumn(
-                                                // Kolom Baru: Catatan HR
-                                                label: Text('Notes')),
+                                            DataColumn(label: Text('Notes')),
                                             DataColumn(label: Text('Action')),
                                           ],
                                           rows: List<DataRow>.generate(
@@ -561,6 +628,9 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                                       .toString();
                                               final statusColor =
                                                   _getStatusColor(rawStatus);
+                                              final bool isPending =
+                                                  rawStatus.toLowerCase() ==
+                                                      'pending';
 
                                               final String tglMulai = item[
                                                           'start_time'] !=
@@ -579,9 +649,9 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                                         return DateFormat(
                                                           'dd-MM-yyyy',
                                                         ).format(
-                                                          DateTime.parse(
+                                                          _parseRawTime(
                                                             item['start_time'],
-                                                          ).toLocal(),
+                                                          ),
                                                         );
                                                       } catch (_) {
                                                         return '-';
@@ -644,9 +714,7 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                                             .withOpacity(0.1),
                                                         borderRadius:
                                                             BorderRadius
-                                                                .circular(
-                                                          4,
-                                                        ),
+                                                                .circular(4),
                                                         border: Border.all(
                                                           color: statusColor,
                                                           width: 0.5,
@@ -675,7 +743,6 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                                     ),
                                                   ),
                                                   DataCell(
-                                                    // Cell Baru: Tampilan Catatan HR
                                                     SizedBox(
                                                       width: 150,
                                                       child: Text(
@@ -710,6 +777,95 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                                       mainAxisSize:
                                                           MainAxisSize.min,
                                                       children: [
+                                                        if (isPending) ...[
+                                                          OutlinedButton(
+                                                            onPressed: () {
+                                                              showDialog(
+                                                                context:
+                                                                    context,
+                                                                barrierDismissible:
+                                                                    false,
+                                                                builder:
+                                                                    (context) =>
+                                                                        EditStatusLemburDialog(
+                                                                  lemburData:
+                                                                      item,
+                                                                  onSuccess:
+                                                                      _fetchLemburData,
+                                                                  initialActionStatus:
+                                                                      'rejected',
+                                                                ),
+                                                              );
+                                                            },
+                                                            style:
+                                                                OutlinedButton
+                                                                    .styleFrom(
+                                                              foregroundColor:
+                                                                  Colors.red,
+                                                              side: const BorderSide(
+                                                                  color: Colors
+                                                                      .red),
+                                                              minimumSize:
+                                                                  const Size(
+                                                                      60, 32),
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .symmetric(
+                                                                      horizontal:
+                                                                          8),
+                                                            ),
+                                                            child: const Text(
+                                                                "Tolak",
+                                                                style: TextStyle(
+                                                                    fontSize:
+                                                                        11)),
+                                                          ),
+                                                          const SizedBox(
+                                                              width: 4),
+                                                          ElevatedButton(
+                                                            onPressed: () {
+                                                              showDialog(
+                                                                context:
+                                                                    context,
+                                                                barrierDismissible:
+                                                                    false,
+                                                                builder:
+                                                                    (context) =>
+                                                                        EditStatusLemburDialog(
+                                                                  lemburData:
+                                                                      item,
+                                                                  onSuccess:
+                                                                      _fetchLemburData,
+                                                                  initialActionStatus:
+                                                                      'approved',
+                                                                ),
+                                                              );
+                                                            },
+                                                            style:
+                                                                ElevatedButton
+                                                                    .styleFrom(
+                                                              backgroundColor:
+                                                                  Colors.green,
+                                                              foregroundColor:
+                                                                  Colors.white,
+                                                              minimumSize:
+                                                                  const Size(
+                                                                      60, 32),
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .symmetric(
+                                                                      horizontal:
+                                                                          8),
+                                                            ),
+                                                            child: const Text(
+                                                                "Setujui",
+                                                                style: TextStyle(
+                                                                    fontSize:
+                                                                        11)),
+                                                          ),
+                                                          const SizedBox(
+                                                              width: 8),
+                                                        ],
                                                         IconButton(
                                                           icon: const Icon(
                                                             Icons.edit_note,
@@ -717,7 +873,7 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                                             size: 18,
                                                           ),
                                                           tooltip:
-                                                              'Ubah Status & Catatan',
+                                                              'Edit Data & Catatan',
                                                           onPressed: () {
                                                             showDialog(
                                                               context: context,
@@ -772,10 +928,13 @@ class _WebLemburPageState extends State<WebLemburPage> {
 class EditStatusLemburDialog extends StatefulWidget {
   final Map<String, dynamic> lemburData;
   final VoidCallback onSuccess;
+  final String? initialActionStatus;
+
   const EditStatusLemburDialog({
     super.key,
     required this.lemburData,
     required this.onSuccess,
+    this.initialActionStatus,
   });
   @override
   State<EditStatusLemburDialog> createState() => _EditStatusLemburDialogState();
@@ -790,19 +949,31 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
   late DateTime _endTime;
   late double _durationHours;
 
+  DateTime _parseRawTime(String? dtStr) {
+    if (dtStr == null || dtStr.isEmpty) return DateTime.now();
+    try {
+      String cleanStr = dtStr;
+      if (cleanStr.contains('+')) {
+        cleanStr = cleanStr.substring(0, cleanStr.indexOf('+'));
+      }
+      cleanStr = cleanStr.replaceAll('Z', '');
+      return DateTime.parse(cleanStr);
+    } catch (_) {
+      return DateTime.now();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    _selectedStatus = widget.lemburData['status'] ?? 'pending';
+    _selectedStatus = widget.initialActionStatus ??
+        (widget.lemburData['status'] ?? 'pending');
     _notesCtrl.text = widget.lemburData['notes'] ?? '';
 
-    // Inisialisasi waktu dari database
-    _startTime =
-        DateTime.tryParse(widget.lemburData['start_time'] ?? '')?.toLocal() ??
-            DateTime.now();
-    _endTime =
-        DateTime.tryParse(widget.lemburData['end_time'] ?? '')?.toLocal() ??
-            DateTime.now();
+    // Memastikan waktu parsing tidak terpengaruh Timezone (+00:00 -> +07:00)
+    _startTime = _parseRawTime(widget.lemburData['start_time']);
+    _endTime = _parseRawTime(widget.lemburData['end_time']);
+
     _recalculateDuration();
   }
 
@@ -850,18 +1021,14 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
   String _formatDurasi(dynamic durationValue) {
     if (durationValue == null) return '-';
 
-    // Parse nilai durasi menjadi double
     double doubleVal = double.tryParse(durationValue.toString()) ?? 0.0;
     if (doubleVal == 0.0) return '0 Jam';
 
-    // Konversi jam desimal ke total menit
     int totalMinutes = (doubleVal * 60).round();
 
-    // Dapatkan jam dan sisa menit
     int hours = totalMinutes ~/ 60;
     int minutes = totalMinutes % 60;
 
-    // Format teks keluaran
     if (hours > 0 && minutes > 0) {
       return '$hours Jam $minutes Menit';
     } else if (hours > 0) {
@@ -914,6 +1081,21 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
         'duration_hours': _durationHours,
         if (_selectedStatus != 'pending') 'approved_by': adminEmpId,
       }).eq('id', widget.lemburData['id']);
+
+      if (_selectedStatus == 'approved' &&
+          widget.lemburData['employee_id'] != null) {
+        final empData = await Supabase.instance.client
+            .from('employees')
+            .select('total_overtime_hours')
+            .eq('id', widget.lemburData['employee_id'])
+            .single();
+        double currentTotal =
+            double.parse((empData['total_overtime_hours'] ?? 0).toString());
+        await Supabase.instance.client
+            .from('employees')
+            .update({'total_overtime_hours': currentTotal + _durationHours}).eq(
+                'id', widget.lemburData['employee_id']);
+      }
 
       if (mounted) {
         Navigator.pop(context);
@@ -970,8 +1152,6 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
               ),
             ),
             const Divider(height: 20),
-
-            // Form Edit Jam Mulai & Selesai
             Text(
               'Penyesuaian Waktu Lembur:',
               style: GoogleFonts.plusJakartaSans(
@@ -1063,8 +1243,6 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // Form Status Approval
             DropdownButtonFormField<String>(
               value: _selectedStatus,
               items: [
