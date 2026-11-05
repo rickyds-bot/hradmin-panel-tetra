@@ -1944,6 +1944,24 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
       int durationInMinutes = endDateTime.difference(startDateTime).inMinutes;
       double durationInHours = durationInMinutes / 60.0;
 
+      // Aturan: minimal lembur 60 menit (semua jabatan kecuali CS & Security)
+      final String jabatanUser = (widget.userData['jabatan_name'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      const List<String> jabatanTanpaAturan = ['security', 'cs'];
+      if (!jabatanTanpaAturan.contains(jabatanUser) && durationInMinutes < 60) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Minimal lembur adalah 60 menit."),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
       // 1. Simpan pengajuan lembur ke database
       await Supabase.instance.client.from('overtime_requests').insert({
         'user_id': Supabase.instance.client.auth.currentUser!.id,
@@ -2220,6 +2238,80 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
     }
   }
 
+  // ===================== ATURAN LEMBUR =====================
+  // Berlaku untuk semua jabatan kecuali CS & Security.
+  static const List<String> _jabatanTanpaAturanLembur = ['security', 'cs'];
+  static const int _minLemburMenit = 60; // minimal lembur
+  static const int _intervalIstirahatMenit = 240; // tiap 4 jam lembur
+  static const int _potonganIstirahatMenit = 30; // dikurangi 30 menit istirahat
+
+  String get _jabatanUser =>
+      (widget.userData['jabatan_name'] ?? '').toString().trim().toLowerCase();
+
+  bool get _aturanLemburBerlaku =>
+      !_jabatanTanpaAturanLembur.contains(_jabatanUser);
+
+  // Sabtu/Minggu berdasarkan tanggal pada start_time
+  bool _isAkhirPekan(String? start) {
+    if (start == null || start == 'null' || start.isEmpty) return false;
+    try {
+      final String datePart =
+          start.contains('T') ? start.split('T')[0] : start.split(' ')[0];
+      final DateTime d = DateTime.parse(datePart);
+      return d.weekday == DateTime.saturday || d.weekday == DateTime.sunday;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Total menit terlambat hari biasa pada periode PDF.
+  // Rumus sama dengan laporan absensi: dihitung dari batas toleransi 15 menit
+  // (driver 08:15, lainnya 08:45); Sabtu/Minggu tidak dihitung.
+  Future<int> _hitungMenitTerlambat() async {
+    final from = DateTime(_startDate.year, _startDate.month, _startDate.day);
+    final to =
+        DateTime(_endDate.year, _endDate.month, _endDate.day, 23, 59, 59);
+    final rows = await Supabase.instance.client
+        .from('attendance')
+        .select('status, created_at')
+        .eq('employee_id', widget.userData['id'])
+        .gte('created_at', from.toUtc().toIso8601String())
+        .lte('created_at', to.toUtc().toIso8601String())
+        .order('created_at', ascending: true);
+
+    // Driver & OB masuk 08:00 (batas terlambat 08:15); lainnya 08:30 (batas 08:45)
+    final bool isDriver = const ['driver', 'ob'].contains(_jabatanUser);
+    final Map<String, DateTime> firstIn = {}; // check-in pertama per tanggal
+    for (var r in rows) {
+      final st = (r['status'] ?? '').toString().toLowerCase();
+      final bool isOut =
+          st.contains('out') || st.contains('pulang') || st.contains('keluar');
+      final bool isIn = !isOut &&
+          (st.contains('in') || st.contains('masuk') || st.contains('hadir'));
+      if (!isIn) continue;
+      final dt =
+          DateTime.tryParse(r['created_at']?.toString() ?? '')?.toLocal();
+      if (dt == null) continue;
+      final key = DateFormat('yyyy-MM-dd').format(dt);
+      final existing = firstIn[key];
+      if (existing == null || dt.isBefore(existing)) firstIn[key] = dt;
+    }
+
+    int seconds = 0;
+    firstIn.forEach((_, checkIn) {
+      if (checkIn.weekday == DateTime.saturday ||
+          checkIn.weekday == DateTime.sunday) {
+        return;
+      }
+      final limit = DateTime(
+          checkIn.year, checkIn.month, checkIn.day, 8, isDriver ? 15 : 45);
+      if (checkIn.isAfter(limit)) {
+        seconds += checkIn.difference(limit).inSeconds;
+      }
+    });
+    return seconds ~/ 60;
+  }
+
   // Hitung durasi lembur dalam menit (aman untuk lembur yang melewati tengah malam)
   int? _hitungMenit(String? start, String? end) {
     if (start == null || end == null || start == 'null' || end == 'null') {
@@ -2352,7 +2444,84 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
 
       // 3. Buat file PDF
       final pdf = pw.Document();
-      int totalMenitKumulatif = 0;
+
+      // Durasi tiap pengajuan (menit): dari jam mulai & selesai; jika gagal pakai duration_hours
+      final List<int> menitList = dataLaporan.map<int>((item) {
+        return _hitungMenit(item['start_time'], item['end_time']) ??
+            ((double.tryParse(item['duration_hours']?.toString() ?? '0') ??
+                        0.0) *
+                    60)
+                .round();
+      }).toList();
+
+      // Terapkan aturan lembur
+      final bool berlaku = _aturanLemburBerlaku;
+      int totalSebelumPotongan = 0;
+      int weekdayCounted = 0;
+      int weekendCounted = 0;
+      int belowMinCount = 0;
+      int belowMinMenit = 0;
+      int breakCount = 0;
+      int breakMenit = 0;
+      for (int i = 0; i < dataLaporan.length; i++) {
+        final int menit = menitList[i];
+        final bool akhirPekan =
+            _isAkhirPekan(dataLaporan[i]['start_time']?.toString());
+        totalSebelumPotongan += menit;
+        int counted = menit;
+        if (berlaku) {
+          if (menit < _minLemburMenit) {
+            // Lembur di bawah minimal tidak dihitung
+            belowMinCount++;
+            belowMinMenit += menit;
+            counted = 0;
+          } else if (!akhirPekan) {
+            // Hari biasa: tiap 4 jam lembur dikurangi 30 menit istirahat
+            final int n = menit ~/ _intervalIstirahatMenit;
+            breakCount += n;
+            breakMenit += n * _potonganIstirahatMenit;
+            counted = menit - (n * _potonganIstirahatMenit);
+          }
+        }
+        if (akhirPekan) {
+          weekendCounted += counted;
+        } else {
+          weekdayCounted += counted;
+        }
+      }
+
+      // Menit terlambat mengurangi total lembur hari biasa (tidak kurang dari 0)
+      int lateRaw = 0;
+      int lateApplied = 0;
+      if (berlaku && weekdayCounted > 0) {
+        lateRaw = await _hitungMenitTerlambat();
+        lateApplied = lateRaw < weekdayCounted ? lateRaw : weekdayCounted;
+      }
+      final int totalMenitKumulatif =
+          (weekdayCounted - lateApplied) + weekendCounted;
+
+      // Catatan potongan di bawah laporan
+      final List<String> catatan = [];
+      if (totalSebelumPotongan != totalMenitKumulatif) {
+        catatan.add(
+            'Total lembur sebelum potongan: ${_formatMenit(totalSebelumPotongan)}');
+      }
+      if (belowMinCount > 0) {
+        catatan.add(
+            'Lembur kurang dari $_minLemburMenit menit tidak dihitung: $belowMinCount pengajuan (${_formatMenit(belowMinMenit)})');
+      }
+      if (breakCount > 0) {
+        catatan.add(
+            'Potongan istirahat (hari biasa): $breakCount x $_potonganIstirahatMenit menit = ${_formatMenit(breakMenit)}');
+      }
+      if (lateRaw > 0) {
+        var t = 'Potongan terlambat (hari biasa): ${_formatMenit(lateApplied)}';
+        if (lateRaw > lateApplied) {
+          t +=
+              ' (total terlambat ${_formatMenit(lateRaw)}, sisanya tidak dapat dikurangkan)';
+        }
+        catatan.add(t);
+      }
 
       pdf.addPage(
         pw.MultiPage(
@@ -2393,16 +2562,7 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
                 ],
                 data: List<List<String>>.generate(dataLaporan.length, (index) {
                   final item = dataLaporan[index];
-                  // Hitung dari jam mulai & selesai; jika gagal, pakai duration_hours
-                  final int menitLembur =
-                      _hitungMenit(item['start_time'], item['end_time']) ??
-                          ((double.tryParse(
-                                          item['duration_hours']?.toString() ??
-                                              '0') ??
-                                      0.0) *
-                                  60)
-                              .round();
-                  totalMenitKumulatif += menitLembur;
+                  final int menitLembur = menitList[index];
 
                   String appName = '-';
                   if (item['approved_by'] != null) {
@@ -2435,10 +2595,23 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.end,
                 children: [
-                  pw.Text(
-                      'Total Keseluruhan Jam Lembur: ${_formatMenit(totalMenitKumulatif)}',
-                      style: pw.TextStyle(
-                          fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                      pw.Text(
+                          'Total Keseluruhan Jam Lembur: ${_formatMenit(totalMenitKumulatif)}',
+                          style: pw.TextStyle(
+                              fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                      if (catatan.isNotEmpty) ...[
+                        pw.SizedBox(height: 8),
+                        pw.Text('Catatan:',
+                            style: pw.TextStyle(
+                                fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                        ...catatan.map((line) => pw.Text(line,
+                            style: const pw.TextStyle(fontSize: 9))),
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ];

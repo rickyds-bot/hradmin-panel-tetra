@@ -13,6 +13,21 @@ import 'package:printing/printing.dart';
 import 'dart:html' as html;
 import 'dart:typed_data';
 
+// Ringkasan perhitungan lembur setelah aturan (minimal lembur, potongan istirahat,
+// potongan terlambat). Semua dalam satuan menit.
+class _LemburSummary {
+  int rawWeekday = 0; // total hari biasa sebelum potongan
+  int rawWeekend = 0; // total hari libur sebelum potongan
+  int belowMinCount = 0; // jumlah pengajuan < minimal lembur (tidak dihitung)
+  int belowMinMinutes = 0;
+  int breakCount = 0; // jumlah potongan istirahat (kelipatan 4 jam)
+  int breakMinutes = 0;
+  int lateRaw = 0; // total menit terlambat hari biasa
+  int lateApplied = 0; // menit terlambat yang benar-benar dikurangkan
+  int netWeekday = 0; // total hari biasa setelah potongan
+  int netWeekend = 0; // total hari libur setelah aturan minimal lembur
+}
+
 class LaporanLemburPage extends StatefulWidget {
   const LaporanLemburPage({super.key});
 
@@ -35,6 +50,8 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
 
   final TextEditingController _employeeSearchCtrl = TextEditingController();
   List<dynamic> _laporanList = [];
+  // Total menit terlambat hari biasa per karyawan dalam periode laporan
+  Map<String, int> _lateMinutesByEmp = {};
   final ScrollController _horizontalScrollCtrl = ScrollController();
 
   @override
@@ -176,8 +193,11 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
         processedList.add(newItem);
       }
 
+      final lateMap = await _loadLateMinutes(processedList);
+
       setState(() {
         _laporanList = processedList;
+        _lateMinutesByEmp = lateMap;
       });
     } catch (e) {
       if (mounted) {
@@ -229,6 +249,223 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
     return DateFormat('EEEE', 'id_ID').format(dt);
   }
 
+  // ===================== ATURAN LEMBUR =====================
+  // Berlaku untuk semua jabatan kecuali CS & Security.
+  static const List<String> _jabatanTanpaAturanLembur = ['security', 'cs'];
+  static const int _minLemburMenit = 60; // minimal lembur
+  static const int _intervalIstirahatMenit = 240; // tiap 4 jam lembur
+  static const int _potonganIstirahatMenit = 30; // dikurangi 30 menit istirahat
+
+  bool _aturanLemburBerlaku(dynamic jabatan) {
+    final j = (jabatan ?? '').toString().trim().toLowerCase();
+    return !_jabatanTanpaAturanLembur.contains(j);
+  }
+
+  // Driver, OB, CS masuk 08:00 (batas terlambat 08:15); lainnya masuk 08:30 (batas 08:45)
+  bool _isDriverJabatan(dynamic jabatan) {
+    final j = (jabatan ?? '').toString().trim().toLowerCase();
+    return const ['driver', 'ob', 'cs'].contains(j);
+  }
+
+  bool _isAkhirPekan(dynamic item) {
+    final d = _getDayName(item['start_time']).toLowerCase();
+    return d == 'sabtu' || d == 'minggu';
+  }
+
+  // Jenis absen: 'in' (check-in), 'out' (check-out), atau null (sama dengan laporan absensi)
+  String? _punchKind(dynamic item) {
+    final st = (item['status'] ?? '').toString().toLowerCase();
+    if (st.contains('out') || st.contains('pulang') || st.contains('keluar')) {
+      return 'out';
+    }
+    if (st.contains('in') || st.contains('masuk') || st.contains('hadir')) {
+      return 'in';
+    }
+    return null;
+  }
+
+  // Ambil data attendance per halaman (batas 1000 baris per request)
+  Future<List<Map<String, dynamic>>> _fetchAttendancePages(
+      DateTime from, DateTime to,
+      {dynamic employeeId}) async {
+    final List<Map<String, dynamic>> all = [];
+    const int pageSize = 1000;
+    int offset = 0;
+    while (true) {
+      var q = Supabase.instance.client
+          .from('attendance')
+          .select('employee_id, status, created_at');
+      if (employeeId != null) {
+        q = q.eq('employee_id', employeeId);
+      }
+      final page = await q
+          .gte('created_at', from.toUtc().toIso8601String())
+          .lte('created_at', to.toUtc().toIso8601String())
+          .order('created_at', ascending: true)
+          .range(offset, offset + pageSize - 1);
+      final rows = List<Map<String, dynamic>>.from(page);
+      all.addAll(rows);
+      if (rows.length < pageSize) break;
+      offset += pageSize;
+    }
+    return all;
+  }
+
+  // Hitung total menit terlambat hari biasa per karyawan (id -> menit).
+  // Rumus sama dengan laporan absensi: terlambat dihitung dari batas toleransi
+  // 15 menit (driver 08:15, lainnya 08:45); Sabtu/Minggu tidak dihitung.
+  Future<Map<String, int>> _loadLateMinutes(List<dynamic> items) async {
+    final Map<String, dynamic> eligible = {}; // id karyawan -> jabatan
+    for (var item in items) {
+      final empId = item['employee_id']?.toString();
+      if (empId == null) continue;
+      final jabatan = (item['employees'] ?? {})['jabatan_name'];
+      if (_aturanLemburBerlaku(jabatan)) eligible[empId] = jabatan;
+    }
+    if (eligible.isEmpty) return {};
+
+    try {
+      final from = DateTime(_startDate.year, _startDate.month, _startDate.day);
+      final to =
+          DateTime(_endDate.year, _endDate.month, _endDate.day, 23, 59, 59);
+      final rows = await _fetchAttendancePages(from, to,
+          employeeId: _selectedEmployee['id'] == 'all'
+              ? null
+              : _selectedEmployee['id']);
+
+      // Check-in pertama tiap karyawan per tanggal
+      final Map<String, Map<String, DateTime>> firstIn = {};
+      for (var r in rows) {
+        final empId = r['employee_id']?.toString();
+        if (empId == null || !eligible.containsKey(empId)) continue;
+        if (_punchKind(r) != 'in') continue;
+        final dt =
+            DateTime.tryParse(r['created_at']?.toString() ?? '')?.toLocal();
+        if (dt == null) continue;
+        final key = DateFormat('yyyy-MM-dd').format(dt);
+        final byDate = firstIn.putIfAbsent(empId, () => {});
+        final existing = byDate[key];
+        if (existing == null || dt.isBefore(existing)) byDate[key] = dt;
+      }
+
+      final Map<String, int> result = {};
+      firstIn.forEach((empId, byDate) {
+        final bool isDriver = _isDriverJabatan(eligible[empId]);
+        int seconds = 0;
+        byDate.forEach((_, checkIn) {
+          if (checkIn.weekday == DateTime.saturday ||
+              checkIn.weekday == DateTime.sunday) {
+            return;
+          }
+          final limit = DateTime(
+              checkIn.year, checkIn.month, checkIn.day, 8, isDriver ? 15 : 45);
+          if (checkIn.isAfter(limit)) {
+            seconds += checkIn.difference(limit).inSeconds;
+          }
+        });
+        result[empId] = seconds ~/ 60;
+      });
+      return result;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Gagal memuat data keterlambatan: $e',
+                  style: GoogleFonts.plusJakartaSans(fontSize: 12)),
+              backgroundColor: Colors.orange),
+        );
+      }
+      return {};
+    }
+  }
+
+  // Terapkan aturan lembur ke seluruh data laporan
+  _LemburSummary _buildSummary() {
+    final s = _LemburSummary();
+    final Map<String, int> weekdayByEmp = {};
+    final Map<String, bool> ruleByEmp = {};
+
+    for (var item in _laporanList) {
+      final int minutes =
+          int.tryParse(item['duration_minutes']?.toString() ?? '0') ?? 0;
+      final String empId = item['employee_id']?.toString() ?? '-';
+      final bool akhirPekan = _isAkhirPekan(item);
+      final bool berlaku =
+          _aturanLemburBerlaku((item['employees'] ?? {})['jabatan_name']);
+
+      if (akhirPekan) {
+        s.rawWeekend += minutes;
+      } else {
+        s.rawWeekday += minutes;
+      }
+
+      int counted = minutes;
+      if (berlaku) {
+        if (minutes < _minLemburMenit) {
+          // Lembur di bawah minimal tidak dihitung
+          s.belowMinCount++;
+          s.belowMinMinutes += minutes;
+          counted = 0;
+        } else if (!akhirPekan) {
+          // Hari biasa: tiap 4 jam lembur dikurangi 30 menit istirahat
+          final int n = minutes ~/ _intervalIstirahatMenit;
+          final int potong = n * _potonganIstirahatMenit;
+          s.breakCount += n;
+          s.breakMinutes += potong;
+          counted = minutes - potong;
+        }
+      }
+
+      if (akhirPekan) {
+        s.netWeekend += counted;
+      } else {
+        weekdayByEmp[empId] = (weekdayByEmp[empId] ?? 0) + counted;
+        if (berlaku) ruleByEmp[empId] = true;
+      }
+    }
+
+    // Menit terlambat mengurangi total lembur hari biasa (per karyawan, min 0)
+    weekdayByEmp.forEach((empId, counted) {
+      int deduct = 0;
+      if (ruleByEmp[empId] == true) {
+        final int late = _lateMinutesByEmp[empId] ?? 0;
+        s.lateRaw += late;
+        deduct = late < counted ? late : counted;
+        s.lateApplied += deduct;
+      }
+      s.netWeekday += counted - deduct;
+    });
+
+    return s;
+  }
+
+  // Catatan potongan yang ditampilkan di bawah laporan
+  List<String> _catatanLines(_LemburSummary s) {
+    final lines = <String>[];
+    if (s.rawWeekday != s.netWeekday) {
+      lines.add(
+          'Total lembur hari biasa sebelum potongan: ${_formatDuration(s.rawWeekday)}');
+    }
+    if (s.belowMinCount > 0) {
+      lines.add(
+          'Lembur kurang dari $_minLemburMenit menit tidak dihitung: ${s.belowMinCount} pengajuan (${_formatDuration(s.belowMinMinutes)})');
+    }
+    if (s.breakCount > 0) {
+      lines.add(
+          'Potongan istirahat (hari biasa): ${s.breakCount} x $_potonganIstirahatMenit menit = ${_formatDuration(s.breakMinutes)}');
+    }
+    if (s.lateRaw > 0) {
+      var t =
+          'Potongan terlambat (hari biasa): ${_formatDuration(s.lateApplied)}';
+      if (s.lateRaw > s.lateApplied) {
+        t +=
+            ' (total terlambat ${_formatDuration(s.lateRaw)}, sisanya tidak dapat dikurangkan)';
+      }
+      lines.add(t);
+    }
+    return lines;
+  }
+
   // Ubah total menit menjadi teks, contoh: 90 -> "1 Jam 30 Menit"
   String _formatDuration(dynamic minutesValue) {
     if (minutesValue == null) return '-';
@@ -243,21 +480,10 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
     return '$hours Jam $minutes Menit';
   }
 
-  // Total dalam satuan menit agar tidak ada selisih pembulatan
+  // Total (menit) setelah aturan lembur diterapkan
   Map<String, int> _calculateTotalMinutes() {
-    int weekdayTotal = 0;
-    int weekendTotal = 0;
-    for (var item in _laporanList) {
-      final int minutes =
-          int.tryParse(item['duration_minutes']?.toString() ?? '0') ?? 0;
-      String dayName = _getDayName(item['start_time']).toLowerCase();
-      if (dayName == 'sabtu' || dayName == 'minggu') {
-        weekendTotal += minutes;
-      } else {
-        weekdayTotal += minutes;
-      }
-    }
-    return {'weekday': weekdayTotal, 'weekend': weekendTotal};
+    final s = _buildSummary();
+    return {'weekday': s.netWeekday, 'weekend': s.netWeekend};
   }
 
   Future<void> _exportToExcel() async {
@@ -321,6 +547,19 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
         excel_lib.TextCellValue(_formatDuration(totals['weekend']));
     sheet.appendRow(totalWeekendRow);
 
+    final catatan = _catatanLines(_buildSummary());
+    if (catatan.isNotEmpty) {
+      sheet.appendRow(List<excel_lib.CellValue?>.filled(11, null));
+      List<excel_lib.CellValue?> catatanHeader = List.filled(11, null);
+      catatanHeader[6] = excel_lib.TextCellValue('Catatan:');
+      sheet.appendRow(catatanHeader);
+      for (final line in catatan) {
+        List<excel_lib.CellValue?> noteRow = List.filled(11, null);
+        noteRow[6] = excel_lib.TextCellValue(line);
+        sheet.appendRow(noteRow);
+      }
+    }
+
     String empName = _selectedEmployee['id'] == 'all'
         ? 'Semua_Karyawan'
         : (_selectedEmployee['full_name'] ?? 'Karyawan')
@@ -357,6 +596,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
         ? 'Semua Karyawan'
         : 'Karyawan: ${_selectedEmployee['full_name']}';
     final totals = _calculateTotalMinutes();
+    final catatan = _catatanLines(_buildSummary());
 
     final pdf = pw.Document();
 
@@ -477,6 +717,14 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                             fontSize: 11, fontWeight: pw.FontWeight.bold),
                       ),
                     ),
+                    if (catatan.isNotEmpty) ...[
+                      pw.SizedBox(height: 8),
+                      pw.Text('Catatan:',
+                          style: pw.TextStyle(
+                              fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                      ...catatan.map((line) => pw.Text(line,
+                          style: const pw.TextStyle(fontSize: 9))),
+                    ],
                   ],
                 ),
               ],
@@ -508,6 +756,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
   @override
   Widget build(BuildContext context) {
     final totals = _calculateTotalMinutes();
+    final catatan = _catatanLines(_buildSummary());
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -873,6 +1122,30 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                               color: Colors.blue[900],
                             ),
                           ),
+                          if (catatan.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'Catatan:',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                            for (final line in catatan)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  line,
+                                  textAlign: TextAlign.end,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 11,
+                                    fontStyle: FontStyle.italic,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                              ),
+                          ],
                         ],
                       ),
                     ),
