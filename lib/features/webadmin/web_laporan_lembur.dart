@@ -91,11 +91,13 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
             int.parse(parts[1]), int.parse(parts[2]));
       }
 
-      DateTime parsed = DateTime.parse(dateStr);
-
-      if (dateStr.endsWith('Z') || dateStr.contains('+00:00')) {
-        return parsed.toLocal();
+      String cleanStr = dateStr;
+      if (cleanStr.contains('+')) {
+        cleanStr = cleanStr.substring(0, cleanStr.indexOf('+'));
       }
+      cleanStr = cleanStr.replaceAll('Z', '');
+
+      DateTime parsed = DateTime.parse(cleanStr);
       return parsed;
     } catch (_) {
       return null;
@@ -105,26 +107,12 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
   String _formatTime(String? timestampStr) {
     if (timestampStr == null || timestampStr.isEmpty) return '-';
     try {
-      if (!timestampStr.contains('T') &&
-          !timestampStr.contains('-') &&
-          timestampStr.contains(':')) {
-        List<String> parts = timestampStr.split(':');
-        if (parts.length >= 2) {
-          return '${parts[0].padLeft(2, '0')}:${parts[1].padLeft(2, '0')}';
-        }
+      DateTime? dt = _parseLocalDateTime(timestampStr);
+      if (dt != null) {
+        String twoDigits(int n) => n.toString().padLeft(2, '0');
+        return '${twoDigits(dt.hour)}:${twoDigits(dt.minute)}';
       }
-
-      if (timestampStr.contains('T')) {
-        String timePart = timestampStr.split('T')[1];
-        List<String> timeComponents = timePart.split(':');
-        if (timeComponents.length >= 2) {
-          return '${timeComponents[0].padLeft(2, '0')}:${timeComponents[1].padLeft(2, '0')}';
-        }
-      }
-
-      DateTime dt = DateTime.parse(timestampStr);
-      String twoDigits(int n) => n.toString().padLeft(2, '0');
-      return '${twoDigits(dt.hour)}:${twoDigits(dt.minute)}';
+      return '-';
     } catch (_) {
       return '-';
     }
@@ -133,8 +121,13 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
   Future<void> _fetchLaporanLembur() async {
     setState(() => _isLoading = true);
     try {
-      final startStr = DateFormat('yyyy-MM-dd').format(_startDate);
-      final endStr = DateFormat('yyyy-MM-dd').format(_endDate);
+      final startFilter =
+          DateTime(_startDate.year, _startDate.month, _startDate.day, 0, 0, 0);
+      final endFilter =
+          DateTime(_endDate.year, _endDate.month, _endDate.day, 23, 59, 59);
+
+      final startStr = startFilter.toIso8601String();
+      final endStr = endFilter.toIso8601String();
 
       var query =
           Supabase.instance.client.from('overtime_requests').select('*');
@@ -143,10 +136,11 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
         query = query.eq('employee_id', _selectedEmployee['id']);
       }
 
+      // Filter berdasarkan waktu pelaksanaan lembur (start_time)
       final response = await query
-          .gte('created_at', '$startStr 00:00:00')
-          .lte('created_at', '$endStr 23:59:59')
-          .order('created_at', ascending: true);
+          .gte('start_time', startStr)
+          .lte('start_time', endStr)
+          .order('start_time', ascending: true);
 
       Map<dynamic, Map<String, dynamic>> empMap = {
         for (var emp in _employees) emp['id']: emp
@@ -274,7 +268,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
       excel_lib.TextCellValue('Total Jam'),
       excel_lib.TextCellValue('Status'),
       excel_lib.TextCellValue('Approved By'),
-      excel_lib.TextCellValue('Notes'), // Tambahan header Notes
+      excel_lib.TextCellValue('Notes'),
     ]);
 
     int no = 1;
@@ -294,14 +288,12 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
         excel_lib.TextCellValue('${item['duration_hours'] ?? '-'} Jam'),
         excel_lib.TextCellValue(item['status'] ?? 'Pending'),
         excel_lib.TextCellValue(approver),
-        excel_lib.TextCellValue(
-            item['notes']?.toString() ?? '-'), // Tambahan isi Notes
+        excel_lib.TextCellValue(item['notes']?.toString() ?? '-'),
       ]);
     }
 
     final totals = _calculateTotalHours();
 
-    // Sesuaikan panjang array agar pas dengan 11 kolom
     List<excel_lib.CellValue?> totalRow = List.filled(11, null);
     totalRow[6] = excel_lib.TextCellValue('Total Jam Lembur:');
     totalRow[7] =
@@ -396,7 +388,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                 'Total Jam',
                 'Status',
                 'Approved By',
-                'Notes' // Tambahan header Notes
+                'Notes'
               ],
               data: List<List<String>>.generate(_laporanList.length, (index) {
                 final item = _laporanList[index];
@@ -416,7 +408,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                   '${item['duration_hours'] ?? '-'} Jam',
                   item['status'] ?? 'Pending',
                   approver,
-                  item['notes']?.toString() ?? '-', // Tambahan data Notes
+                  item['notes']?.toString() ?? '-',
                 ];
               }),
               headerStyle: pw.TextStyle(
@@ -438,7 +430,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                 7: const pw.FixedColumnWidth(60),
                 8: const pw.FixedColumnWidth(55),
                 9: const pw.FlexColumnWidth(1),
-                10: const pw.FlexColumnWidth(1.2), // Lebar untuk kolom Notes
+                10: const pw.FlexColumnWidth(1.2),
               },
             ),
             pw.SizedBox(height: 12),
@@ -744,9 +736,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                                           DataColumn(label: Text('Status')),
                                           DataColumn(
                                               label: Text('Approved By')),
-                                          DataColumn(
-                                              label: Text(
-                                                  'Notes')), // Tambahan DataColumn Notes
+                                          DataColumn(label: Text('Notes')),
                                         ],
                                         rows: List<DataRow>.generate(
                                             _laporanList.length, (index) {
@@ -773,11 +763,12 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                                               'pending';
                                           Color badgeColor = Colors.orange;
                                           if (status == 'approved' ||
-                                              status == 'disetujui')
+                                              status == 'disetujui') {
                                             badgeColor = Colors.green;
-                                          else if (status == 'rejected' ||
-                                              status == 'ditolak')
+                                          } else if (status == 'rejected' ||
+                                              status == 'ditolak') {
                                             badgeColor = Colors.red;
+                                          }
 
                                           return DataRow(
                                             cells: [
@@ -823,9 +814,9 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                                                   style: const TextStyle(
                                                       fontWeight:
                                                           FontWeight.w500))),
-                                              DataCell(Text(item['notes']
-                                                      ?.toString() ??
-                                                  '-')), // Tambahan DataCell Notes
+                                              DataCell(Text(
+                                                  item['notes']?.toString() ??
+                                                      '-')),
                                             ],
                                           );
                                         }),
