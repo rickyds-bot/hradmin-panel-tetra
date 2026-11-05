@@ -702,7 +702,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                       child: pw.Text(
                         'Total Jam Lembur: ${_formatDuration(totals['weekday'])}',
                         style: pw.TextStyle(
-                            fontSize: 11, fontWeight: pw.FontWeight.bold),
+                            fontSize: 10, fontWeight: pw.FontWeight.bold),
                       ),
                     ),
                     pw.SizedBox(height: 4),
@@ -714,7 +714,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                       child: pw.Text(
                         'Total Jam Lembur (Hari Libur): ${_formatDuration(totals['weekend'])}',
                         style: pw.TextStyle(
-                            fontSize: 11, fontWeight: pw.FontWeight.bold),
+                            fontSize: 10, fontWeight: pw.FontWeight.bold),
                       ),
                     ),
                     if (catatan.isNotEmpty) ...[
@@ -1108,7 +1108,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                           Text(
                             'Total Jam Lembur: ${_formatDuration(totals['weekday'])}',
                             style: GoogleFonts.plusJakartaSans(
-                              fontSize: 11,
+                              fontSize: 10,
                               fontWeight: FontWeight.bold,
                               color: Colors.blue[900],
                             ),
@@ -1117,7 +1117,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                           Text(
                             'Total Jam Lembur (Hari Libur): ${_formatDuration(totals['weekend'])}',
                             style: GoogleFonts.plusJakartaSans(
-                              fontSize: 11,
+                              fontSize: 10,
                               fontWeight: FontWeight.bold,
                               color: Colors.blue[900],
                             ),
@@ -1127,7 +1127,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                             Text(
                               'Catatan:',
                               style: GoogleFonts.plusJakartaSans(
-                                fontSize: 11,
+                                fontSize: 10,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.grey[700],
                               ),
@@ -1139,7 +1139,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                                   line,
                                   textAlign: TextAlign.end,
                                   style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 11,
+                                    fontSize: 10,
                                     fontStyle: FontStyle.italic,
                                     color: Colors.grey[700],
                                   ),
