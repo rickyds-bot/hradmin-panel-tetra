@@ -5,6 +5,20 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 
+// Hitung jumlah hari kerja cuti (Senin-Jumat). Sabtu & Minggu tidak mengurangi saldo.
+int _hitungHariCutiKerja(DateTime start, DateTime end) {
+  DateTime cur = DateTime(start.year, start.month, start.day);
+  final DateTime last = DateTime(end.year, end.month, end.day);
+  int count = 0;
+  while (!cur.isAfter(last)) {
+    if (cur.weekday != DateTime.saturday && cur.weekday != DateTime.sunday) {
+      count++;
+    }
+    cur = DateTime(cur.year, cur.month, cur.day + 1);
+  }
+  return count;
+}
+
 class AdminPage extends StatefulWidget {
   const AdminPage({Key? key}) : super(key: key);
 
@@ -1403,17 +1417,22 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
   }
 
   Future<void> _updateStatusCuti(int id, String newStatus, String? userId,
-      String startDate, String endDate) async {
+      String startDate, String endDate,
+      {String? leaveType}) async {
     try {
       await Supabase.instance.client.from('leave_requests').update({
         'status': newStatus,
         'approved_by': _adminEmployeeId,
       }).eq('id', id);
 
-      if (newStatus == 'approved' && userId != null) {
+      // Saldo hanya dipotong untuk Cuti Tahunan, dan hanya hari kerja
+      // (Sabtu & Minggu tidak dihitung)
+      if (newStatus == 'approved' &&
+          userId != null &&
+          leaveType == 'Cuti Tahunan') {
         DateTime start = DateTime.parse(startDate);
         DateTime end = DateTime.parse(endDate);
-        int durasi = end.difference(start).inDays + 1;
+        int durasi = _hitungHariCutiKerja(start, end);
 
         final balanceData = await Supabase.instance.client
             .from('leave_balance')
@@ -1452,8 +1471,33 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
     }
   }
 
+  // Hitung durasi lembur dalam menit (aman untuk lembur yang melewati tengah malam).
+  // Jika jam mulai/selesai tidak terbaca, pakai duration_hours sebagai cadangan.
+  int _menitLembur(Map<String, dynamic> row) {
+    try {
+      final String? start = row['start_time']?.toString();
+      final String? end = row['end_time']?.toString();
+      if (start != null && end != null && start != 'null' && end != 'null') {
+        DateTime dtStart = (start.contains('T') || start.contains('-'))
+            ? DateTime.parse(start)
+            : DateTime.parse('1970-01-01 $start');
+        DateTime dtEnd = (end.contains('T') || end.contains('-'))
+            ? DateTime.parse(end)
+            : DateTime.parse('1970-01-01 $end');
+        Duration diff = dtEnd.difference(dtStart);
+        if (diff.isNegative) {
+          diff = dtEnd.add(const Duration(days: 1)).difference(dtStart);
+        }
+        return diff.inMinutes;
+      }
+    } catch (_) {}
+    final double jam =
+        double.tryParse(row['duration_hours']?.toString() ?? '0') ?? 0.0;
+    return (jam * 60).round();
+  }
+
   Future<void> _updateStatusLembur(
-      int id, String newStatus, dynamic employeeId, double durasi) async {
+      int id, String newStatus, dynamic employeeId, int durasiMenit) async {
     try {
       await Supabase.instance.client.from('overtime_requests').update({
         'status': newStatus,
@@ -1466,12 +1510,16 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
             .select('total_overtime_hours')
             .eq('id', employeeId)
             .single();
-        double currentTotal =
-            double.parse((empData['total_overtime_hours'] ?? 0).toString());
-        await Supabase.instance.client
-            .from('employees')
-            .update({'total_overtime_hours': currentTotal + durasi}).eq(
-                'id', employeeId);
+        // Total lama (jam desimal) -> menit, tambah durasi baru, lalu simpan
+        // kembali sebagai jam desimal (4 desimal) agar tidak ada selisih pembulatan
+        final double currentTotalJam = double.tryParse(
+                (empData['total_overtime_hours'] ?? 0).toString()) ??
+            0.0;
+        final int totalMenitBaru = (currentTotalJam * 60).round() + durasiMenit;
+        final double totalJamBaru =
+            double.parse((totalMenitBaru / 60.0).toStringAsFixed(4));
+        await Supabase.instance.client.from('employees').update(
+            {'total_overtime_hours': totalJamBaru}).eq('id', employeeId);
       }
 
       _refreshData();
@@ -1723,18 +1771,15 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
                                             row['user_id']?.toString(),
                                             row['start_date'],
                                             row['end_date'],
+                                            leaveType:
+                                                row['leave_type']?.toString(),
                                           );
                                         } else {
                                           _updateStatusLembur(
                                             row['id'],
                                             'rejected',
                                             row['employee_id'],
-                                            double.tryParse(
-                                                  row['duration_hours']
-                                                          ?.toString() ??
-                                                      '0',
-                                                ) ??
-                                                0.0,
+                                            _menitLembur(row),
                                           );
                                         }
                                       },
@@ -1766,18 +1811,15 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
                                             row['user_id']?.toString(),
                                             row['start_date'],
                                             row['end_date'],
+                                            leaveType:
+                                                row['leave_type']?.toString(),
                                           );
                                         } else {
                                           _updateStatusLembur(
                                             row['id'],
                                             'approved',
                                             row['employee_id'],
-                                            double.tryParse(
-                                                  row['duration_hours']
-                                                          ?.toString() ??
-                                                      '0',
-                                                ) ??
-                                                0.0,
+                                            _menitLembur(row),
                                           );
                                         }
                                       },

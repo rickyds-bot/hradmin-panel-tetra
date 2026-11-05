@@ -1187,6 +1187,32 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
 // ============================================================================
 // --- 3. TAB PENGAJUAN CUTI / IZIN KARYAWAN ---
 // ============================================================================
+// Hitung jumlah hari kerja cuti (Senin-Jumat). Sabtu & Minggu tidak mengurangi saldo.
+int _hitungHariCutiKerja(DateTime start, DateTime end) {
+  DateTime cur = DateTime(start.year, start.month, start.day);
+  final DateTime last = DateTime(end.year, end.month, end.day);
+  int count = 0;
+  while (!cur.isAfter(last)) {
+    if (cur.weekday != DateTime.saturday && cur.weekday != DateTime.sunday) {
+      count++;
+    }
+    cur = DateTime(cur.year, cur.month, cur.day + 1);
+  }
+  return count;
+}
+
+// Tanggal selesai Cuti Melahirkan: tepat 3 bulan sejak tanggal mulai (tanggal mulai
+// ikut dihitung), mis. mulai 1 Jan -> selesai 31 Mar. Jika tanggal tujuan tidak ada
+// di bulan tersebut (mis. 30 Feb), dipakai hari terakhir bulan itu sebagai acuan.
+DateTime _hitungTanggalSelesaiMelahirkan(DateTime start) {
+  final int totalBulan = start.year * 12 + (start.month - 1) + 3;
+  final int tahun = totalBulan ~/ 12;
+  final int bulan = totalBulan % 12 + 1;
+  final int hariTerakhir = DateTime(tahun, bulan + 1, 0).day;
+  final int hari = start.day < hariTerakhir ? start.day : hariTerakhir;
+  return DateTime(tahun, bulan, hari - 1);
+}
+
 class CutiKaryawanTab extends StatefulWidget {
   final Map<String, dynamic> userData;
   const CutiKaryawanTab({Key? key, required this.userData}) : super(key: key);
@@ -1352,7 +1378,18 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
 
     DateTime startDateToSave = _dateRange!.start;
     DateTime endDateToSave = _dateRange!.end;
-    final int duration = endDateToSave.difference(startDateToSave).inDays + 1;
+    // Durasi saldo = hari kerja saja (Sabtu & Minggu tidak dihitung)
+    final int duration = _hitungHariCutiKerja(startDateToSave, endDateToSave);
+
+    if (_selectedLeaveType == 'Cuti Tahunan' && duration == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                "Tanggal yang dipilih hanya Sabtu/Minggu. Pilih minimal satu hari kerja."),
+            backgroundColor: Colors.red),
+      );
+      return;
+    }
 
     // HANYA CEK SALDO UNTUK CUTI TAHUNAN
     if (_selectedLeaveType == 'Cuti Tahunan' && duration > _remainingLeave) {
@@ -1618,10 +1655,8 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
                             );
                             if (pickedDate != null) {
                               setState(() {
-                                DateTime calculatedEndDate = DateTime(
-                                    pickedDate.year,
-                                    pickedDate.month + 3,
-                                    pickedDate.day);
+                                DateTime calculatedEndDate =
+                                    _hitungTanggalSelesaiMelahirkan(pickedDate);
                                 _dateRange = DateTimeRange(
                                     start: pickedDate, end: calculatedEndDate);
                               });
@@ -2996,7 +3031,8 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
         if (leaveType == 'Cuti Tahunan') {
           DateTime start = DateTime.parse(startDate);
           DateTime end = DateTime.parse(endDate);
-          int durasi = end.difference(start).inDays + 1;
+          // Sabtu & Minggu tidak mengurangi saldo
+          int durasi = _hitungHariCutiKerja(start, end);
 
           final balanceData = await Supabase.instance.client
               .from('leave_balance')
