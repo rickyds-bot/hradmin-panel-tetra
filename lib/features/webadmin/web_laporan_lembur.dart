@@ -687,7 +687,7 @@ class _LaporanLemburPageState extends State<LaporanLemburPage> {
                 10: const pw.FlexColumnWidth(1.2),
               },
             ),
-            pw.SizedBox(height: 12),
+            pw.SizedBox(height: 11),
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.end,
               children: [
