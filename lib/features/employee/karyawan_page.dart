@@ -2220,6 +2220,38 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
     }
   }
 
+  // Hitung durasi lembur dalam menit (aman untuk lembur yang melewati tengah malam)
+  int? _hitungMenit(String? start, String? end) {
+    if (start == null || end == null || start == 'null' || end == 'null') {
+      return null;
+    }
+    try {
+      DateTime dtStart = (start.contains('T') || start.contains('-'))
+          ? DateTime.parse(start)
+          : DateTime.parse('1970-01-01 $start');
+      DateTime dtEnd = (end.contains('T') || end.contains('-'))
+          ? DateTime.parse(end)
+          : DateTime.parse('1970-01-01 $end');
+      Duration diff = dtEnd.difference(dtStart);
+      if (diff.isNegative) {
+        diff = dtEnd.add(const Duration(days: 1)).difference(dtStart);
+      }
+      return diff.inMinutes;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Ubah total menit menjadi teks, contoh: 150 -> "2 Jam 30 Menit"
+  String _formatMenit(int totalMenit) {
+    final int jam = totalMenit ~/ 60;
+    final int menit = totalMenit % 60;
+    if (jam == 0 && menit == 0) return '0 Menit';
+    if (jam == 0) return '$menit Menit';
+    if (menit == 0) return '$jam Jam';
+    return '$jam Jam $menit Menit';
+  }
+
   // Fungsi asli: Hanya untuk menampilkan 15 riwayat terbaru di UI
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
@@ -2320,7 +2352,7 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
 
       // 3. Buat file PDF
       final pdf = pw.Document();
-      double totalKumulatif = 0.0;
+      int totalMenitKumulatif = 0;
 
       pdf.addPage(
         pw.MultiPage(
@@ -2361,9 +2393,16 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
                 ],
                 data: List<List<String>>.generate(dataLaporan.length, (index) {
                   final item = dataLaporan[index];
-                  totalKumulatif += double.tryParse(
-                          item['duration_hours']?.toString() ?? '0') ??
-                      0.0;
+                  // Hitung dari jam mulai & selesai; jika gagal, pakai duration_hours
+                  final int menitLembur =
+                      _hitungMenit(item['start_time'], item['end_time']) ??
+                          ((double.tryParse(
+                                          item['duration_hours']?.toString() ??
+                                              '0') ??
+                                      0.0) *
+                                  60)
+                              .round();
+                  totalMenitKumulatif += menitLembur;
 
                   String appName = '-';
                   if (item['approved_by'] != null) {
@@ -2379,7 +2418,7 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
                     item['reason'] ?? item['description'] ?? '-',
                     _formatJam(item['start_time']),
                     _formatJam(item['end_time']),
-                    '${item['duration_hours'] ?? '-'}',
+                    _formatMenit(menitLembur),
                     (item['status'] ?? 'Pending').toString().toUpperCase(),
                     appName, // MEMASUKKAN DATA APPROVED BY
                   ];
@@ -2397,7 +2436,7 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
                 mainAxisAlignment: pw.MainAxisAlignment.end,
                 children: [
                   pw.Text(
-                      'Total Keseluruhan Jam Lembur: ${totalKumulatif.toStringAsFixed(1)} Jam',
+                      'Total Keseluruhan Jam Lembur: ${_formatMenit(totalMenitKumulatif)}',
                       style: pw.TextStyle(
                           fontSize: 11, fontWeight: pw.FontWeight.bold)),
                 ],
@@ -2817,8 +2856,33 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
     }
   }
 
+  // Hitung durasi lembur dalam menit (aman untuk lembur yang melewati tengah malam).
+  // Jika jam mulai/selesai tidak terbaca, pakai duration_hours sebagai cadangan.
+  int _menitLembur(Map<String, dynamic> row) {
+    try {
+      final String? start = row['start_time']?.toString();
+      final String? end = row['end_time']?.toString();
+      if (start != null && end != null && start != 'null' && end != 'null') {
+        DateTime dtStart = (start.contains('T') || start.contains('-'))
+            ? DateTime.parse(start)
+            : DateTime.parse('1970-01-01 $start');
+        DateTime dtEnd = (end.contains('T') || end.contains('-'))
+            ? DateTime.parse(end)
+            : DateTime.parse('1970-01-01 $end');
+        Duration diff = dtEnd.difference(dtStart);
+        if (diff.isNegative) {
+          diff = dtEnd.add(const Duration(days: 1)).difference(dtStart);
+        }
+        return diff.inMinutes;
+      }
+    } catch (_) {}
+    final double jam =
+        double.tryParse(row['duration_hours']?.toString() ?? '0') ?? 0.0;
+    return (jam * 60).round();
+  }
+
   Future<void> _updateStatusLembur(
-      int id, String newStatus, dynamic employeeId, double durasi) async {
+      int id, String newStatus, dynamic employeeId, int durasiMenit) async {
     try {
       await Supabase.instance.client.from('overtime_requests').update(
           {'status': newStatus, 'approved_by': widget.managerId}).eq('id', id);
@@ -2829,12 +2893,16 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
             .select('total_overtime_hours')
             .eq('id', employeeId)
             .single();
-        double currentTotal =
-            double.parse((empData['total_overtime_hours'] ?? 0).toString());
-        await Supabase.instance.client
-            .from('employees')
-            .update({'total_overtime_hours': currentTotal + durasi}).eq(
-                'id', employeeId);
+        // Total lama (jam desimal) -> menit, tambah durasi baru, lalu simpan
+        // kembali sebagai jam desimal (4 desimal) agar tidak ada selisih pembulatan
+        final double currentTotalJam = double.tryParse(
+                (empData['total_overtime_hours'] ?? 0).toString()) ??
+            0.0;
+        final int totalMenitBaru = (currentTotalJam * 60).round() + durasiMenit;
+        final double totalJamBaru =
+            double.parse((totalMenitBaru / 60.0).toStringAsFixed(4));
+        await Supabase.instance.client.from('employees').update(
+            {'total_overtime_hours': totalJamBaru}).eq('id', employeeId);
       }
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3047,10 +3115,7 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
                                       row['id'],
                                       'rejected',
                                       row['employee_id'],
-                                      double.tryParse(row['duration_hours']
-                                                  ?.toString() ??
-                                              '0') ??
-                                          0.0),
+                                      _menitLembur(row)),
                                   style: OutlinedButton.styleFrom(
                                       foregroundColor: Colors.red,
                                       side: const BorderSide(color: Colors.red),
@@ -3067,10 +3132,7 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
                                       row['id'],
                                       'approved',
                                       row['employee_id'],
-                                      double.tryParse(row['duration_hours']
-                                                  ?.toString() ??
-                                              '0') ??
-                                          0.0),
+                                      _menitLembur(row)),
                                   style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.green,
                                       foregroundColor: Colors.white,

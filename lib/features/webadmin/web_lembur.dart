@@ -324,6 +324,23 @@ class _WebLemburPageState extends State<WebLemburPage> {
     }
   }
 
+  // Durasi (jam desimal) dihitung dari jam mulai & selesai agar menitnya akurat;
+  // jika tidak tersedia, pakai duration_hours dari database
+  dynamic _durasiJamItem(Map<String, dynamic> item) {
+    final startRaw = item['start_time']?.toString();
+    final endRaw = item['end_time']?.toString();
+    if (startRaw != null &&
+        startRaw.isNotEmpty &&
+        endRaw != null &&
+        endRaw.isNotEmpty) {
+      final start = _parseRawTime(startRaw);
+      var end = _parseRawTime(endRaw);
+      if (end.isBefore(start)) end = end.add(const Duration(days: 1));
+      return end.difference(start).inMinutes / 60.0;
+    }
+    return item['duration_hours'];
+  }
+
   String _formatDurasi(dynamic durationValue) {
     if (durationValue == null) return '-';
 
@@ -687,8 +704,8 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                                   ),
                                                   DataCell(
                                                     Text(
-                                                      _formatDurasi(item[
-                                                          'duration_hours']),
+                                                      _formatDurasi(
+                                                          _durasiJamItem(item)),
                                                     ),
                                                   ),
                                                   DataCell(
@@ -947,7 +964,12 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
 
   late DateTime _startTime;
   late DateTime _endTime;
+  late int _durationMinutes;
   late double _durationHours;
+
+  // Kondisi awal data sebelum diedit, untuk menghindari hitungan ganda
+  late bool _wasApproved;
+  late int _originalMinutes;
 
   DateTime _parseRawTime(String? dtStr) {
     if (dtStr == null || dtStr.isEmpty) return DateTime.now();
@@ -975,13 +997,23 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
     _endTime = _parseRawTime(widget.lemburData['end_time']);
 
     _recalculateDuration();
+
+    _wasApproved =
+        (widget.lemburData['status'] ?? '').toString().toLowerCase() ==
+            'approved';
+    // Durasi lama sesuai yang tersimpan di database (itu yang dulu dijumlahkan)
+    _originalMinutes = ((double.tryParse(
+                    widget.lemburData['duration_hours']?.toString() ?? '0') ??
+                0.0) *
+            60)
+        .round();
   }
 
   void _recalculateDuration() {
     final diffInMinutes = _endTime.difference(_startTime).inMinutes;
-    _durationHours = diffInMinutes > 0
-        ? double.parse((diffInMinutes / 60.0).toStringAsFixed(1))
-        : 0.0;
+    _durationMinutes = diffInMinutes > 0 ? diffInMinutes : 0;
+    // 4 desimal agar menit tetap akurat (0.1 jam = 6 menit terlalu kasar)
+    _durationHours = double.parse((_durationMinutes / 60.0).toStringAsFixed(4));
   }
 
   Future<void> _selectDateTime(bool isStart) async {
@@ -1082,18 +1114,32 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
         if (_selectedStatus != 'pending') 'approved_by': adminEmpId,
       }).eq('id', widget.lemburData['id']);
 
-      if (_selectedStatus == 'approved' &&
-          widget.lemburData['employee_id'] != null) {
+      // Hitung selisih kontribusi ke total lembur karyawan:
+      // - sebelumnya approved -> kontribusi lama = durasi lama, jika tidak 0
+      // - sekarang approved   -> kontribusi baru = durasi baru, jika tidak 0
+      // Sehingga edit catatan saja tidak menambah jam lagi, dan perubahan
+      // durasi atau pembatalan approval otomatis dikoreksi.
+      final int kontribusiLama = _wasApproved ? _originalMinutes : 0;
+      final int kontribusiBaru =
+          _selectedStatus == 'approved' ? _durationMinutes : 0;
+      final int selisihMenit = kontribusiBaru - kontribusiLama;
+
+      if (selisihMenit != 0 && widget.lemburData['employee_id'] != null) {
         final empData = await Supabase.instance.client
             .from('employees')
             .select('total_overtime_hours')
             .eq('id', widget.lemburData['employee_id'])
             .single();
-        double currentTotal =
-            double.parse((empData['total_overtime_hours'] ?? 0).toString());
+        final double currentTotalJam = double.tryParse(
+                (empData['total_overtime_hours'] ?? 0).toString()) ??
+            0.0;
+        int totalMenitBaru = (currentTotalJam * 60).round() + selisihMenit;
+        if (totalMenitBaru < 0) totalMenitBaru = 0;
+        final double totalJamBaru =
+            double.parse((totalMenitBaru / 60.0).toStringAsFixed(4));
         await Supabase.instance.client
             .from('employees')
-            .update({'total_overtime_hours': currentTotal + _durationHours}).eq(
+            .update({'total_overtime_hours': totalJamBaru}).eq(
                 'id', widget.lemburData['employee_id']);
       }
 
