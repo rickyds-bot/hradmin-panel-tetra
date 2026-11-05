@@ -251,6 +251,32 @@ class _WebLemburPageState extends State<WebLemburPage> {
     }
   }
 
+  String _formatDurasi(dynamic durationValue) {
+    if (durationValue == null) return '-';
+
+    // Parse nilai durasi menjadi double
+    double doubleVal = double.tryParse(durationValue.toString()) ?? 0.0;
+    if (doubleVal == 0.0) return '0 Jam';
+
+    // Konversi jam desimal ke total menit
+    int totalMinutes = (doubleVal * 60).round();
+
+    // Dapatkan jam dan sisa menit
+    int hours = totalMinutes ~/ 60;
+    int minutes = totalMinutes % 60;
+
+    // Format teks keluaran
+    if (hours > 0 && minutes > 0) {
+      return '$hours Jam $minutes Menit';
+    } else if (hours > 0) {
+      return '$hours Jam';
+    } else if (minutes > 0) {
+      return '$minutes Menit';
+    } else {
+      return '0 Jam';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -591,7 +617,8 @@ class _WebLemburPageState extends State<WebLemburPage> {
                                                   ),
                                                   DataCell(
                                                     Text(
-                                                      '${item['duration_hours'] ?? 0} Jam',
+                                                      _formatDurasi(item[
+                                                          'duration_hours']),
                                                     ),
                                                   ),
                                                   DataCell(
@@ -820,6 +847,32 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
     });
   }
 
+  String _formatDurasi(dynamic durationValue) {
+    if (durationValue == null) return '-';
+
+    // Parse nilai durasi menjadi double
+    double doubleVal = double.tryParse(durationValue.toString()) ?? 0.0;
+    if (doubleVal == 0.0) return '0 Jam';
+
+    // Konversi jam desimal ke total menit
+    int totalMinutes = (doubleVal * 60).round();
+
+    // Dapatkan jam dan sisa menit
+    int hours = totalMinutes ~/ 60;
+    int minutes = totalMinutes % 60;
+
+    // Format teks keluaran
+    if (hours > 0 && minutes > 0) {
+      return '$hours Jam $minutes Menit';
+    } else if (hours > 0) {
+      return '$hours Jam';
+    } else if (minutes > 0) {
+      return '$minutes Menit';
+    } else {
+      return '0 Jam';
+    }
+  }
+
   @override
   void dispose() {
     _notesCtrl.dispose();
@@ -1000,7 +1053,7 @@ class _EditStatusLemburDialogState extends State<EditStatusLemburDialog> {
                         fontSize: 11, color: Colors.blue[900]),
                   ),
                   Text(
-                    '$_durationHours Jam',
+                    _formatDurasi(_durationHours),
                     style: GoogleFonts.plusJakartaSans(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
