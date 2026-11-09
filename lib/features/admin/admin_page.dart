@@ -5,13 +5,35 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 
-// Hitung jumlah hari kerja cuti (Senin-Jumat). Sabtu & Minggu tidak mengurangi saldo.
-int _hitungHariCutiKerja(DateTime start, DateTime end) {
-  DateTime cur = DateTime(start.year, start.month, start.day);
+// Hitung jumlah hari cuti yang mengurangi saldo: hanya hari kerja (Senin-Jumat)
+// dan bukan hari libur nasional (tabel hari_libur). Sabtu, Minggu, dan tanggal
+// merah tidak mengurangi saldo.
+Future<int> _hitungHariCutiKerja(DateTime start, DateTime end) async {
+  final DateTime first = DateTime(start.year, start.month, start.day);
   final DateTime last = DateTime(end.year, end.month, end.day);
+
+  Set<String> libur = {};
+  try {
+    final res = await Supabase.instance.client
+        .from('hari_libur')
+        .select('holiday_date')
+        .gte('holiday_date', DateFormat('yyyy-MM-dd').format(first))
+        .lte('holiday_date', DateFormat('yyyy-MM-dd').format(last));
+    for (var h in res) {
+      final raw = h['holiday_date']?.toString();
+      if (raw != null && raw.length >= 10) libur.add(raw.substring(0, 10));
+    }
+  } catch (_) {
+    // Jika data hari libur gagal dimuat, hanya Sabtu/Minggu yang dikecualikan
+    libur = {};
+  }
+
   int count = 0;
+  DateTime cur = first;
   while (!cur.isAfter(last)) {
-    if (cur.weekday != DateTime.saturday && cur.weekday != DateTime.sunday) {
+    final bool akhirPekan =
+        cur.weekday == DateTime.saturday || cur.weekday == DateTime.sunday;
+    if (!akhirPekan && !libur.contains(DateFormat('yyyy-MM-dd').format(cur))) {
       count++;
     }
     cur = DateTime(cur.year, cur.month, cur.day + 1);
@@ -1426,13 +1448,13 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
       }).eq('id', id);
 
       // Saldo hanya dipotong untuk Cuti Tahunan, dan hanya hari kerja
-      // (Sabtu & Minggu tidak dihitung)
+      // (Sabtu, Minggu & tanggal merah tidak dihitung)
       if (newStatus == 'approved' &&
           userId != null &&
           leaveType == 'Cuti Tahunan') {
         DateTime start = DateTime.parse(startDate);
         DateTime end = DateTime.parse(endDate);
-        int durasi = _hitungHariCutiKerja(start, end);
+        int durasi = await _hitungHariCutiKerja(start, end);
 
         final balanceData = await Supabase.instance.client
             .from('leave_balance')

@@ -1187,13 +1187,35 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
 // ============================================================================
 // --- 3. TAB PENGAJUAN CUTI / IZIN KARYAWAN ---
 // ============================================================================
-// Hitung jumlah hari kerja cuti (Senin-Jumat). Sabtu & Minggu tidak mengurangi saldo.
-int _hitungHariCutiKerja(DateTime start, DateTime end) {
-  DateTime cur = DateTime(start.year, start.month, start.day);
+// Hitung jumlah hari cuti yang mengurangi saldo: hanya hari kerja (Senin-Jumat)
+// dan bukan hari libur nasional (tabel hari_libur). Sabtu, Minggu, dan tanggal
+// merah tidak mengurangi saldo.
+Future<int> _hitungHariCutiKerja(DateTime start, DateTime end) async {
+  final DateTime first = DateTime(start.year, start.month, start.day);
   final DateTime last = DateTime(end.year, end.month, end.day);
+
+  Set<String> libur = {};
+  try {
+    final res = await Supabase.instance.client
+        .from('hari_libur')
+        .select('holiday_date')
+        .gte('holiday_date', DateFormat('yyyy-MM-dd').format(first))
+        .lte('holiday_date', DateFormat('yyyy-MM-dd').format(last));
+    for (var h in res) {
+      final raw = h['holiday_date']?.toString();
+      if (raw != null && raw.length >= 10) libur.add(raw.substring(0, 10));
+    }
+  } catch (_) {
+    // Jika data hari libur gagal dimuat, hanya Sabtu/Minggu yang dikecualikan
+    libur = {};
+  }
+
   int count = 0;
+  DateTime cur = first;
   while (!cur.isAfter(last)) {
-    if (cur.weekday != DateTime.saturday && cur.weekday != DateTime.sunday) {
+    final bool akhirPekan =
+        cur.weekday == DateTime.saturday || cur.weekday == DateTime.sunday;
+    if (!akhirPekan && !libur.contains(DateFormat('yyyy-MM-dd').format(cur))) {
       count++;
     }
     cur = DateTime(cur.year, cur.month, cur.day + 1);
@@ -1378,14 +1400,15 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
 
     DateTime startDateToSave = _dateRange!.start;
     DateTime endDateToSave = _dateRange!.end;
-    // Durasi saldo = hari kerja saja (Sabtu & Minggu tidak dihitung)
-    final int duration = _hitungHariCutiKerja(startDateToSave, endDateToSave);
+    // Durasi saldo = hari kerja saja (Sabtu, Minggu & tanggal merah tidak dihitung)
+    final int duration =
+        await _hitungHariCutiKerja(startDateToSave, endDateToSave);
 
     if (_selectedLeaveType == 'Cuti Tahunan' && duration == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content: Text(
-                "Tanggal yang dipilih hanya Sabtu/Minggu. Pilih minimal satu hari kerja."),
+                "Tanggal yang dipilih hanya Sabtu/Minggu/tanggal merah. Pilih minimal satu hari kerja."),
             backgroundColor: Colors.red),
       );
       return;
@@ -2286,14 +2309,40 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
   bool get _aturanLemburBerlaku =>
       !_jabatanTanpaAturanLembur.contains(_jabatanUser);
 
-  // Sabtu/Minggu berdasarkan tanggal pada start_time
-  bool _isAkhirPekan(String? start) {
+  // Tanggal hari libur nasional (yyyy-MM-dd) pada periode PDF
+  Set<String> _holidayDates = {};
+
+  Future<void> _loadHolidays() async {
+    try {
+      final res = await Supabase.instance.client
+          .from('hari_libur')
+          .select('holiday_date')
+          .gte('holiday_date', DateFormat('yyyy-MM-dd').format(_startDate))
+          .lte('holiday_date', DateFormat('yyyy-MM-dd').format(_endDate));
+      final Set<String> dates = {};
+      for (var h in res) {
+        final raw = h['holiday_date']?.toString();
+        if (raw == null || raw.length < 10) continue;
+        dates.add(raw.substring(0, 10));
+      }
+      _holidayDates = dates;
+    } catch (e) {
+      _holidayDates = {};
+    }
+  }
+
+  // Hari libur = Sabtu/Minggu atau hari libur nasional, berdasarkan tanggal start_time.
+  // Lembur di hari libur tidak kena potongan istirahat & terlambat.
+  bool _isHariLibur(String? start) {
     if (start == null || start == 'null' || start.isEmpty) return false;
     try {
       final String datePart =
           start.contains('T') ? start.split('T')[0] : start.split(' ')[0];
       final DateTime d = DateTime.parse(datePart);
-      return d.weekday == DateTime.saturday || d.weekday == DateTime.sunday;
+      if (d.weekday == DateTime.saturday || d.weekday == DateTime.sunday) {
+        return true;
+      }
+      return _holidayDates.contains(datePart);
     } catch (_) {
       return false;
     }
@@ -2333,9 +2382,11 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
     }
 
     int seconds = 0;
-    firstIn.forEach((_, checkIn) {
+    firstIn.forEach((dateKey, checkIn) {
+      // Sabtu/Minggu & hari libur nasional tidak dihitung terlambat
       if (checkIn.weekday == DateTime.saturday ||
-          checkIn.weekday == DateTime.sunday) {
+          checkIn.weekday == DateTime.sunday ||
+          _holidayDates.contains(dateKey)) {
         return;
       }
       final limit = DateTime(
@@ -2438,9 +2489,9 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
           .from('overtime_requests')
           .select('*')
           .eq('user_id', widget.userId)
-          .gte('created_at', '${startStr}T00:00:00')
-          .lte('created_at', '${endStr}T23:59:59')
-          .order('created_at', ascending: true);
+          .gte('start_time', '${startStr}T00:00:00')
+          .lte('start_time', '${endStr}T23:59:59')
+          .order('start_time', ascending: true);
 
       if (dataLaporan.isEmpty) {
         if (mounted) {
@@ -2490,6 +2541,7 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
       }).toList();
 
       // Terapkan aturan lembur
+      await _loadHolidays();
       final bool berlaku = _aturanLemburBerlaku;
       int totalSebelumPotongan = 0;
       int weekdayCounted = 0;
@@ -2501,7 +2553,7 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
       for (int i = 0; i < dataLaporan.length; i++) {
         final int menit = menitList[i];
         final bool akhirPekan =
-            _isAkhirPekan(dataLaporan[i]['start_time']?.toString());
+            _isHariLibur(dataLaporan[i]['start_time']?.toString());
         totalSebelumPotongan += menit;
         int counted = menit;
         if (berlaku) {
@@ -3031,8 +3083,8 @@ class _ManagerApprovalTabState extends State<ManagerApprovalTab> {
         if (leaveType == 'Cuti Tahunan') {
           DateTime start = DateTime.parse(startDate);
           DateTime end = DateTime.parse(endDate);
-          // Sabtu & Minggu tidak mengurangi saldo
-          int durasi = _hitungHariCutiKerja(start, end);
+          // Sabtu, Minggu & tanggal merah tidak mengurangi saldo
+          int durasi = await _hitungHariCutiKerja(start, end);
 
           final balanceData = await Supabase.instance.client
               .from('leave_balance')
