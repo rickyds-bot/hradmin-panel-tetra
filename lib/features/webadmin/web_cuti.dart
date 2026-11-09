@@ -6,6 +6,42 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+// Hitung jumlah hari cuti yang mengurangi saldo: hanya hari kerja (Senin-Jumat)
+// dan bukan hari libur nasional (tabel hari_libur). Sabtu, Minggu, dan tanggal
+// merah tidak mengurangi saldo.
+Future<int> _hitungHariCutiKerja(DateTime start, DateTime end) async {
+  final DateTime first = DateTime(start.year, start.month, start.day);
+  final DateTime last = DateTime(end.year, end.month, end.day);
+
+  Set<String> libur = {};
+  try {
+    final res = await Supabase.instance.client
+        .from('hari_libur')
+        .select('holiday_date')
+        .gte('holiday_date', DateFormat('yyyy-MM-dd').format(first))
+        .lte('holiday_date', DateFormat('yyyy-MM-dd').format(last));
+    for (var h in res) {
+      final raw = h['holiday_date']?.toString();
+      if (raw != null && raw.length >= 10) libur.add(raw.substring(0, 10));
+    }
+  } catch (_) {
+    // Jika data hari libur gagal dimuat, hanya Sabtu/Minggu yang dikecualikan
+    libur = {};
+  }
+
+  int count = 0;
+  DateTime cur = first;
+  while (!cur.isAfter(last)) {
+    final bool akhirPekan =
+        cur.weekday == DateTime.saturday || cur.weekday == DateTime.sunday;
+    if (!akhirPekan && !libur.contains(DateFormat('yyyy-MM-dd').format(cur))) {
+      count++;
+    }
+    cur = DateTime(cur.year, cur.month, cur.day + 1);
+  }
+  return count;
+}
+
 class WebCutiPage extends StatefulWidget {
   const WebCutiPage({super.key});
 
@@ -412,8 +448,9 @@ class _WebCutiPageState extends State<WebCutiPage> {
     dynamic empIdRaw,
     dynamic userUuid,
     String startDate,
-    String endDate,
-  ) async {
+    String endDate, {
+    String? leaveType,
+  }) async {
     try {
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null) throw 'Sesi admin tidak ditemukan';
@@ -431,14 +468,16 @@ class _WebCutiPageState extends State<WebCutiPage> {
         if (newStatus != 'pending') 'approved_by': adminEmpId
       }).eq('id', id);
 
-      if (newStatus == 'approved') {
+      // Saldo hanya dipotong untuk Cuti Tahunan (izin & cuti khusus tidak memotong)
+      if (newStatus == 'approved' && leaveType == 'Cuti Tahunan') {
         if (userUuid == null || userUuid.toString().isEmpty) {
           throw 'User UUID untuk karyawan ini tidak ditemukan, tidak dapat memperbarui saldo cuti.';
         }
 
         DateTime start = DateTime.parse(startDate);
         DateTime end = DateTime.parse(endDate);
-        int durasi = end.difference(start).inDays + 1;
+        // Sabtu, Minggu & tanggal merah tidak mengurangi saldo
+        int durasi = await _hitungHariCutiKerja(start, end);
 
         Map<String, dynamic>? balanceData = await Supabase.instance.client
             .from('leave_balance')
@@ -990,6 +1029,9 @@ class _WebCutiPageState extends State<WebCutiPage> {
                                                               item[
                                                                   'start_date'],
                                                               item['end_date'],
+                                                              leaveType: item[
+                                                                      'leave_type']
+                                                                  ?.toString(),
                                                             ),
                                                             child: const Text(
                                                               'Setujui',
@@ -1040,6 +1082,9 @@ class _WebCutiPageState extends State<WebCutiPage> {
                                                               item[
                                                                   'start_date'],
                                                               item['end_date'],
+                                                              leaveType: item[
+                                                                      'leave_type']
+                                                                  ?.toString(),
                                                             ),
                                                             child: const Text(
                                                               'Tolak',
