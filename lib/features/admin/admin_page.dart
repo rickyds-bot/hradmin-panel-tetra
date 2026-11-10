@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:async';
 import 'dart:convert';
 
 // Hitung jumlah hari cuti yang mengurangi saldo: hanya hari kerja (Senin-Jumat)
@@ -968,6 +969,7 @@ class _AktivitasTabState extends State<AktivitasTab> {
   String _search = "";
   DateTime? _startDate;
   DateTime? _endDate;
+  Timer? _debounce;
 
   late Future<List<Map<String, dynamic>>> _aktivitasFuture;
   List<Map<String, dynamic>> _employeeList = [];
@@ -978,29 +980,51 @@ class _AktivitasTabState extends State<AktivitasTab> {
     _refreshData();
   }
 
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
   Future<void> _refreshData() async {
     try {
       final empResponse = await Supabase.instance.client
           .from('employees')
           .select('id, full_name');
+      final emps = List<Map<String, dynamic>>.from(empResponse);
 
       var query = Supabase.instance.client.from('attendance').select();
 
+      // Filter tanggal pakai batas hari LOKAL, dikonversi ke UTC
       if (_startDate != null && _endDate != null) {
-        final startStr = DateFormat('yyyy-MM-dd').format(_startDate!);
-        final endStr = DateFormat('yyyy-MM-dd').format(_endDate!);
+        final start =
+            DateTime(_startDate!.year, _startDate!.month, _startDate!.day);
+        final endExclusive =
+            DateTime(_endDate!.year, _endDate!.month, _endDate!.day + 1);
         query = query
-            .gte('created_at', '${startStr}T00:00:00')
-            .lte('created_at', '${endStr}T23:59:59');
+            .gte('created_at', start.toUtc().toIso8601String())
+            .lt('created_at', endExclusive.toUtc().toIso8601String());
       }
 
-      // Limit 100 baris riwayat
+      // Pencarian nama/status dilakukan di server, SEBELUM limit
+      final q = _search.trim().toLowerCase().replaceAll(RegExp(r'[,()*%]'), '');
+      if (q.isNotEmpty) {
+        final ids = emps
+            .where((e) =>
+                (e['full_name'] ?? '').toString().toLowerCase().contains(q))
+            .map((e) => e['id'].toString())
+            .toList();
+        final conds = <String>['status.ilike.*$q*'];
+        if (ids.isNotEmpty) conds.add('employee_id.in.(${ids.join(',')})');
+        query = query.or(conds.join(','));
+      }
+
       final attResponse =
-          await query.order('created_at', ascending: false).limit(100);
+          await query.order('created_at', ascending: false).limit(1000);
 
       if (mounted) {
         setState(() {
-          _employeeList = List<Map<String, dynamic>>.from(empResponse);
+          _employeeList = emps;
           _aktivitasFuture =
               Future.value(List<Map<String, dynamic>>.from(attResponse));
         });
@@ -1171,7 +1195,12 @@ class _AktivitasTabState extends State<AktivitasTab> {
                     border: OutlineInputBorder(),
                     contentPadding: EdgeInsets.symmetric(vertical: 0),
                   ),
-                  onChanged: (v) => setState(() => _search = v),
+                  onChanged: (v) {
+                    setState(() => _search = v);
+                    _debounce?.cancel();
+                    _debounce =
+                        Timer(const Duration(milliseconds: 400), _refreshData);
+                  },
                 ),
               ),
               const SizedBox(width: 8),
