@@ -54,7 +54,6 @@ class _AdminPageState extends State<AdminPage> {
   int _totalKaryawan = 0;
   int _totalTetap = 0;
   int _totalKontrak = 0;
-  int _totalMagang = 0;
   int _totalHadirHariIni = 0;
   int _totalTidakHadirHariIni = 0;
   List<Map<String, dynamic>> _tidakHadirList = [];
@@ -76,7 +75,7 @@ class _AdminPageState extends State<AdminPage> {
           .select(
               'id, full_name, employee_status, role, is_active, jabatan_name');
 
-      int tetap = 0, kontrak = 0, magang = 0;
+      int tetap = 0, kontrak = 0;
       List<dynamic> nonAdminIds = [];
       final List<Map<String, dynamic>> activeEmps = [];
 
@@ -101,8 +100,6 @@ class _AdminPageState extends State<AdminPage> {
           tetap++;
         } else if (empStatus == 'kontrak') {
           kontrak++;
-        } else if (empStatus == 'magang') {
-          magang++;
         }
       }
 
@@ -192,7 +189,6 @@ class _AdminPageState extends State<AdminPage> {
           _totalKaryawan = nonAdminIds.length;
           _totalTetap = tetap;
           _totalKontrak = kontrak;
-          _totalMagang = magang;
           _totalHadirHariIni = uniqueHadir.length;
           _tidakHadirList = tidakHadir;
           _totalTidakHadirHariIni = tidakHadir.length;
@@ -413,8 +409,6 @@ class _AdminPageState extends State<AdminPage> {
                 Icons.verified_user_outlined, Colors.indigo),
             _buildStatCard('Karyawan Kontrak', _totalKontrak.toString(),
                 Icons.assignment_ind_outlined, Colors.teal),
-            _buildStatCard('Karyawan Magang', _totalMagang.toString(),
-                Icons.school_outlined, Colors.brown),
             _buildStatCard('Hadir Hari Ini', _totalHadirHariIni.toString(),
                 Icons.how_to_reg_outlined, Colors.green),
             _buildStatCard(

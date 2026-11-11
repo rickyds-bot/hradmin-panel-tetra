@@ -2402,6 +2402,18 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
     return seconds ~/ 60;
   }
 
+  // Nama hari (Senin, Selasa, ...) dari tanggal pada start_time
+  String _namaHari(String? start) {
+    if (start == null || start == 'null' || start.isEmpty) return '-';
+    try {
+      final String datePart =
+          start.contains('T') ? start.split('T')[0] : start.split(' ')[0];
+      return DateFormat('EEEE', 'id_ID').format(DateTime.parse(datePart));
+    } catch (_) {
+      return '-';
+    }
+  }
+
   // Isi kolom Notes: catatan HR/admin + catatan otomatis perhitungan lembur
   String _gabungNotes(dynamic hrNotes, String? autoNote) {
     final parts = <String>[];
@@ -2556,7 +2568,7 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
       // Terapkan aturan lembur (hanya pengajuan approved yang dihitung)
       await _loadHolidays();
       final bool berlaku = _aturanLemburBerlaku;
-      int totalSebelumPotongan = 0;
+      int rawWeekday = 0; // total hari biasa (approved) sebelum potongan
       int weekdayCounted = 0;
       int weekendCounted = 0;
       int belowMinCount = 0;
@@ -2599,7 +2611,7 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
           continue;
         }
 
-        totalSebelumPotongan += menit;
+        if (!akhirPekan) rawWeekday += menit;
         int counted = menit;
         if (berlaku) {
           if (menit < _minLemburMenit) {
@@ -2643,14 +2655,14 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
         lateRaw = await _hitungMenitTerlambat();
         lateApplied = lateRaw < weekdayCounted ? lateRaw : weekdayCounted;
       }
-      final int totalMenitKumulatif =
-          (weekdayCounted - lateApplied) + weekendCounted;
+      final int totalHariBiasa = weekdayCounted - lateApplied;
+      final int totalHariLibur = weekendCounted;
 
       // Catatan potongan di bawah laporan
       final List<String> catatan = [];
-      if (totalSebelumPotongan != totalMenitKumulatif) {
+      if (rawWeekday != totalHariBiasa) {
         catatan.add(
-            'Total lembur sebelum potongan: ${_formatMenit(totalSebelumPotongan)}');
+            'Total lembur (hari biasa) sebelum potongan: ${_formatMenit(rawWeekday)}');
       }
       if (belowMinCount > 0) {
         catatan.add(
@@ -2689,31 +2701,38 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
             return [
               pw.Header(
                 level: 0,
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text('Laporan Pekerjaan Lembur',
-                        style: pw.TextStyle(
-                            fontSize: 14, fontWeight: pw.FontWeight.bold)),
-                    pw.SizedBox(height: 4),
-                    pw.Text(
-                        'Nama Karyawan: ${widget.userData['full_name'] ?? '-'}',
-                        style: pw.TextStyle(fontSize: 12)),
-                    pw.Text(
-                        'Periode: ${DateFormat('dd MMM yyyy').format(_startDate)} s/d ${DateFormat('dd MMM yyyy').format(_endDate)}',
-                        style: const pw.TextStyle(fontSize: 10)),
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('Laporan Pekerjaan Lembur',
+                            style: pw.TextStyle(
+                                fontSize: 13, fontWeight: pw.FontWeight.bold)),
+                        pw.SizedBox(height: 2),
+                        pw.Text(
+                            'Karyawan: ${widget.userData['full_name'] ?? '-'}',
+                            style: pw.TextStyle(
+                                fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                        pw.Text(
+                            'Periode: ${DateFormat('dd MMM yyyy').format(_startDate)} s/d ${DateFormat('dd MMM yyyy').format(_endDate)}',
+                            style: const pw.TextStyle(fontSize: 10)),
+                      ],
+                    ),
                   ],
                 ),
               ),
               pw.SizedBox(height: 10),
               pw.Table.fromTextArray(
-                // MENAMBAHKAN HEADER APPROVED BY
                 headers: [
                   'No',
+                  'Hari',
                   'Tanggal',
+                  'Nama Karyawan',
                   'Pekerjaan Lembur',
-                  'Mulai',
-                  'Selesai',
+                  'Jam Mulai',
+                  'Jam Selesai',
                   'Total Jam',
                   'Status',
                   'Approved By',
@@ -2733,35 +2752,70 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
 
                   return [
                     '${index + 1}',
+                    _namaHari(item['start_time']?.toString()),
                     _formatTanggalCantik(item['start_time']),
-                    item['reason'] ?? item['description'] ?? '-',
+                    (widget.userData['full_name'] ?? '-').toString(),
+                    (item['reason'] ?? item['description'] ?? '-').toString(),
                     _formatJam(item['start_time']),
                     _formatJam(item['end_time']),
                     _formatMenit(menitLembur),
-                    (item['status'] ?? 'Pending').toString().toUpperCase(),
-                    appName, // MEMASUKKAN DATA APPROVED BY
+                    (item['status'] ?? 'Pending').toString(),
+                    appName,
                     _gabungNotes(item['notes'], catatanBaris[index]),
                   ];
                 }),
                 headerStyle: pw.TextStyle(
                     fontWeight: pw.FontWeight.bold,
-                    fontSize: 10,
+                    fontSize: 9,
                     color: PdfColors.white),
                 headerDecoration:
                     const pw.BoxDecoration(color: PdfColors.blue800),
-                cellStyle: const pw.TextStyle(fontSize: 9),
+                cellStyle: const pw.TextStyle(fontSize: 8),
+                cellAlignment: pw.Alignment.centerLeft,
+                columnWidths: {
+                  0: const pw.FixedColumnWidth(25),
+                  1: const pw.FixedColumnWidth(45),
+                  2: const pw.FixedColumnWidth(60),
+                  3: const pw.FlexColumnWidth(1.2),
+                  4: const pw.FlexColumnWidth(1.5),
+                  5: const pw.FixedColumnWidth(50),
+                  6: const pw.FixedColumnWidth(50),
+                  7: const pw.FixedColumnWidth(60),
+                  8: const pw.FixedColumnWidth(55),
+                  9: const pw.FlexColumnWidth(1),
+                  10: const pw.FlexColumnWidth(1.2),
+                },
               ),
-              pw.SizedBox(height: 12),
+              pw.SizedBox(height: 11),
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.end,
                 children: [
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
-                      pw.Text(
-                          'Total Keseluruhan Jam Lembur: ${_formatMenit(totalMenitKumulatif)}',
+                      pw.Container(
+                        padding: const pw.EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration:
+                            const pw.BoxDecoration(color: PdfColors.grey200),
+                        child: pw.Text(
+                          'Total Jam Lembur: ${_formatMenit(totalHariBiasa)}',
                           style: pw.TextStyle(
-                              fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                              fontSize: 10, fontWeight: pw.FontWeight.bold),
+                        ),
+                      ),
+                      pw.SizedBox(height: 4),
+                      pw.Container(
+                        padding: const pw.EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration:
+                            const pw.BoxDecoration(color: PdfColors.grey200),
+                        child: pw.Text(
+                          'Total Jam Lembur (Hari Libur): ${_formatMenit(totalHariLibur)}',
+                          style: pw.TextStyle(
+                              fontSize: 10, fontWeight: pw.FontWeight.bold),
+                        ),
+                      ),
                       if (catatan.isNotEmpty) ...[
                         pw.SizedBox(height: 8),
                         pw.Text('Catatan:',
