@@ -1936,7 +1936,8 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
     final picked = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 14)),
+      // Lembur boleh diajukan sampai 3 minggu (21 hari) setelah tanggal lembur
+      firstDate: DateTime.now().subtract(const Duration(days: 21)),
       lastDate: DateTime.now().add(const Duration(days: 7)),
     );
     if (picked != null) {
@@ -2302,6 +2303,9 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
   static const int _minLemburMenit = 60; // minimal lembur
   static const int _intervalIstirahatMenit = 240; // tiap 4 jam lembur
   static const int _potonganIstirahatMenit = 30; // dikurangi 30 menit istirahat
+  // Hari biasa: lembur kurang dari 4 jam maksimal dihitung 3 jam 30 menit
+  // (mis. 3 jam 44 menit tetap dihitung 3 jam 30 menit)
+  static const int _batasHitungMenit = 210;
 
   String get _jabatanUser =>
       (widget.userData['jabatan_name'] ?? '').toString().trim().toLowerCase();
@@ -2396,6 +2400,15 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
       }
     });
     return seconds ~/ 60;
+  }
+
+  // Isi kolom Notes: catatan HR/admin + catatan otomatis perhitungan lembur
+  String _gabungNotes(dynamic hrNotes, String? autoNote) {
+    final parts = <String>[];
+    final hr = (hrNotes ?? '').toString().trim();
+    if (hr.isNotEmpty && hr != 'null') parts.add(hr);
+    if (autoNote != null) parts.add(autoNote);
+    return parts.isEmpty ? '-' : parts.join(' | ');
   }
 
   // Hitung durasi lembur dalam menit (aman untuk lembur yang melewati tengah malam)
@@ -2540,7 +2553,7 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
                 .round();
       }).toList();
 
-      // Terapkan aturan lembur
+      // Terapkan aturan lembur (hanya pengajuan approved yang dihitung)
       await _loadHolidays();
       final bool berlaku = _aturanLemburBerlaku;
       int totalSebelumPotongan = 0;
@@ -2550,10 +2563,42 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
       int belowMinMenit = 0;
       int breakCount = 0;
       int breakMenit = 0;
+      int capCount = 0;
+      int capMenit = 0;
+      int pendingCount = 0;
+      int pendingMenit = 0;
+      int rejectedCount = 0;
+      int rejectedMenit = 0;
+      final List<String?> catatanBaris =
+          []; // catatan otomatis per baris (kolom Notes)
+
       for (int i = 0; i < dataLaporan.length; i++) {
         final int menit = menitList[i];
         final bool akhirPekan =
             _isHariLibur(dataLaporan[i]['start_time']?.toString());
+        final String status = (dataLaporan[i]['status'] ?? 'pending')
+            .toString()
+            .trim()
+            .toLowerCase();
+        final bool approved = status == 'approved' || status == 'disetujui';
+        final bool rejected = status == 'rejected' || status == 'ditolak';
+        String? note;
+
+        // Pengajuan yang belum approved / ditolak tidak ikut dihitung
+        if (!approved) {
+          if (rejected) {
+            rejectedCount++;
+            rejectedMenit += menit;
+            note = 'Ditolak, tidak dihitung';
+          } else {
+            pendingCount++;
+            pendingMenit += menit;
+            note = 'Menunggu approval, belum dihitung';
+          }
+          catatanBaris.add(note);
+          continue;
+        }
+
         totalSebelumPotongan += menit;
         int counted = menit;
         if (berlaku) {
@@ -2562,14 +2607,28 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
             belowMinCount++;
             belowMinMenit += menit;
             counted = 0;
+            note = 'Kurang dari $_minLemburMenit menit, tidak dihitung';
           } else if (!akhirPekan) {
-            // Hari biasa: tiap 4 jam lembur dikurangi 30 menit istirahat
-            final int n = menit ~/ _intervalIstirahatMenit;
-            breakCount += n;
-            breakMenit += n * _potonganIstirahatMenit;
-            counted = menit - (n * _potonganIstirahatMenit);
+            // Hari biasa: lembur kurang dari 4 jam maksimal dihitung 3 jam 30 menit;
+            // mulai 4 jam, tiap kelipatan 4 jam dikurangi 30 menit istirahat
+            final int blok = menit ~/ _intervalIstirahatMenit;
+            breakCount += blok;
+            breakMenit += blok * _potonganIstirahatMenit;
+            if (blok == 0) {
+              counted = menit > _batasHitungMenit ? _batasHitungMenit : menit;
+              final int kelebihan = menit - counted;
+              if (kelebihan > 0) {
+                capCount++;
+                capMenit += kelebihan;
+                note =
+                    'Lebih dari ${_formatMenit(_batasHitungMenit)}, dihitung ${_formatMenit(_batasHitungMenit)}';
+              }
+            } else {
+              counted = menit - (blok * _potonganIstirahatMenit);
+            }
           }
         }
+        catatanBaris.add(note);
         if (akhirPekan) {
           weekendCounted += counted;
         } else {
@@ -2601,6 +2660,10 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
         catatan.add(
             'Potongan istirahat (hari biasa): $breakCount x $_potonganIstirahatMenit menit = ${_formatMenit(breakMenit)}');
       }
+      if (capCount > 0) {
+        catatan.add(
+            'Batas hitung ${_formatMenit(_batasHitungMenit)} untuk lembur kurang dari 4 jam (hari biasa): $capCount pengajuan, kelebihan ${_formatMenit(capMenit)} tidak dihitung');
+      }
       if (lateRaw > 0) {
         var t = 'Potongan terlambat (hari biasa): ${_formatMenit(lateApplied)}';
         if (lateRaw > lateApplied) {
@@ -2608,6 +2671,14 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
               ' (total terlambat ${_formatMenit(lateRaw)}, sisanya tidak dapat dikurangkan)';
         }
         catatan.add(t);
+      }
+      if (pendingCount > 0) {
+        catatan.add(
+            'Belum approved (belum dihitung): $pendingCount pengajuan (${_formatMenit(pendingMenit)})');
+      }
+      if (rejectedCount > 0) {
+        catatan.add(
+            'Ditolak (tidak dihitung): $rejectedCount pengajuan (${_formatMenit(rejectedMenit)})');
       }
 
       pdf.addPage(
@@ -2645,7 +2716,8 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
                   'Selesai',
                   'Total Jam',
                   'Status',
-                  'Approved By'
+                  'Approved By',
+                  'Notes'
                 ],
                 data: List<List<String>>.generate(dataLaporan.length, (index) {
                   final item = dataLaporan[index];
@@ -2668,6 +2740,7 @@ class _RiwayatLemburListState extends State<RiwayatLemburList> {
                     _formatMenit(menitLembur),
                     (item['status'] ?? 'Pending').toString().toUpperCase(),
                     appName, // MEMASUKKAN DATA APPROVED BY
+                    _gabungNotes(item['notes'], catatanBaris[index]),
                   ];
                 }),
                 headerStyle: pw.TextStyle(

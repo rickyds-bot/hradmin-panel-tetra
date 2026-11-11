@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:async';
 import 'dart:convert';
 
 // Hitung jumlah hari cuti yang mengurangi saldo: hanya hari kerja (Senin-Jumat)
@@ -632,10 +631,57 @@ class _DetailKaryawanDialogState extends State<_DetailKaryawanDialog> {
   bool _isLoadingContracts = true;
   List<dynamic> _contractHistory = [];
 
+  // Opsi absen bebas lokasi (centang = karyawan boleh absen dari lokasi mana saja)
+  bool _isFreeLocation = false;
+  bool _isSavingFreeLocation = false;
+
   @override
   void initState() {
     super.initState();
+    _isFreeLocation = widget.karyawan['is_free_location'] == true;
     _fetchContractHistory();
+  }
+
+  Future<void> _toggleFreeLocation(bool? value) async {
+    if (value == null) return;
+
+    final bool originalValue = _isFreeLocation;
+    setState(() {
+      _isFreeLocation = value;
+      _isSavingFreeLocation = true;
+    });
+
+    try {
+      await Supabase.instance.client
+          .from('employees')
+          .update({'is_free_location': value}).eq('id', widget.karyawan['id']);
+
+      // Samakan data di daftar karyawan agar saat dibuka lagi nilainya sudah baru
+      widget.karyawan['is_free_location'] = value;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Status absen bebas ${widget.karyawan['full_name'] ?? ''} diperbarui'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isFreeLocation = originalValue);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memperbarui status: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingFreeLocation = false);
+    }
   }
 
   Future<void> _fetchContractHistory() async {
@@ -789,6 +835,43 @@ class _DetailKaryawanDialogState extends State<_DetailKaryawanDialog> {
                         (widget.karyawan['is_active'] ?? true)
                             ? 'Aktif'
                             : 'Non-Aktif'),
+                    // Centang = karyawan bebas absen dari lokasi mana saja
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 140,
+                          child: Text('Absen Bebas',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[700],
+                                  fontWeight: FontWeight.w500)),
+                        ),
+                        const Text(': '),
+                        SizedBox(
+                          height: 28,
+                          width: 28,
+                          child: Checkbox(
+                            value: _isFreeLocation,
+                            activeColor: Colors.blue[700],
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            onChanged: _isSavingFreeLocation
+                                ? null
+                                : _toggleFreeLocation,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            _isFreeLocation
+                                ? 'Bebas absen dari lokasi mana saja'
+                                : 'Wajib absen di lokasi kerja',
+                            style: const TextStyle(
+                                fontSize: 11, color: Colors.black54),
+                          ),
+                        ),
+                      ],
+                    ),
                     if (displayStatus.toLowerCase() == 'kontrak' ||
                         displayStatus.toLowerCase() == 'magang') ...[
                       _buildInfoRow(
@@ -969,7 +1052,6 @@ class _AktivitasTabState extends State<AktivitasTab> {
   String _search = "";
   DateTime? _startDate;
   DateTime? _endDate;
-  Timer? _debounce;
 
   late Future<List<Map<String, dynamic>>> _aktivitasFuture;
   List<Map<String, dynamic>> _employeeList = [];
@@ -980,51 +1062,29 @@ class _AktivitasTabState extends State<AktivitasTab> {
     _refreshData();
   }
 
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    super.dispose();
-  }
-
   Future<void> _refreshData() async {
     try {
       final empResponse = await Supabase.instance.client
           .from('employees')
           .select('id, full_name');
-      final emps = List<Map<String, dynamic>>.from(empResponse);
 
       var query = Supabase.instance.client.from('attendance').select();
 
-      // Filter tanggal pakai batas hari LOKAL, dikonversi ke UTC
       if (_startDate != null && _endDate != null) {
-        final start =
-            DateTime(_startDate!.year, _startDate!.month, _startDate!.day);
-        final endExclusive =
-            DateTime(_endDate!.year, _endDate!.month, _endDate!.day + 1);
+        final startStr = DateFormat('yyyy-MM-dd').format(_startDate!);
+        final endStr = DateFormat('yyyy-MM-dd').format(_endDate!);
         query = query
-            .gte('created_at', start.toUtc().toIso8601String())
-            .lt('created_at', endExclusive.toUtc().toIso8601String());
+            .gte('created_at', '${startStr}T00:00:00')
+            .lte('created_at', '${endStr}T23:59:59');
       }
 
-      // Pencarian nama/status dilakukan di server, SEBELUM limit
-      final q = _search.trim().toLowerCase().replaceAll(RegExp(r'[,()*%]'), '');
-      if (q.isNotEmpty) {
-        final ids = emps
-            .where((e) =>
-                (e['full_name'] ?? '').toString().toLowerCase().contains(q))
-            .map((e) => e['id'].toString())
-            .toList();
-        final conds = <String>['status.ilike.*$q*'];
-        if (ids.isNotEmpty) conds.add('employee_id.in.(${ids.join(',')})');
-        query = query.or(conds.join(','));
-      }
-
+      // Limit 100 baris riwayat
       final attResponse =
-          await query.order('created_at', ascending: false).limit(1000);
+          await query.order('created_at', ascending: false).limit(100);
 
       if (mounted) {
         setState(() {
-          _employeeList = emps;
+          _employeeList = List<Map<String, dynamic>>.from(empResponse);
           _aktivitasFuture =
               Future.value(List<Map<String, dynamic>>.from(attResponse));
         });
@@ -1195,12 +1255,7 @@ class _AktivitasTabState extends State<AktivitasTab> {
                     border: OutlineInputBorder(),
                     contentPadding: EdgeInsets.symmetric(vertical: 0),
                   ),
-                  onChanged: (v) {
-                    setState(() => _search = v);
-                    _debounce?.cancel();
-                    _debounce =
-                        Timer(const Duration(milliseconds: 400), _refreshData);
-                  },
+                  onChanged: (v) => setState(() => _search = v),
                 ),
               ),
               const SizedBox(width: 8),
