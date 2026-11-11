@@ -54,6 +54,7 @@ class _AdminPageState extends State<AdminPage> {
   int _totalKaryawan = 0;
   int _totalTetap = 0;
   int _totalKontrak = 0;
+  int _totalMagang = 0;
   int _totalHadirHariIni = 0;
   int _totalTidakHadirHariIni = 0;
   List<Map<String, dynamic>> _tidakHadirList = [];
@@ -75,7 +76,7 @@ class _AdminPageState extends State<AdminPage> {
           .select(
               'id, full_name, employee_status, role, is_active, jabatan_name');
 
-      int tetap = 0, kontrak = 0;
+      int tetap = 0, kontrak = 0, magang = 0;
       List<dynamic> nonAdminIds = [];
       final List<Map<String, dynamic>> activeEmps = [];
 
@@ -100,6 +101,8 @@ class _AdminPageState extends State<AdminPage> {
           tetap++;
         } else if (empStatus == 'kontrak') {
           kontrak++;
+        } else if (empStatus == 'magang') {
+          magang++;
         }
       }
 
@@ -111,19 +114,37 @@ class _AdminPageState extends State<AdminPage> {
       // 2. Absen Hari Ini
       final absensiRes = await Supabase.instance.client
           .from('attendance')
-          .select('employee_id')
+          .select('employee_id, status, created_at')
           .gte('created_at', startOfTodayUtcStr);
 
-      Set uniqueHadir = absensiRes
-          .map((e) => e['employee_id'])
-          .where((id) => nonAdminIds.contains(id))
-          .toSet();
+      // Sama dengan web dashboard: hanya check-in (check-out saja tidak dihitung hadir)
+      // dan tanggalnya harus hari ini menurut waktu lokal
+      Set uniqueHadir = {};
+      for (var e in absensiRes) {
+        final id = e['employee_id'];
+        final status = (e['status'] ?? '').toString().toLowerCase();
+
+        if (!nonAdminIds.contains(id)) continue;
+        if (status.contains('out')) continue;
+
+        if (e['created_at'] != null) {
+          try {
+            final DateTime localDate =
+                DateTime.parse(e['created_at'].toString()).toLocal();
+            final String dateStr = DateFormat('yyyy-MM-dd').format(localDate);
+
+            if (dateStr == todayStr) {
+              uniqueHadir.add(id);
+            }
+          } catch (_) {}
+        }
+      }
 
       // 3. Karyawan yang SEDANG cuti/izin hari ini (approved) - hanya untuk label "Tidak Hadir"
       final cutiRes = await Supabase.instance.client
           .from('leave_requests')
           .select('employee_id')
-          .eq('status', 'approved')
+          .ilike('status', 'approved')
           .lte('start_date', todayStr)
           .gte('end_date', todayStr);
 
@@ -171,6 +192,7 @@ class _AdminPageState extends State<AdminPage> {
           _totalKaryawan = nonAdminIds.length;
           _totalTetap = tetap;
           _totalKontrak = kontrak;
+          _totalMagang = magang;
           _totalHadirHariIni = uniqueHadir.length;
           _tidakHadirList = tidakHadir;
           _totalTidakHadirHariIni = tidakHadir.length;
@@ -391,6 +413,8 @@ class _AdminPageState extends State<AdminPage> {
                 Icons.verified_user_outlined, Colors.indigo),
             _buildStatCard('Karyawan Kontrak', _totalKontrak.toString(),
                 Icons.assignment_ind_outlined, Colors.teal),
+            _buildStatCard('Karyawan Magang', _totalMagang.toString(),
+                Icons.school_outlined, Colors.brown),
             _buildStatCard('Hadir Hari Ini', _totalHadirHariIni.toString(),
                 Icons.how_to_reg_outlined, Colors.green),
             _buildStatCard(
