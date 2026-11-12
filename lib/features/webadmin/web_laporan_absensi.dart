@@ -81,7 +81,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           .order('name', ascending: true);
 
       setState(() {
-        _employees = List<Map<String, dynamic>>.from(empData);
+        // User administrator tidak dimasukkan ke laporan (tabel, PDF, Excel)
+        _employees = List<Map<String, dynamic>>.from(empData)
+            .where((emp) => !_isAdminRole(emp['role']))
+            .toList();
         _locations = List<Map<String, dynamic>>.from(locData);
         _departmentsList = List<Map<String, dynamic>>.from(deptData);
         _selectedDepartmentId = 'all';
@@ -199,6 +202,12 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       }
     }
     return 'Luar Area Kantor';
+  }
+
+  // Role administrator: tidak ikut dalam laporan kehadiran
+  bool _isAdminRole(dynamic role) {
+    final r = (role ?? '').toString().trim().toLowerCase();
+    return r == 'admin' || r == 'administrator';
   }
 
   String _getDepartmentName(dynamic deptId) {

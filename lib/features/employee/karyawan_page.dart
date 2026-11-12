@@ -2021,6 +2021,34 @@ class _LemburKaryawanTabState extends State<LemburKaryawanTab> {
         return;
       }
 
+      // Cegah pengajuan ganda: 1 tanggal lembur hanya boleh 1 pengajuan
+      // (pengajuan yang ditolak boleh diajukan ulang)
+      final String tglStr = DateFormat('yyyy-MM-dd').format(_selectedDate!);
+      final existing = await Supabase.instance.client
+          .from('overtime_requests')
+          .select('id, status')
+          .eq('employee_id', widget.userData['id'])
+          .gte('start_time', '${tglStr}T00:00:00')
+          .lte('start_time', '${tglStr}T23:59:59');
+      final List<dynamic> aktif = existing.where((e) {
+        final st = (e['status'] ?? 'pending').toString().trim().toLowerCase();
+        return st != 'rejected' && st != 'ditolak';
+      }).toList();
+      if (aktif.isNotEmpty) {
+        final String stLama =
+            (aktif.first['status'] ?? 'pending').toString().toLowerCase();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  "Lembur tanggal ${DateFormat('dd-MM-yyyy').format(_selectedDate!)} sudah pernah diajukan (status: $stLama). Satu tanggal hanya bisa 1 pengajuan."),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
       // 1. Simpan pengajuan lembur ke database
       await Supabase.instance.client.from('overtime_requests').insert({
         'user_id': Supabase.instance.client.auth.currentUser!.id,
