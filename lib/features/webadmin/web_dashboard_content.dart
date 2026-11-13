@@ -129,7 +129,8 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           tetap++;
         } else if (empStatus == 'kontrak') {
           kontrak++;
-          if (emp['contract_end'] != null) {
+          // Hanya karyawan aktif yang masuk daftar kontrak akan berakhir
+          if (emp['is_active'] != false && emp['contract_end'] != null) {
             try {
               DateTime endDate = DateTime.parse(emp['contract_end'].toString());
               DateTime endDay =
