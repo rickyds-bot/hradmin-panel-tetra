@@ -24,8 +24,8 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
   final TextEditingController _searchCtrl = TextEditingController();
   final ScrollController _horizontalScrollCtrl = ScrollController();
 
-  int _rowsPerPage = 10;
-  final List<int> _pageOptions = [10, 20, 50, 100];
+  int _rowsPerPage = 50;
+  final List<int> _pageOptions = [50, 100, 150];
 
   int? _sortColumnIndex;
   bool _sortAscending = true;
