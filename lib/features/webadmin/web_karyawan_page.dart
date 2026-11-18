@@ -170,6 +170,47 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
     }
   }
 
+  Future<void> _changeAttendanceMode(
+      Map<String, dynamic> karyawan, String? value) async {
+    if (value == null || value == karyawan['attendance_mode']) return;
+
+    final originalValue = karyawan['attendance_mode'];
+
+    setState(() {
+      karyawan['attendance_mode'] = value;
+    });
+
+    try {
+      await Supabase.instance.client
+          .from('employees')
+          .update({'attendance_mode': value}).eq('id', karyawan['id']);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Mode absen ${karyawan['full_name']} diperbarui',
+                style: GoogleFonts.plusJakartaSans(fontSize: 12)),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        karyawan['attendance_mode'] = originalValue;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memperbarui mode absen: $e',
+                style: GoogleFonts.plusJakartaSans(fontSize: 12)),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _showChangePasswordDialog(Map<String, dynamic> karyawan) async {
     final passCtrl = TextEditingController();
     bool isSaving = false;
@@ -528,6 +569,11 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                       tooltip:
                                           'Karyawan bebas absen dari lokasi mana saja',
                                     ),
+                                    const DataColumn(
+                                      label: Text('Mode Absen'),
+                                      tooltip:
+                                          'Cara verifikasi absen: wajah, foto + GPS, atau GPS saja',
+                                    ),
                                     DataColumn(
                                       label: const Text('Jabatan'),
                                       onSort: (colIndex, ascending) => _sort(
@@ -612,6 +658,43 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                                 _toggleFreeLocation(
                                                     item, newValue);
                                               },
+                                            ),
+                                          ),
+                                          DataCell(
+                                            DropdownButtonHideUnderline(
+                                              child: DropdownButton<String>(
+                                                value: const [
+                                                  'face',
+                                                  'photo_gps',
+                                                  'gps_only'
+                                                ].contains(
+                                                        item['attendance_mode'])
+                                                    ? item['attendance_mode']
+                                                    : 'face',
+                                                isDense: true,
+                                                style:
+                                                    GoogleFonts.plusJakartaSans(
+                                                  fontSize: 12,
+                                                  color: Colors.black87,
+                                                ),
+                                                items: const [
+                                                  DropdownMenuItem(
+                                                      value: 'face',
+                                                      child: Text(
+                                                          'GPS + Wajah (liveness)')),
+                                                  DropdownMenuItem(
+                                                      value: 'photo_gps',
+                                                      child: Text(
+                                                          'Foto + GPS (tanpa liveness)')),
+                                                  DropdownMenuItem(
+                                                      value: 'gps_only',
+                                                      child: Text(
+                                                          'GPS saja (tanpa kamera)')),
+                                                ],
+                                                onChanged: (v) =>
+                                                    _changeAttendanceMode(
+                                                        item, v),
+                                              ),
                                             ),
                                           ),
                                           DataCell(Text(

@@ -17,6 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'kamera_absen_page.dart';
+import 'kamera_foto_page.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'notification_services.dart';
 import 'register_face_page.dart';
@@ -619,10 +620,6 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
       // supaya check-out lewat tengah malam tidak mengunci check-out hari berikutnya.
       await _validateAbsenRule(tipe);
 
-      var cameraStatus = await Permission.camera.request();
-      if (!cameraStatus.isGranted)
-        throw 'Izin kamera diperlukan untuk absensi.';
-
       Position currentPos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       ).timeout(
@@ -634,23 +631,36 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
       final empData = await Supabase.instance.client
           .from('employees')
           .select(
-              'location_id, face_embedding, is_face_registered, is_free_location')
+              'location_id, face_embedding, is_face_registered, is_free_location, attendance_mode')
           .eq('id', userId)
           .single();
 
       final bool isFreeLocation = empData['is_free_location'] == true;
 
-      if (empData['is_face_registered'] != true ||
-          empData['face_embedding'] == null) {
-        throw 'Anda belum mendaftarkan wajah. Silakan ke menu Profil untuk mendaftar.';
+      // Mode verifikasi absen (diatur admin): 'face' (default), 'photo_gps', 'gps_only'
+      final String mode = (empData['attendance_mode'] ?? 'face').toString();
+      final bool needCamera = mode != 'gps_only';
+      final bool needFace = mode == 'face';
+
+      if (needCamera) {
+        final cameraStatus = await Permission.camera.request();
+        if (!cameraStatus.isGranted) {
+          throw 'Izin kamera diperlukan untuk absensi.';
+        }
       }
 
-      List<double> registeredFace;
-      try {
-        final decoded = jsonDecode(empData['face_embedding'].toString());
-        registeredFace = List<double>.from(decoded);
-      } catch (e) {
-        throw 'Data wajah korup. Silakan update data wajah di menu Profil.';
+      List<double> registeredFace = [];
+      if (needFace) {
+        if (empData['is_face_registered'] != true ||
+            empData['face_embedding'] == null) {
+          throw 'Anda belum mendaftarkan wajah. Silakan ke menu Profil untuk mendaftar.';
+        }
+        try {
+          final decoded = jsonDecode(empData['face_embedding'].toString());
+          registeredFace = List<double>.from(decoded);
+        } catch (e) {
+          throw 'Data wajah korup. Silakan update data wajah di menu Profil.';
+        }
       }
 
       if (!isFreeLocation) {
@@ -701,72 +711,84 @@ class _AbsensiKaryawanTabState extends State<AbsensiKaryawanTab> {
         }
       }
 
-      final cameras = await availableCameras();
-      final frontCamera = cameras.firstWhere(
-        (cam) => cam.lensDirection == CameraLensDirection.front,
-        orElse: () => cameras.first,
-      );
+      String? photoUrl;
+      String? photoPath;
 
-      final String? photoPath = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => KameraAbsenPage(
-            camera: frontCamera,
-            registeredEmbedding: registeredFace,
+      if (needCamera) {
+        final cameras = await availableCameras();
+        final frontCamera = cameras.firstWhere(
+          (cam) => cam.lensDirection == CameraLensDirection.front,
+          orElse: () => cameras.first,
+        );
+
+        photoPath = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (context) => needFace
+                ? KameraAbsenPage(
+                    camera: frontCamera,
+                    registeredEmbedding: registeredFace,
+                  )
+                : KameraFotoPage(camera: frontCamera),
           ),
-        ),
-      );
+        );
 
-      if (photoPath == null) return;
+        if (photoPath == null) return;
 
-      final file = File(photoPath);
-      final bytes = await file.readAsBytes();
-      final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final file = File(photoPath);
+        final fileName =
+            '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
-      final compressedFile = await FlutterImageCompress.compressWithFile(
-        file.absolute.path,
-        minWidth: 800,
-        minHeight: 800,
-        quality: 40,
-      );
+        final compressedFile = await FlutterImageCompress.compressWithFile(
+          file.absolute.path,
+          minWidth: 800,
+          minHeight: 800,
+          quality: 40,
+        );
+        if (compressedFile == null) {
+          throw 'Gagal memproses foto. Silakan coba lagi.';
+        }
 
-      if (compressedFile != null) {
         await Supabase.instance.client.storage
             .from('attendance_photos')
             .uploadBinary(fileName, compressedFile);
 
-        final photoUrl = Supabase.instance.client.storage
+        photoUrl = Supabase.instance.client.storage
             .from('attendance_photos')
             .getPublicUrl(fileName);
 
-        await Supabase.instance.client.from('attendance').insert({
-          'employee_id': userId,
-          'status': tipe,
-          'photo_url': photoUrl,
-          'latitude': currentPos.latitude,
-          'longitude': currentPos.longitude,
-        });
-
         await file.delete();
-        _refreshHistory();
-
-        try {
-          if (tipe == 'check-in')
-            await NotificationService().onCheckIn();
-          else if (tipe == 'check-out')
-            await NotificationService().onCheckOut();
-        } catch (e) {
-          debugPrint("Info: Gagal menjalankan notifikasi lokal: $e");
-        }
-
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Berhasil absen dengan verifikasi wajah!"),
-            backgroundColor: Colors.green,
-          ),
-        );
       }
+
+      await Supabase.instance.client.from('attendance').insert({
+        'employee_id': userId,
+        'status': tipe,
+        'photo_url': photoUrl, // null untuk mode gps_only
+        'latitude': currentPos.latitude,
+        'longitude': currentPos.longitude,
+      });
+
+      _refreshHistory();
+
+      try {
+        if (tipe == 'check-in') {
+          await NotificationService().onCheckIn();
+        } else if (tipe == 'check-out') {
+          await NotificationService().onCheckOut();
+        }
+      } catch (e) {
+        debugPrint("Info: Gagal menjalankan notifikasi lokal: $e");
+      }
+
+      if (!mounted) return;
+      final String successMsg = mode == 'face'
+          ? "Berhasil absen dengan verifikasi wajah!"
+          : mode == 'photo_gps'
+              ? "Berhasil absen dengan foto & lokasi!"
+              : "Berhasil absen dengan lokasi GPS!";
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(successMsg), backgroundColor: Colors.green),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1496,7 +1518,7 @@ class _CutiKaryawanTabState extends State<CutiKaryawanTab> {
     final List<String> opsiCuti = [
       'Cuti Tahunan',
       'Cuti Melahirkan',
-      'Cuti Khusus'
+      'Cuti Khusus (Menikah, Kedukaan & Lahiran)'
     ];
     final List<String> opsiIzin = ['Izin Pribadi', 'Izin Sakit', 'Dinas Luar'];
     final List<String> currentOptions = _mode == 'Cuti' ? opsiCuti : opsiIzin;

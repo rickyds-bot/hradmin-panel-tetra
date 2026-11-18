@@ -653,11 +653,58 @@ class _DetailKaryawanDialogState extends State<_DetailKaryawanDialog> {
   bool _isFreeLocation = false;
   bool _isSavingFreeLocation = false;
 
+  // Mode verifikasi absen: face (GPS+wajah), photo_gps (foto+GPS), gps_only
+  String _attendanceMode = 'face';
+  bool _isSavingMode = false;
+
   @override
   void initState() {
     super.initState();
     _isFreeLocation = widget.karyawan['is_free_location'] == true;
+    final m = widget.karyawan['attendance_mode']?.toString();
+    _attendanceMode = (m == 'photo_gps' || m == 'gps_only') ? m! : 'face';
     _fetchContractHistory();
+  }
+
+  Future<void> _changeAttendanceMode(String? value) async {
+    if (value == null || value == _attendanceMode) return;
+
+    final String originalValue = _attendanceMode;
+    setState(() {
+      _attendanceMode = value;
+      _isSavingMode = true;
+    });
+
+    try {
+      await Supabase.instance.client
+          .from('employees')
+          .update({'attendance_mode': value}).eq('id', widget.karyawan['id']);
+
+      widget.karyawan['attendance_mode'] = value;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Mode absen ${widget.karyawan['full_name'] ?? ''} diperbarui'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _attendanceMode = originalValue);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memperbarui mode absen: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingMode = false);
+    }
   }
 
   Future<void> _toggleFreeLocation(bool? value) async {
@@ -886,6 +933,42 @@ class _DetailKaryawanDialogState extends State<_DetailKaryawanDialog> {
                                 : 'Wajib absen di lokasi kerja',
                             style: const TextStyle(
                                 fontSize: 11, color: Colors.black54),
+                          ),
+                        ),
+                      ],
+                    ),
+                    // Mode verifikasi absen (terpisah dari "Absen Bebas")
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 140,
+                          child: Text('Mode Absen',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[700],
+                                  fontWeight: FontWeight.w500)),
+                        ),
+                        const Text(': '),
+                        Expanded(
+                          child: DropdownButton<String>(
+                            value: _attendanceMode,
+                            isExpanded: true,
+                            isDense: true,
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.black87),
+                            items: const [
+                              DropdownMenuItem(
+                                  value: 'face',
+                                  child: Text('GPS + Wajah (liveness)')),
+                              DropdownMenuItem(
+                                  value: 'photo_gps',
+                                  child: Text('Foto + GPS (tanpa liveness)')),
+                              DropdownMenuItem(
+                                  value: 'gps_only',
+                                  child: Text('GPS saja (tanpa kamera)')),
+                            ],
+                            onChanged:
+                                _isSavingMode ? null : _changeAttendanceMode,
                           ),
                         ),
                       ],
