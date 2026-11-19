@@ -313,7 +313,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
             icon: const Icon(Icons.chevron_left)),
         Text('${_namaBulan[_month.month - 1]} ${_month.year}',
             style: GoogleFonts.plusJakartaSans(
-                fontSize: 15, fontWeight: FontWeight.w600)),
+                fontSize: 14, fontWeight: FontWeight.w600)),
         IconButton(
             onPressed: () => _changeMonth(1),
             icon: const Icon(Icons.chevron_right)),
@@ -324,7 +324,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
             icon: const Icon(Icons.refresh)),
         ElevatedButton.icon(
           onPressed: () => _showBookingDialog(day: _selectedDay),
-          icon: const Icon(Icons.add, size: 18),
+          icon: const Icon(Icons.add, size: 16),
           label: const Text('Booking'),
         ),
       ],
@@ -809,7 +809,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
           title: Text(
             existing == null ? 'Tambah Booking' : 'Ubah Booking',
             style: GoogleFonts.plusJakartaSans(
-                fontSize: 15, fontWeight: FontWeight.bold),
+                fontSize: 14, fontWeight: FontWeight.bold),
           ),
           content: SizedBox(
             width: 400,
