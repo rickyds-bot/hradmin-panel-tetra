@@ -15,6 +15,7 @@ import 'web_laporan_absensi.dart';
 import 'web_pemberitahuan_page.dart';
 import 'web_laporan_cuti.dart';
 import 'web_laporan_lembur.dart';
+import 'web_ruang_meeting_page.dart';
 
 class WebDashboardPage extends StatefulWidget {
   const WebDashboardPage({super.key});
@@ -41,6 +42,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
     'Laporan Absensi', // 8
     'Laporan Cuti', // 9
     'Laporan Lembur', // 10
+    'Booking Ruang Meeting', // 11
   ];
 
   late final List<Widget> _pages = [
@@ -55,6 +57,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
     const WebLaporanAbsensiPage(), // 8
     const LaporanCutiPage(), // 9
     const LaporanLemburPage(), // 10
+    const WebRuangMeetingPage(canEdit: true), // 11
   ];
 
   void _showGantiPasswordDialog(BuildContext context) {
@@ -205,6 +208,11 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                         6,
                         Icons.campaign_outlined,
                         'Pemberitahuan',
+                      ),
+                      _buildNavItem(
+                        11,
+                        Icons.meeting_room_outlined,
+                        'Ruang Meeting',
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(

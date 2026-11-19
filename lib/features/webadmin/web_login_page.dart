@@ -1,7 +1,7 @@
 import 'dart:async'; // Tambahkan ini untuk menggunakan StreamSubscription
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'web_dashboard_page.dart';
+import 'web_auth_gate.dart';
 //import 'package:mobile_absensi/features/core/utils/app_logger.dart';
 
 class WebLoginPage extends StatefulWidget {
@@ -36,7 +36,7 @@ class _WebLoginPageState extends State<WebLoginPage> {
           if (mounted) {
             // Langsung alihkan ke halaman Dashboard tanpa harus login ulang
             Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (context) => const WebDashboardPage()),
+              MaterialPageRoute(builder: (context) => const WebAuthGate()),
             );
           }
         }
@@ -70,7 +70,7 @@ class _WebLoginPageState extends State<WebLoginPage> {
 
         if (mounted) {
           Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const WebDashboardPage()),
+            MaterialPageRoute(builder: (context) => const WebAuthGate()),
           );
         }
       }
@@ -140,7 +140,7 @@ class _WebLoginPageState extends State<WebLoginPage> {
                   ),
                   const SizedBox(height: 14),
                   const Text(
-                    'Admin Dashboard',
+                    'Portal Web Tetra',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
@@ -153,7 +153,7 @@ class _WebLoginPageState extends State<WebLoginPage> {
                     controller: _emailController,
                     style: const TextStyle(fontSize: 13),
                     decoration: const InputDecoration(
-                      labelText: 'Email Admin',
+                      labelText: 'Email',
                       labelStyle: TextStyle(fontSize: 12),
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.email, size: 18),
