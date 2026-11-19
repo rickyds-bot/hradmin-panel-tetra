@@ -6,7 +6,7 @@ import 'web_ruang_meeting_page.dart';
 
 /// Dipanggil setelah login berhasil. Menentukan tampilan berdasarkan hak akses:
 /// - admin      -> WebDashboardPage (dashboard lengkap)
-/// - non-admin  -> halaman Ruang Meeting (hanya lihat)
+/// - non-admin  -> halaman Ruang Meeting (lihat jadwal + booking sendiri)
 ///
 /// Penentuan admin memakai fungsi SQL `is_admin()` (lihat migration_meeting_room.sql)
 /// sehingga aturannya sama dengan RLS di database (satu sumber kebenaran).
@@ -90,7 +90,7 @@ class _WebAuthGateState extends State<WebAuthGate> {
   }
 }
 
-/// Tampilan untuk user non-admin: hanya melihat jadwal ruang meeting.
+/// Tampilan untuk user non-admin: melihat jadwal dan membooking ruang meeting.
 class _ViewerShell extends StatelessWidget {
   final VoidCallback onLogout;
   const _ViewerShell({required this.onLogout});
@@ -118,7 +118,7 @@ class _ViewerShell extends StatelessWidget {
           ),
         ],
       ),
-      body: const WebRuangMeetingPage(canEdit: false),
+      body: const WebRuangMeetingPage(isAdmin: false),
     );
   }
 }

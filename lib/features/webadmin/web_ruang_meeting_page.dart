@@ -66,10 +66,12 @@ class _Booking {
   final String title;
   final String pic;
   final String notes;
+  final String? createdBy;
   final DateTime start; // WIB
   final DateTime end; // WIB
   _Booking.fromMap(Map<String, dynamic> m)
       : id = m['id'],
+        createdBy = m['created_by']?.toString(),
         roomId = m['room_id'],
         title = (m['title'] ?? '').toString(),
         pic = (m['pic_name'] ?? '').toString(),
@@ -79,9 +81,10 @@ class _Booking {
 }
 
 class WebRuangMeetingPage extends StatefulWidget {
-  /// true = admin (boleh tambah/ubah/batalkan). false = hanya lihat.
-  final bool canEdit;
-  const WebRuangMeetingPage({super.key, this.canEdit = true});
+  /// true = admin (boleh ubah/batalkan semua booking).
+  /// false = user biasa (boleh booking, serta ubah/batalkan booking miliknya sendiri).
+  final bool isAdmin;
+  const WebRuangMeetingPage({super.key, this.isAdmin = false});
 
   @override
   State<WebRuangMeetingPage> createState() => _WebRuangMeetingPageState();
@@ -96,10 +99,35 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
   late DateTime _month;
   late DateTime _selectedDay;
   dynamic _roomFilter; // null = semua ruang
+  String _myName = '';
+
+  String? get _uid => Supabase.instance.client.auth.currentUser?.id;
+
+  /// Admin boleh mengelola semua booking; user biasa hanya miliknya sendiri.
+  bool _canManage(_Booking b) =>
+      widget.isAdmin || (_uid != null && b.createdBy == _uid);
+
+  Future<void> _loadMyName() async {
+    try {
+      final email = Supabase.instance.client.auth.currentUser?.email;
+      if (email == null) return;
+      final row = await Supabase.instance.client
+          .from('employees')
+          .select('full_name')
+          .eq('email', email)
+          .maybeSingle();
+      if (row != null && mounted) {
+        _myName = (row['full_name'] ?? '').toString();
+      }
+    } catch (_) {
+      // Abaikan: PIC tinggal diisi manual.
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    _loadMyName();
     final now = _toWib(DateTime.now());
     _month = DateTime.utc(now.year, now.month, 1);
     _selectedDay = DateTime.utc(now.year, now.month, now.day);
@@ -278,7 +306,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
       children: [
         Text('Booking Ruang Meeting',
             style: GoogleFonts.plusJakartaSans(
-                fontSize: 16, fontWeight: FontWeight.bold)),
+                fontSize: 20, fontWeight: FontWeight.bold)),
         const SizedBox(width: 12),
         IconButton(
             onPressed: () => _changeMonth(-1),
@@ -294,12 +322,11 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
             tooltip: 'Muat ulang',
             onPressed: _load,
             icon: const Icon(Icons.refresh)),
-        if (widget.canEdit)
-          ElevatedButton.icon(
-            onPressed: () => _showBookingDialog(day: _selectedDay),
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Booking'),
-          ),
+        ElevatedButton.icon(
+          onPressed: () => _showBookingDialog(day: _selectedDay),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Booking'),
+        ),
       ],
     );
   }
@@ -351,11 +378,11 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
             children: [
               Text(room.name,
                   style: GoogleFonts.plusJakartaSans(
-                      fontWeight: FontWeight.bold, fontSize: 12)),
+                      fontWeight: FontWeight.bold, fontSize: 13)),
               const SizedBox(height: 4),
               Text(status,
                   style: GoogleFonts.plusJakartaSans(
-                      fontSize: 11,
+                      fontSize: 12,
                       color:
                           current != null ? Colors.red[700] : Colors.green[700],
                       fontWeight: FontWeight.w600)),
@@ -378,14 +405,14 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
       runSpacing: 8,
       children: [
         ChoiceChip(
-          label: const Text('Semua ruang'),
+          label: const Text('Semua ruang', style: TextStyle(fontSize: 13)),
           selected: _roomFilter == null,
           onSelected: (_) => setState(() => _roomFilter = null),
         ),
         ..._rooms.map((r) => ChoiceChip(
               avatar:
                   CircleAvatar(backgroundColor: _roomColor(r.id), radius: 6),
-              label: Text(r.name),
+              label: Text(r.name, style: const TextStyle(fontSize: 13)),
               selected: _roomFilter != null &&
                   _roomFilter.toString() == r.id.toString(),
               onSelected: (_) => setState(() => _roomFilter = r.id),
@@ -537,15 +564,14 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
           Text('$dow, ${day.day} ${_namaBulan[day.month - 1]} ${day.year}',
               style: GoogleFonts.plusJakartaSans(
                   fontSize: 14, fontWeight: FontWeight.bold)),
-          if (widget.canEdit)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: TextButton.icon(
-                onPressed: () => _showBookingDialog(day: day),
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Tambah booking di tanggal ini'),
-              ),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: TextButton.icon(
+              onPressed: () => _showBookingDialog(day: day),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Tambah booking di tanggal ini'),
             ),
+          ),
           const SizedBox(height: 8),
           for (final room in shownRooms) ...[
             _buildRoomSection(
@@ -618,7 +644,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
                         ],
                       ),
                     ),
-                    if (widget.canEdit) ...[
+                    if (_canManage(b)) ...[
                       IconButton(
                         tooltip: 'Ubah',
                         visualDensity: VisualDensity.compact,
@@ -690,7 +716,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
         ? TimeOfDay(hour: existing.end.hour, minute: existing.end.minute)
         : const TimeOfDay(hour: 10, minute: 0);
     final titleC = TextEditingController(text: existing?.title ?? '');
-    final picC = TextEditingController(text: existing?.pic ?? '');
+    final picC = TextEditingController(text: existing?.pic ?? _myName);
     final notesC = TextEditingController(text: existing?.notes ?? '');
     bool saving = false;
     String? errorText;
@@ -888,7 +914,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
           actions: [
             TextButton(
                 onPressed: saving ? null : () => Navigator.pop(ctx, false),
-                child: const Text('Batal', style: TextStyle(fontSize: 12))),
+                child: const Text('Batal', style: TextStyle(fontSize: 13))),
             ElevatedButton(
               onPressed: saving ? null : save,
               child: saving
@@ -896,7 +922,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Simpan', style: TextStyle(fontSize: 12)),
+                  : const Text('Simpan', style: TextStyle(fontSize: 13)),
             ),
           ],
         );

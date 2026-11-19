@@ -57,7 +57,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
     const WebLaporanAbsensiPage(), // 8
     const LaporanCutiPage(), // 9
     const LaporanLemburPage(), // 10
-    const WebRuangMeetingPage(canEdit: true), // 11
+    const WebRuangMeetingPage(isAdmin: true), // 11
   ];
 
   void _showGantiPasswordDialog(BuildContext context) {
