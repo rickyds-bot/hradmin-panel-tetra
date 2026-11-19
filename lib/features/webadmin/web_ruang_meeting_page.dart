@@ -888,7 +888,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
           actions: [
             TextButton(
                 onPressed: saving ? null : () => Navigator.pop(ctx, false),
-                child: const Text('Batal', style: TextStyle(fontSize: 13))),
+                child: const Text('Batal', style: TextStyle(fontSize: 12))),
             ElevatedButton(
               onPressed: saving ? null : save,
               child: saving
@@ -896,7 +896,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Simpan', style: TextStyle(fontSize: 13)),
+                  : const Text('Simpan', style: TextStyle(fontSize: 12)),
             ),
           ],
         );
