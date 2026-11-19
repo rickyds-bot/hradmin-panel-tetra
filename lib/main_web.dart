@@ -31,7 +31,7 @@ class WebDashboardApp extends StatelessWidget {
       valueListenable: themeNotifier,
       builder: (_, ThemeMode currentMode, __) {
         return MaterialApp(
-          title: 'Admin Web Dashboard',
+          title: 'Portal Web Tetra',
           debugShowCheckedModeBanner: false,
           themeMode: currentMode,
 

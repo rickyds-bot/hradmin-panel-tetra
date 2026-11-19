@@ -140,7 +140,7 @@ class _WebLoginPageState extends State<WebLoginPage> {
                   ),
                   const SizedBox(height: 14),
                   const Text(
-                    '***** Portal Web Tetra *****',
+                    '--- Portal Web Tetra ---',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
