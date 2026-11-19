@@ -351,11 +351,11 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
             children: [
               Text(room.name,
                   style: GoogleFonts.plusJakartaSans(
-                      fontWeight: FontWeight.bold, fontSize: 13)),
+                      fontWeight: FontWeight.bold, fontSize: 12)),
               const SizedBox(height: 4),
               Text(status,
                   style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12,
+                      fontSize: 11,
                       color:
                           current != null ? Colors.red[700] : Colors.green[700],
                       fontWeight: FontWeight.w600)),
