@@ -544,7 +544,7 @@ class _WebCutiPageState extends State<WebCutiPage> {
               Text(
                 'Data Pengajuan Cuti & Izin',
                 style: GoogleFonts.plusJakartaSans(
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: const Color(0xFF1E293B),
                 ),

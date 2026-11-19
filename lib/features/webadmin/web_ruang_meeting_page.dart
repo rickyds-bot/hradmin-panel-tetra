@@ -278,7 +278,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
       children: [
         Text('Booking Ruang Meeting',
             style: GoogleFonts.plusJakartaSans(
-                fontSize: 20, fontWeight: FontWeight.bold)),
+                fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(width: 12),
         IconButton(
             onPressed: () => _changeMonth(-1),
