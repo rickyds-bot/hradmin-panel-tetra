@@ -376,7 +376,7 @@ class _WebLemburPageState extends State<WebLemburPage> {
               Text(
                 'Data Pengajuan Lembur',
                 style: GoogleFonts.plusJakartaSans(
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: const Color(0xFF1E293B),
                 ),
