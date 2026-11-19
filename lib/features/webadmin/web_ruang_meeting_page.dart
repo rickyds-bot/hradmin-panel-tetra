@@ -568,7 +568,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
             padding: const EdgeInsets.only(top: 4),
             child: TextButton.icon(
               onPressed: () => _showBookingDialog(day: day),
-              icon: const Icon(Icons.add, size: 16),
+              icon: const Icon(Icons.add, size: 14),
               label: const Text('Tambah booking di tanggal ini'),
             ),
           ),
@@ -886,13 +886,13 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
                   TextField(
                     controller: titleC,
                     style: fieldStyle,
-                    decoration: deco('Agenda / judul meeting'),
+                    decoration: deco('Agenda Meeting'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: picC,
                     style: fieldStyle,
-                    decoration: deco('PIC / pemesan'),
+                    decoration: deco('PIC'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
