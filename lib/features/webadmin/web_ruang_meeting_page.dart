@@ -278,14 +278,14 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
       children: [
         Text('Booking Ruang Meeting',
             style: GoogleFonts.plusJakartaSans(
-                fontSize: 20, fontWeight: FontWeight.bold)),
+                fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(width: 12),
         IconButton(
             onPressed: () => _changeMonth(-1),
             icon: const Icon(Icons.chevron_left)),
         Text('${_namaBulan[_month.month - 1]} ${_month.year}',
             style: GoogleFonts.plusJakartaSans(
-                fontSize: 15, fontWeight: FontWeight.w600)),
+                fontSize: 14, fontWeight: FontWeight.w600)),
         IconButton(
             onPressed: () => _changeMonth(1),
             icon: const Icon(Icons.chevron_right)),
@@ -297,7 +297,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
         if (widget.canEdit)
           ElevatedButton.icon(
             onPressed: () => _showBookingDialog(day: _selectedDay),
-            icon: const Icon(Icons.add, size: 18),
+            icon: const Icon(Icons.add, size: 14),
             label: const Text('Booking'),
           ),
       ],
