@@ -278,14 +278,14 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
       children: [
         Text('Booking Ruang Meeting',
             style: GoogleFonts.plusJakartaSans(
-                fontSize: 16, fontWeight: FontWeight.bold)),
+                fontSize: 20, fontWeight: FontWeight.bold)),
         const SizedBox(width: 12),
         IconButton(
             onPressed: () => _changeMonth(-1),
             icon: const Icon(Icons.chevron_left)),
         Text('${_namaBulan[_month.month - 1]} ${_month.year}',
             style: GoogleFonts.plusJakartaSans(
-                fontSize: 14, fontWeight: FontWeight.w600)),
+                fontSize: 15, fontWeight: FontWeight.w600)),
         IconButton(
             onPressed: () => _changeMonth(1),
             icon: const Icon(Icons.chevron_right)),
@@ -297,7 +297,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
         if (widget.canEdit)
           ElevatedButton.icon(
             onPressed: () => _showBookingDialog(day: _selectedDay),
-            icon: const Icon(Icons.add, size: 14),
+            icon: const Icon(Icons.add, size: 18),
             label: const Text('Booking'),
           ),
       ],
@@ -645,16 +645,20 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Batalkan booking?'),
+        title: Text('Batalkan booking?',
+            style: GoogleFonts.plusJakartaSans(
+                fontSize: 15, fontWeight: FontWeight.bold)),
         content: Text(
-            '${b.title}\n${_roomById(b.roomId)?.name ?? ''}, ${_hm(b.start)} - ${_hm(b.end)}'),
+            '${b.title}\n${_roomById(b.roomId)?.name ?? ''}, ${_hm(b.start)} - ${_hm(b.end)}',
+            style: const TextStyle(fontSize: 13)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Tidak')),
+              child: const Text('Tidak', style: TextStyle(fontSize: 13))),
           ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Ya, batalkan')),
+              child:
+                  const Text('Ya, batalkan', style: TextStyle(fontSize: 13))),
         ],
       ),
     );
@@ -691,15 +695,23 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
     bool saving = false;
     String? errorText;
 
+    // Gaya dialog: ringkas & konsisten (isi 13, label 12, judul/tombol 13-15)
+    const TextStyle fieldStyle = TextStyle(fontSize: 13, color: Colors.black87);
+    InputDecoration deco(String label) => InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(fontSize: 12),
+          border: const OutlineInputBorder(),
+          isDense: true,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        );
+
     Widget pickerField(String label, String value, VoidCallback onTap) {
       return InkWell(
         onTap: onTap,
         child: InputDecorator(
-          decoration: InputDecoration(
-              labelText: label,
-              border: const OutlineInputBorder(),
-              isDense: true),
-          child: Text(value),
+          decoration: deco(label),
+          child: Text(value, style: fieldStyle),
         ),
       );
     }
@@ -765,27 +777,33 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
         }
 
         return AlertDialog(
-          title: Text(existing == null ? 'Tambah Booking' : 'Ubah Booking'),
+          titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+          contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          title: Text(
+            existing == null ? 'Tambah Booking' : 'Ubah Booking',
+            style: GoogleFonts.plusJakartaSans(
+                fontSize: 15, fontWeight: FontWeight.bold),
+          ),
           content: SizedBox(
-            width: 420,
+            width: 400,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const SizedBox(height: 4),
                   InputDecorator(
-                    decoration: const InputDecoration(
-                        labelText: 'Ruang',
-                        border: OutlineInputBorder(),
-                        isDense: true),
+                    decoration: deco('Ruang'),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<dynamic>(
                         value: roomId,
                         isExpanded: true,
                         isDense: true,
+                        style: fieldStyle,
                         items: _rooms
                             .map((r) => DropdownMenuItem<dynamic>(
-                                value: r.id, child: Text(r.name)))
+                                value: r.id,
+                                child: Text(r.name, style: fieldStyle)))
                             .toList(),
                         onChanged:
                             saving ? null : (v) => setD(() => roomId = v),
@@ -841,27 +859,21 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: titleC,
-                    decoration: const InputDecoration(
-                        labelText: 'Agenda / judul meeting',
-                        border: OutlineInputBorder(),
-                        isDense: true),
+                    style: fieldStyle,
+                    decoration: deco('Agenda / judul meeting'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: picC,
-                    decoration: const InputDecoration(
-                        labelText: 'PIC / pemesan',
-                        border: OutlineInputBorder(),
-                        isDense: true),
+                    style: fieldStyle,
+                    decoration: deco('PIC / pemesan'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: notesC,
                     maxLines: 2,
-                    decoration: const InputDecoration(
-                        labelText: 'Catatan (opsional)',
-                        border: OutlineInputBorder(),
-                        isDense: true),
+                    style: fieldStyle,
+                    decoration: deco('Catatan (opsional)'),
                   ),
                   if (errorText != null) ...[
                     const SizedBox(height: 12),
@@ -876,7 +888,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
           actions: [
             TextButton(
                 onPressed: saving ? null : () => Navigator.pop(ctx, false),
-                child: const Text('Batal')),
+                child: const Text('Batal', style: TextStyle(fontSize: 13))),
             ElevatedButton(
               onPressed: saving ? null : save,
               child: saving
@@ -884,7 +896,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Simpan'),
+                  : const Text('Simpan', style: TextStyle(fontSize: 13)),
             ),
           ],
         );
