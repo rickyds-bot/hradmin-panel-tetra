@@ -489,62 +489,40 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
   // Rentang Hari Ditentukan 12 Hari
   static const int _chartDaysRange = 15;
 
+  // Data grafik dihitung di database (RPC get_attendance_trend) supaya tidak
+  // kena batas 1000 baris per request milik Supabase.
   Future<void> _fetchChartData(List<dynamic> validIds) async {
-    final now = DateTime.now();
-    final startOfRangeLocal = DateTime(now.year, now.month, now.day)
-        .subtract(const Duration(days: _chartDaysRange - 1));
-    final startOfRangeUtcStr = startOfRangeLocal.toUtc().toIso8601String();
+    final res = await Supabase.instance.client.rpc(
+      'get_attendance_trend',
+      params: {'p_days': _chartDaysRange, 'p_tz': 'Asia/Jakarta'},
+    );
 
-    final weeklyRes = await Supabase.instance.client
-        .from('attendance')
-        .select('employee_id, created_at, status')
-        .gte('created_at', startOfRangeUtcStr);
-
-    Map<String, Map<String, Set<dynamic>>> dailyData = {};
-    for (int i = 0; i < _chartDaysRange; i++) {
-      final d = startOfRangeLocal.add(Duration(days: i));
-      dailyData[DateFormat('yyyy-MM-dd').format(d)] = {
-        'tepat_waktu': <dynamic>{},
-        'terlambat': <dynamic>{},
-      };
-    }
-
-    for (var row in weeklyRes) {
-      final empId = row['employee_id'];
-      if (!validIds.contains(empId)) continue;
-
-      if ((row['status'] ?? '').toString().toLowerCase().contains('out')) {
-        continue;
-      }
-
-      final createdAt = row['created_at'];
-      if (createdAt != null) {
-        try {
-          DateTime localDate = DateTime.parse(createdAt.toString()).toLocal();
-          final dateStr = DateFormat('yyyy-MM-dd').format(localDate);
-
-          if (dailyData.containsKey(dateStr)) {
-            int totalMinutes = localDate.hour * 60 + localDate.minute;
-            const int limitMinutes = 8 * 60 + 45;
-
-            if (totalMinutes <= limitMinutes) {
-              dailyData[dateStr]!['tepat_waktu']!.add(empId);
-            } else {
-              dailyData[dateStr]!['terlambat']!.add(empId);
-            }
-          }
-        } catch (_) {}
-      }
-    }
+    // Format Bulan Bahasa Indonesia
+    const List<String> bulanIndoSingkat = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agt',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des'
+    ];
 
     List<Map<String, dynamic>> tempDotData = [];
 
-    dailyData.forEach((dateStr, stats) {
-      final double countTepat = stats['tepat_waktu']!.length.toDouble();
-      final double countTelat = stats['terlambat']!.length.toDouble();
+    for (final r in (res as List)) {
+      final String dateStr = r['day'].toString().substring(0, 10);
+      final dateObj = DateTime.parse(dateStr);
+
+      final double countTepat = (r['tepat_waktu'] as num).toDouble();
+      final double countTelat = (r['terlambat'] as num).toDouble();
       final double countTotalHadir = countTepat + countTelat;
 
-      final dateObj = DateTime.parse(dateStr);
       bool isWeekend = dateObj.weekday == DateTime.saturday ||
           dateObj.weekday == DateTime.sunday;
       bool isHoliday = _holidaysMap.containsKey(dateStr);
@@ -555,21 +533,6 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         if (countAbsen < 0) countAbsen = 0;
       }
 
-      // Format Bulan Bahasa Indonesia
-      const List<String> bulanIndoSingkat = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'Mei',
-        'Jun',
-        'Jul',
-        'Agt',
-        'Sep',
-        'Okt',
-        'Nov',
-        'Des'
-      ];
       String tgl = dateObj.day.toString().padLeft(2, '0');
       String bln = bulanIndoSingkat[dateObj.month - 1];
 
@@ -581,7 +544,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
         'hadir': countTotalHadir,
         'total': _totalKaryawan.toDouble(),
       });
-    });
+    }
 
     _dotChartData = tempDotData;
   }
