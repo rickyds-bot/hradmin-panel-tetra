@@ -102,13 +102,13 @@ class _ViewerShell extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
-        title: const Text('Tetra • Ruang Meeting'),
+        title: const Text('Tetra • Ruang Meeting & Kendaraan'),
         actions: [
           if (email.isNotEmpty)
             Center(
               child: Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: Text(email, style: const TextStyle(fontSize: 12)),
+                child: Text(email, style: const TextStyle(fontSize: 14)),
               ),
             ),
           IconButton(
