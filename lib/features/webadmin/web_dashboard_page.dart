@@ -212,7 +212,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                       _buildNavItem(
                         11,
                         Icons.meeting_room_outlined,
-                        'Ruang Meeting & Kendaraan',
+                        'Rg Meeting & Kendaraan',
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(
