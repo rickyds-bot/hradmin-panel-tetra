@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -820,9 +818,9 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
             : 1440)
         : 10 * 60;
 
-    // Rentang garis waktu: 07:00-19:00, otomatis melebar kalau data lama di luar itu.
-    final int dayStartMin = math.min(7 * 60, (startMin ~/ 60) * 60);
-    final int dayEndMin = math.max(19 * 60, ((endMin + 59) ~/ 60) * 60);
+    // Garis waktu 24 jam (00:00 - 24:00), per 30 menit.
+    const int dayStartMin = 0;
+    const int dayEndMin = 1440;
 
     final titleC = TextEditingController(text: existing?.title ?? '');
     final picC = TextEditingController(text: existing?.pic ?? _myName);
@@ -852,30 +850,48 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
       }
     }
 
+    // Durasi cepat: atur jam selesai = mulai + durasi (berhenti sebelum slot terisi).
+    void applyDuration(int mins) {
+      int e = startMin + mins;
+      if (e > dayEndMin) e = dayEndMin;
+      for (final b in busy) {
+        if (b[0] >= startMin && b[0] < e) e = b[0];
+      }
+      if (e > startMin) endMin = e;
+    }
+
     if (existing == null && overlaps(startMin, endMin)) pickDefault();
 
-    // Gaya dialog: ringkas & konsisten (isi 13, label 12, judul/tombol 13-15)
+    // Gaya: ringkas & konsisten (isi 13, label 12, keterangan 11, judul 15)
     const TextStyle fieldStyle = TextStyle(fontSize: 13, color: Colors.black87);
-    InputDecoration deco(String label) => InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(fontSize: 12),
-          border: const OutlineInputBorder(),
-          isDense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        );
-
-    Widget pickerField(String label, String value, VoidCallback onTap) {
-      return InkWell(
-        onTap: onTap,
-        child: InputDecorator(
-          decoration: deco(label),
-          child: Text(value, style: fieldStyle),
-        ),
+    InputDecoration deco(String label, {IconData? icon}) {
+      OutlineInputBorder b(Color c, [double w = 1]) => OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: c, width: w),
+          );
+      return InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(fontSize: 12),
+        filled: true,
+        fillColor: Colors.grey.shade50,
+        isDense: true,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        prefixIcon: icon == null ? null : Icon(icon, size: 18),
+        border: b(Colors.grey.shade300),
+        enabledBorder: b(Colors.grey.shade300),
+        focusedBorder: b(Colors.blue.shade600, 1.4),
       );
     }
 
     final bool vehicle = _isVehicle;
+    const durations = <List<Object>>[
+      [30, '30 mnt'],
+      [60, '1 jam'],
+      [90, '1,5 jam'],
+      [120, '2 jam'],
+      [180, '3 jam'],
+    ];
 
     final saved = await showDialog<bool>(
       context: context,
@@ -949,131 +965,381 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
           }
         }
 
-        return AlertDialog(
-          titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-          contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-          actionsPadding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-          title: Text(
-            existing == null ? 'Tambah Booking' : 'Ubah Booking',
-            style: GoogleFonts.plusJakartaSans(
-                fontSize: 15, fontWeight: FontWeight.bold),
-          ),
-          content: SizedBox(
-            width: 460,
-            child: SingleChildScrollView(
-              child: Column(
+        final Color color = _roomColor(roomId);
+        final int dur = endMin - startMin;
+
+        Widget sectionLabel(String t) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(t,
+                  style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black54)),
+            );
+
+        Widget pill(_Room r) {
+          final sel = r.id.toString() == roomId.toString();
+          final c = _roomColor(r.id);
+          return InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: saving
+                ? null
+                : () {
+                    setD(() => roomId = r.id);
+                    refreshBusy();
+                  },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: sel ? c.withOpacity(0.12) : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: sel ? c : Colors.grey.shade300,
+                    width: sel ? 1.4 : 1),
+              ),
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 4),
-                  InputDecorator(
-                    decoration: deco(vehicle ? 'Kendaraan' : 'Ruang'),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<dynamic>(
-                        value: roomId,
-                        isExpanded: true,
-                        isDense: true,
-                        style: fieldStyle,
-                        items: _rooms
-                            .map((r) => DropdownMenuItem<dynamic>(
-                                value: r.id,
-                                child:
-                                    Text(_roomSubtitle(r), style: fieldStyle)))
-                            .toList(),
-                        onChanged: saving
-                            ? null
-                            : (v) {
-                                setD(() => roomId = v);
-                                refreshBusy();
-                              },
-                      ),
-                    ),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(color: c, shape: BoxShape.circle),
                   ),
-                  const SizedBox(height: 12),
-                  pickerField(
-                    'Tanggal',
-                    '${date.day} ${_namaBulan[date.month - 1]} ${date.year}',
-                    () async {
-                      final p = await showDatePicker(
-                        context: ctx,
-                        initialDate: DateTime(date.year, date.month, date.day),
-                        firstDate: DateTime(2024),
-                        lastDate: DateTime(2100),
-                      );
-                      if (p != null) {
-                        setD(() => date = DateTime.utc(p.year, p.month, p.day));
-                        refreshBusy();
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  Text('Jam (klik atau geser pada garis waktu)',
-                      style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12, color: Colors.black54)),
-                  const SizedBox(height: 6),
-                  _TimeRangeSelector(
-                    dayStartMin: dayStartMin,
-                    dayEndMin: dayEndMin,
-                    startMin: startMin,
-                    endMin: endMin,
-                    busy: busy,
-                    color: _roomColor(roomId),
-                    onChanged: (r) => setD(() {
-                      startMin = r[0];
-                      endMin = r[1];
-                    }),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${_fmtMin(startMin)} - ${_fmtMin(endMin)}   (${_durasi(endMin - startMin)})',
-                    style: GoogleFonts.plusJakartaSans(
-                        fontSize: 13, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: titleC,
-                    style: fieldStyle,
-                    decoration: deco(vehicle
-                        ? 'Tujuan / keperluan'
-                        : 'Agenda / judul meeting'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: picC,
-                    style: fieldStyle,
-                    decoration: deco(vehicle ? 'Pemesan' : 'PIC / pemesan'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: notesC,
-                    maxLines: 2,
-                    style: fieldStyle,
-                    decoration: deco('Catatan (opsional)'),
-                  ),
-                  if (errorText != null) ...[
-                    const SizedBox(height: 12),
-                    Text(errorText!,
-                        style:
-                            const TextStyle(color: Colors.red, fontSize: 12)),
-                  ],
+                  const SizedBox(width: 6),
+                  Text(_roomSubtitle(r),
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: sel ? FontWeight.w600 : FontWeight.w500)),
                 ],
               ),
             ),
+          );
+        }
+
+        Future<void> pickDate() async {
+          final p = await showDatePicker(
+            context: ctx,
+            initialDate: DateTime(date.year, date.month, date.day),
+            firstDate: DateTime(2024),
+            lastDate: DateTime(2100),
+          );
+          if (p != null) {
+            setD(() => date = DateTime.utc(p.year, p.month, p.day));
+            refreshBusy();
+          }
+        }
+
+        void shiftDay(int d) {
+          setD(() => date = date.add(Duration(days: d)));
+          refreshBusy();
+        }
+
+        final dateRow = Container(
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.grey.shade300),
           ),
-          actions: [
-            TextButton(
-                onPressed: saving ? null : () => Navigator.pop(ctx, false),
-                child: const Text('Batal', style: TextStyle(fontSize: 13))),
-            ElevatedButton(
-              onPressed: saving ? null : save,
-              child: saving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Simpan', style: TextStyle(fontSize: 13)),
+          child: Row(
+            children: [
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.chevron_left, size: 20),
+                onPressed: saving ? null : () => shiftDay(-1),
+              ),
+              Expanded(
+                child: InkWell(
+                  onTap: saving ? null : pickDate,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.calendar_today_outlined,
+                            size: 15, color: Colors.black54),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${_namaHari[date.weekday - 1]}, ${date.day} ${_namaBulan[date.month - 1]} ${date.year}',
+                          style: GoogleFonts.plusJakartaSans(
+                              fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.chevron_right, size: 20),
+                onPressed: saving ? null : () => shiftDay(1),
+              ),
+            ],
+          ),
+        );
+
+        final timeCard = Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.schedule, size: 18, color: color),
+                  const SizedBox(width: 8),
+                  Text('${_fmtMin(startMin)} – ${_fmtMin(endMin)}',
+                      style: GoogleFonts.plusJakartaSans(
+                          fontSize: 15, fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(_durasi(dur),
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: color)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _TimeRangeSelector(
+                dayStartMin: dayStartMin,
+                dayEndMin: dayEndMin,
+                startMin: startMin,
+                endMin: endMin,
+                busy: busy,
+                color: color,
+                onChanged: (r) => setD(() {
+                  startMin = r[0];
+                  endMin = r[1];
+                }),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  const Text('Durasi cepat:',
+                      style: TextStyle(fontSize: 11, color: Colors.black54)),
+                  for (final d in durations)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () => setD(() => applyDuration(d[0] as int)),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: dur == (d[0] as int)
+                              ? color.withOpacity(0.12)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                              color: dur == (d[0] as int)
+                                  ? color
+                                  : Colors.grey.shade300),
+                        ),
+                        child: Text(d[1] as String,
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: dur == (d[0] as int)
+                                    ? FontWeight.w600
+                                    : FontWeight.w500)),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        );
+
+        return Dialog(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 500),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ---- header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 8, 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          vehicle
+                              ? Icons.directions_car_filled_outlined
+                              : Icons.meeting_room_outlined,
+                          size: 20,
+                          color: color,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              existing == null
+                                  ? 'Tambah Booking'
+                                  : 'Ubah Booking',
+                              style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 15, fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              vehicle
+                                  ? 'Pesan kendaraan operasional'
+                                  : 'Pesan ruang meeting',
+                              style: const TextStyle(
+                                  fontSize: 11, color: Colors.black54),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Tutup',
+                        icon: const Icon(Icons.close, size: 20),
+                        onPressed:
+                            saving ? null : () => Navigator.pop(ctx, false),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                // ---- isi
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        sectionLabel(vehicle ? 'Kendaraan' : 'Ruang'),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _rooms.map(pill).toList(),
+                        ),
+                        const SizedBox(height: 16),
+                        sectionLabel('Tanggal'),
+                        dateRow,
+                        const SizedBox(height: 16),
+                        sectionLabel(
+                            'Jam  •  klik atau geser pada garis waktu'),
+                        timeCard,
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: titleC,
+                          style: fieldStyle,
+                          decoration: deco(
+                              vehicle
+                                  ? 'Tujuan / keperluan'
+                                  : 'Agenda / judul meeting',
+                              icon: Icons.edit_note_outlined),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: picC,
+                          style: fieldStyle,
+                          decoration: deco(
+                              vehicle ? 'Pemesan' : 'PIC / pemesan',
+                              icon: Icons.person_outline),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: notesC,
+                          maxLines: 2,
+                          style: fieldStyle,
+                          decoration: deco('Catatan (opsional)'),
+                        ),
+                        if (errorText != null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.red.shade100),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.error_outline,
+                                    size: 16, color: Colors.red.shade700),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(errorText!,
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.red.shade700)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                // ---- tombol
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed:
+                            saving ? null : () => Navigator.pop(ctx, false),
+                        child:
+                            const Text('Batal', style: TextStyle(fontSize: 13)),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: saving ? null : save,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue[800],
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 22, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: saving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Text('Simpan',
+                                style: TextStyle(fontSize: 13)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         );
       }),
     );
@@ -1089,8 +1355,9 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
   }
 }
 
-/// Garis waktu horizontal per 30 menit. Klik satu kotak atau geser (drag) untuk
-/// memilih rentang jam. Kotak merah = sudah terbooking (tidak bisa dipilih).
+/// Garis waktu 24 jam, per 30 menit, dibagi 3 baris (00-08, 08-16, 16-24).
+/// Klik satu kotak atau geser (drag, boleh lintas baris) untuk memilih rentang jam.
+/// Kotak merah = sudah terbooking (tidak bisa dipilih).
 class _TimeRangeSelector extends StatefulWidget {
   final int dayStartMin;
   final int dayEndMin;
@@ -1116,9 +1383,16 @@ class _TimeRangeSelector extends StatefulWidget {
 
 class _TimeRangeSelectorState extends State<_TimeRangeSelector> {
   static const int _slot = 30;
+  static const int _rows = 3;
+  static const double _labelH = 14;
+  static const double _cellH = 28;
+  static const double _gap = 8;
+  static const double _rowH = _labelH + _cellH + _gap;
+
   int? _anchor;
 
   int get _count => (widget.dayEndMin - widget.dayStartMin) ~/ _slot;
+  int get _perRow => _count ~/ _rows;
 
   bool _isBusy(int i) {
     final s = widget.dayStartMin + i * _slot;
@@ -1126,11 +1400,14 @@ class _TimeRangeSelectorState extends State<_TimeRangeSelector> {
     return widget.busy.any((b) => s < b[1] && e > b[0]);
   }
 
-  int _indexAt(double dx, double width) {
-    int i = (dx / (width / _count)).floor();
-    if (i < 0) i = 0;
-    if (i >= _count) i = _count - 1;
-    return i;
+  int _indexAt(Offset p, double width) {
+    int r = (p.dy / _rowH).floor();
+    if (r < 0) r = 0;
+    if (r >= _rows) r = _rows - 1;
+    int c = (p.dx / (width / _perRow)).floor();
+    if (c < 0) c = 0;
+    if (c >= _perRow) c = _perRow - 1;
+    return r * _perRow + c;
   }
 
   void _select(int anchor, int current) {
@@ -1153,6 +1430,16 @@ class _TimeRangeSelectorState extends State<_TimeRangeSelector> {
     ]);
   }
 
+  void _begin(Offset p, double w) {
+    final i = _indexAt(p, w);
+    if (_isBusy(i)) {
+      _anchor = null;
+      return;
+    }
+    _anchor = i;
+    _select(i, i);
+  }
+
   @override
   Widget build(BuildContext context) {
     final selS = (widget.startMin - widget.dayStartMin) ~/ _slot;
@@ -1160,101 +1447,74 @@ class _TimeRangeSelectorState extends State<_TimeRangeSelector> {
 
     return LayoutBuilder(builder: (context, c) {
       final w = c.maxWidth;
-      final cell = w / _count;
+      final cell = w / _perRow;
+
+      Widget buildRow(int r) {
+        final first = r * _perRow;
+        return Padding(
+          padding: EdgeInsets.only(bottom: r == _rows - 1 ? 0 : _gap),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: _labelH,
+                width: w,
+                child: Stack(
+                  children: [
+                    for (int k = 0; k < _perRow; k++)
+                      if ((widget.dayStartMin + (first + k) * _slot) % 60 == 0)
+                        Positioned(
+                          left: k * cell,
+                          child: Text(
+                            '${((widget.dayStartMin + (first + k) * _slot) ~/ 60).toString().padLeft(2, '0')}:00',
+                            style: const TextStyle(
+                                fontSize: 9, color: Colors.black45),
+                          ),
+                        ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                height: _cellH,
+                child: Row(
+                  children: [
+                    for (int k = 0; k < _perRow; k++)
+                      Expanded(child: _buildCell(first + k, k, selS, selE)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            height: 14,
-            width: w,
-            child: Stack(
-              children: [
-                for (int i = 0; i < _count; i++)
-                  if ((widget.dayStartMin + i * _slot) % 60 == 0)
-                    Positioned(
-                      left: i * cell,
-                      child: Text(
-                        ((widget.dayStartMin + i * _slot) ~/ 60)
-                            .toString()
-                            .padLeft(2, '0'),
-                        style: const TextStyle(
-                            fontSize: 10, color: Colors.black54),
-                      ),
-                    ),
-              ],
-            ),
-          ),
           MouseRegion(
             cursor: SystemMouseCursors.click,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               // 'down' = titik awal geser dihitung dari posisi klik pertama
               dragStartBehavior: DragStartBehavior.down,
-              onTapDown: (d) {
-                final i = _indexAt(d.localPosition.dx, w);
-                if (_isBusy(i)) {
-                  _anchor = null;
-                  return;
-                }
-                _anchor = i;
-                _select(i, i);
-              },
-              onHorizontalDragStart: (d) {
-                final i = _indexAt(d.localPosition.dx, w);
-                if (_isBusy(i)) {
-                  _anchor = null;
-                  return;
-                }
-                _anchor = i;
-                _select(i, i);
-              },
-              onHorizontalDragUpdate: (d) {
+              onTapDown: (d) => _begin(d.localPosition, w),
+              onPanStart: (d) => _begin(d.localPosition, w),
+              onPanUpdate: (d) {
                 final a = _anchor;
                 if (a == null) return;
-                _select(a, _indexAt(d.localPosition.dx, w));
+                _select(a, _indexAt(d.localPosition, w));
               },
-              child: Container(
-                height: 34,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade400),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(5),
-                  child: Row(
-                    children: [
-                      for (int i = 0; i < _count; i++)
-                        Expanded(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: _isBusy(i)
-                                  ? Colors.red.withOpacity(0.25)
-                                  : (i >= selS && i < selE
-                                      ? widget.color.withOpacity(0.85)
-                                      : Colors.white),
-                              border: Border(
-                                left: BorderSide(
-                                  color:
-                                      (widget.dayStartMin + i * _slot) % 60 == 0
-                                          ? Colors.grey.shade400
-                                          : Colors.grey.shade200,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+              child: Column(
+                children: [for (int r = 0; r < _rows; r++) buildRow(r)],
               ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Row(
             children: [
               _legend(widget.color.withOpacity(0.85), 'Dipilih'),
               const SizedBox(width: 12),
-              _legend(Colors.red.withOpacity(0.25), 'Sudah terbooking'),
+              _legend(Colors.red.shade100, 'Sudah terbooking'),
               const SizedBox(width: 12),
               _legend(Colors.white, 'Kosong', border: true),
             ],
@@ -1262,6 +1522,40 @@ class _TimeRangeSelectorState extends State<_TimeRangeSelector> {
         ],
       );
     });
+  }
+
+  Widget _buildCell(int i, int col, int selS, int selE) {
+    final busy = _isBusy(i);
+    final sel = !busy && i >= selS && i < selE;
+    final prevSel = sel && col > 0 && (i - 1) >= selS;
+    final nextSel = sel && col < _perRow - 1 && (i + 1) < selE;
+
+    Color fill = Colors.white;
+    Color border = Colors.grey.shade300;
+    if (busy) {
+      fill = Colors.red.shade100;
+      border = Colors.red.shade200;
+    } else if (sel) {
+      fill = widget.color.withOpacity(0.85);
+      border = widget.color;
+    }
+
+    return Container(
+      margin: EdgeInsets.only(
+        left: prevSel ? 0 : 0.75,
+        right: nextSel ? 0 : 0.75,
+      ),
+      decoration: BoxDecoration(
+        color: fill,
+        border: Border.all(color: border, width: 0.8),
+        borderRadius: sel
+            ? BorderRadius.horizontal(
+                left: Radius.circular(prevSel ? 0 : 7),
+                right: Radius.circular(nextSel ? 0 : 7),
+              )
+            : BorderRadius.circular(4),
+      ),
+    );
   }
 
   Widget _legend(Color color, String text, {bool border = false}) {
@@ -1273,6 +1567,7 @@ class _TimeRangeSelectorState extends State<_TimeRangeSelector> {
           height: 10,
           decoration: BoxDecoration(
             color: color,
+            borderRadius: BorderRadius.circular(3),
             border: border ? Border.all(color: Colors.grey.shade400) : null,
           ),
         ),
