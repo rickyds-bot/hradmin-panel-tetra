@@ -42,7 +42,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
     'Laporan Absensi', // 8
     'Laporan Cuti', // 9
     'Laporan Lembur', // 10
-    'Booking Ruang Meeting', // 11
+    'Booking Ruang Meeting & Kendaraan', // 11
   ];
 
   late final List<Widget> _pages = [
@@ -212,7 +212,7 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                       _buildNavItem(
                         11,
                         Icons.meeting_room_outlined,
-                        'Ruang Meeting',
+                        'Ruang Meeting & Kendaraan',
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(
