@@ -102,7 +102,7 @@ class _ViewerShell extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
-        title: const Text('Tetra • Ruang Meeting & Kendaraan'),
+        title: const Text('Booking Ruang Meeting & Kendaraan'),
         actions: [
           if (email.isNotEmpty)
             Center(
