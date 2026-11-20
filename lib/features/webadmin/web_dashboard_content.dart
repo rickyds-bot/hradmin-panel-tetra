@@ -259,111 +259,39 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     }
   }
 
+  // Top 10 dihitung di database (RPC get_top_attendance) supaya tidak kena
+  // batas 1000 baris per request milik Supabase.
+  Future<List<Map<String, dynamic>>> _rpcTopAttendance(
+      DateTime month, String mode) async {
+    final res = await Supabase.instance.client.rpc(
+      'get_top_attendance',
+      params: {
+        'p_year': month.year,
+        'p_month': month.month,
+        'p_mode': mode, // 'ontime' atau 'late'
+        'p_top': 10,
+        'p_tz': 'Asia/Jakarta',
+      },
+    );
+    return List<Map<String, dynamic>>.from(res as List);
+  }
+
   Future<void> _fetchTop10Data() async {
     setState(() => _isLoadingTop10 = true);
     try {
-      DateTime firstDay =
+      final firstDay =
           DateTime(_top10CurrentDate.year, _top10CurrentDate.month, 1);
-      DateTime lastDay = DateTime(
-          _top10CurrentDate.year, _top10CurrentDate.month + 1, 0, 23, 59, 59);
+      _topEmployeesPeriod =
+          '${_namaBulanTop[firstDay.month - 1]} ${firstDay.year}';
 
-      String startUtc = firstDay.toUtc().toIso8601String();
-      String endUtc = lastDay.toUtc().toIso8601String();
-
-      const List<String> namaBulan = [
-        'Januari',
-        'Februari',
-        'Maret',
-        'April',
-        'Mei',
-        'Juni',
-        'Juli',
-        'Agustus',
-        'September',
-        'Oktober',
-        'November',
-        'Desember'
-      ];
-      _topEmployeesPeriod = '${namaBulan[firstDay.month - 1]} ${firstDay.year}';
-
-      final empRes = await Supabase.instance.client
-          .from('employees')
-          .select('id, jabatan_name');
-
-      List<dynamic> excludedIds = [];
-      for (var e in empRes) {
-        String jab = (e['jabatan_name'] ?? '').toString().toLowerCase().trim();
-        if (jab == 'driver' ||
-            jab == 'ob' ||
-            jab == 'cs' ||
-            jab == 'security' ||
-            jab == 'cleaning service') {
-          excludedIds.add(e['id']);
-        }
-      }
-
-      final allAttRes = await Supabase.instance.client
-          .from('attendance')
-          .select('employee_id, created_at, status')
-          .gte('created_at', startUtc)
-          .lte('created_at', endUtc);
-
-      Map<String, int> onTimeCounts = {};
-
-      for (var r in allAttRes) {
-        final eId = r['employee_id'];
-
-        if ((r['status'] ?? '').toString().toLowerCase().contains('out')) {
-          continue;
-        }
-
-        if (_nonAdminIds.contains(eId) && !excludedIds.contains(eId)) {
-          final String eIdStr = eId.toString();
-          final createdAtStr = r['created_at'];
-
-          if (createdAtStr != null) {
-            try {
-              DateTime checkInTimeLocal =
-                  DateTime.parse(createdAtStr.toString()).toLocal();
-              int totalMinutes =
-                  checkInTimeLocal.hour * 60 + checkInTimeLocal.minute;
-              const int limitMinutes = 8 * 60 + 45;
-
-              if (totalMinutes <= limitMinutes) {
-                onTimeCounts[eIdStr] = (onTimeCounts[eIdStr] ?? 0) + 1;
-              }
-            } catch (_) {}
-          }
-        }
-      }
-
-      var sortedKeys = onTimeCounts.keys.toList()
-        ..sort((a, b) => onTimeCounts[b]!.compareTo(onTimeCounts[a]!));
-
-      var top10Keys = sortedKeys.take(10).toList();
-
-      if (top10Keys.isNotEmpty) {
-        final topEmpData = await Supabase.instance.client
-            .from('employees')
-            .select('id, full_name, photo_url, jabatan_name')
-            .inFilter('id', top10Keys);
-
-        List<Map<String, dynamic>> tempTop = [];
-        for (var key in top10Keys) {
-          var emp = topEmpData.firstWhere((e) => e['id'].toString() == key,
-              orElse: () => <String, dynamic>{});
-          if (emp.isNotEmpty) {
-            tempTop.add({
-              'name': emp['full_name'] ?? 'Karyawan',
-              'photo': emp['photo_url'],
-              'count': '${onTimeCounts[key]} Tepat Waktu'
-            });
-          }
-        }
-        _topEmployees = tempTop;
-      } else {
-        _topEmployees = [];
-      }
+      final rows = await _rpcTopAttendance(firstDay, 'ontime');
+      _topEmployees = rows
+          .map<Map<String, dynamic>>((r) => {
+                'name': r['full_name'] ?? 'Karyawan',
+                'photo': r['photo_url'],
+                'count': '${r['jumlah']} Tepat Waktu'
+              })
+          .toList();
     } catch (e) {
       debugPrint('Error fetching top 10 stats: $e');
     } finally {
@@ -391,94 +319,16 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
     try {
       final firstDay =
           DateTime(_topLateCurrentDate.year, _topLateCurrentDate.month, 1);
-      final lastDay = DateTime(_topLateCurrentDate.year,
-          _topLateCurrentDate.month + 1, 0, 23, 59, 59);
       _topLatePeriod = '${_namaBulanTop[firstDay.month - 1]} ${firstDay.year}';
 
-      final empRes = await Supabase.instance.client
-          .from('employees')
-          .select('id, jabatan_name');
-      final Set<dynamic> excludedIds = {};
-      for (var e in empRes) {
-        final jab = (e['jabatan_name'] ?? '').toString().toLowerCase().trim();
-        if (jab == 'driver' ||
-            jab == 'ob' ||
-            jab == 'cs' ||
-            jab == 'security' ||
-            jab == 'cleaning service') {
-          excludedIds.add(e['id']);
-        }
-      }
-
-      final attRes = await Supabase.instance.client
-          .from('attendance')
-          .select('employee_id, created_at, status')
-          .gte('created_at', firstDay.toUtc().toIso8601String())
-          .lte('created_at', lastDay.toUtc().toIso8601String());
-
-      final Map<String, Map<String, int>> firstCheckIn = {};
-      for (var r in attRes) {
-        final eId = r['employee_id'];
-        if (!_nonAdminIds.contains(eId) || excludedIds.contains(eId)) continue;
-
-        if ((r['status'] ?? '').toString().toLowerCase().contains('out')) {
-          continue;
-        }
-        final createdAt = r['created_at'];
-        if (createdAt == null) continue;
-
-        DateTime t;
-        try {
-          t = DateTime.parse(createdAt.toString()).toLocal();
-        } catch (_) {
-          continue;
-        }
-
-        final bool isWeekend =
-            t.weekday == DateTime.saturday || t.weekday == DateTime.sunday;
-        final String dateKey = DateFormat('yyyy-MM-dd').format(t);
-        if (isWeekend || _holidaysMap.containsKey(dateKey)) continue;
-
-        final int minutes = t.hour * 60 + t.minute;
-        final days = firstCheckIn.putIfAbsent(eId.toString(), () => {});
-        if (!days.containsKey(dateKey) || minutes < days[dateKey]!) {
-          days[dateKey] = minutes;
-        }
-      }
-
-      const int limitMinutes = 8 * 60 + 45;
-      final Map<String, int> lateCounts = {};
-      firstCheckIn.forEach((eId, days) {
-        final n = days.values.where((m) => m > limitMinutes).length;
-        if (n > 0) lateCounts[eId] = n;
-      });
-
-      final sortedKeys = lateCounts.keys.toList()
-        ..sort((a, b) => lateCounts[b]!.compareTo(lateCounts[a]!));
-      final top10Keys = sortedKeys.take(10).toList();
-
-      if (top10Keys.isNotEmpty) {
-        final topEmpData = await Supabase.instance.client
-            .from('employees')
-            .select('id, full_name, photo_url, jabatan_name')
-            .inFilter('id', top10Keys);
-
-        final List<Map<String, dynamic>> tempTop = [];
-        for (var key in top10Keys) {
-          final emp = topEmpData.firstWhere((e) => e['id'].toString() == key,
-              orElse: () => <String, dynamic>{});
-          if (emp.isNotEmpty) {
-            tempTop.add({
-              'name': emp['full_name'] ?? 'Karyawan',
-              'photo': emp['photo_url'],
-              'count': '${lateCounts[key]}x Terlambat'
-            });
-          }
-        }
-        _topLateEmployees = tempTop;
-      } else {
-        _topLateEmployees = [];
-      }
+      final rows = await _rpcTopAttendance(firstDay, 'late');
+      _topLateEmployees = rows
+          .map<Map<String, dynamic>>((r) => {
+                'name': r['full_name'] ?? 'Karyawan',
+                'photo': r['photo_url'],
+                'count': '${r['jumlah']}x Terlambat'
+              })
+          .toList();
     } catch (e) {
       debugPrint('Error fetching top late stats: $e');
     } finally {
