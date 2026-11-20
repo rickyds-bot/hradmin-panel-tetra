@@ -911,7 +911,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
           if (title.isEmpty) {
             setD(() => errorText = vehicle
                 ? 'Tujuan / keperluan wajib diisi'
-                : 'Agenda / judul meeting wajib diisi');
+                : 'Agenda / Keperluan meeting wajib diisi');
             return;
           }
           if (endMin <= startMin) {
@@ -1251,9 +1251,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
                           controller: titleC,
                           style: fieldStyle,
                           decoration: deco(
-                              vehicle
-                                  ? 'Tujuan / keperluan'
-                                  : 'Agenda / judul meeting',
+                              vehicle ? 'Tujuan / Keperluan' : 'Agenda Meeting',
                               icon: Icons.edit_note_outlined),
                         ),
                         const SizedBox(height: 12),
@@ -1261,7 +1259,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
                           controller: picC,
                           style: fieldStyle,
                           decoration: deco(
-                              vehicle ? 'Pemesan' : 'PIC / pemesan',
+                              vehicle ? 'Pemesan' : 'PIC / Pemesan',
                               icon: Icons.person_outline),
                         ),
                         const SizedBox(height: 12),
