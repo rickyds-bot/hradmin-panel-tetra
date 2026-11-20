@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -53,8 +56,10 @@ class _Room {
   final String name;
   final int? capacity;
   final String facilities;
+  final String type; // 'room' | 'vehicle'
   _Room.fromMap(Map<String, dynamic> m)
       : id = m['id'],
+        type = (m['resource_type'] ?? 'room').toString(),
         name = (m['name'] ?? '').toString(),
         capacity = m['capacity'] is int ? m['capacity'] as int : null,
         facilities = (m['facilities'] ?? '').toString();
@@ -93,7 +98,10 @@ class WebRuangMeetingPage extends StatefulWidget {
 class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
   bool _loading = true;
   String? _error;
-  List<_Room> _rooms = [];
+  List<_Room> _allRooms = [];
+  String _type = 'room'; // 'room' | 'vehicle'
+  bool get _isVehicle => _type == 'vehicle';
+  List<_Room> get _rooms => _allRooms.where((r) => r.type == _type).toList();
   List<_Booking> _bookings = [];
   List<_Booking> _todayBookings = [];
   late DateTime _month;
@@ -140,7 +148,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
   }
 
   _Room? _roomById(dynamic id) {
-    for (final r in _rooms) {
+    for (final r in _allRooms) {
       if (r.id.toString() == id.toString()) return r;
     }
     return null;
@@ -183,7 +191,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
 
       if (!mounted) return;
       setState(() {
-        _rooms = (roomRows as List)
+        _allRooms = (roomRows as List)
             .map((e) => _Room.fromMap(Map<String, dynamic>.from(e)))
             .toList();
         _bookings = (monthRows as List)
@@ -224,7 +232,9 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
       {bool useFilter = true}) {
     final ds = DateTime.utc(day.year, day.month, day.day);
     final de = ds.add(const Duration(days: 1));
+    final ids = _rooms.map((r) => r.id.toString()).toSet();
     return list.where((b) {
+      if (!ids.contains(b.roomId.toString())) return false;
       if (!(b.start.isBefore(de) && b.end.isAfter(ds))) return false;
       if (useFilter &&
           _roomFilter != null &&
@@ -246,7 +256,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
   // ---------------------------------------------------------------- BUILD
   @override
   Widget build(BuildContext context) {
-    if (_loading && _rooms.isEmpty && _error == null) {
+    if (_loading && _allRooms.isEmpty && _error == null) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null) {
@@ -269,6 +279,8 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildTypeSwitch(),
+          const SizedBox(height: 16),
           _buildHeader(),
           const SizedBox(height: 16),
           _buildTodayStatus(),
@@ -298,22 +310,56 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
     );
   }
 
+  Widget _buildTypeSwitch() {
+    return SegmentedButton<String>(
+      style: ButtonStyle(
+        textStyle: WidgetStateProperty.all(const TextStyle(fontSize: 13)),
+      ),
+      segments: const [
+        ButtonSegment(
+            value: 'room',
+            icon: Icon(Icons.meeting_room_outlined, size: 18),
+            label: Text('Ruang Meeting')),
+        ButtonSegment(
+            value: 'vehicle',
+            icon: Icon(Icons.directions_car_outlined, size: 18),
+            label: Text('Kendaraan')),
+      ],
+      selected: {_type},
+      onSelectionChanged: (v) => setState(() {
+        _type = v.first;
+        _roomFilter = null;
+      }),
+    );
+  }
+
+  String _roomSubtitle(_Room r) {
+    final parts = <String>[r.name];
+    if (r.type == 'vehicle') {
+      if (r.capacity != null) parts.add('${r.capacity} kursi');
+      if (r.facilities.isNotEmpty) parts.add(r.facilities);
+    } else if (r.capacity != null) {
+      parts.add('${r.capacity} orang');
+    }
+    return parts.join(' • ');
+  }
+
   Widget _buildHeader() {
     return Wrap(
       spacing: 12,
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Text('Booking Ruang Meeting',
+        Text(_isVehicle ? 'Booking Kendaraan' : 'Booking Ruang Meeting',
             style: GoogleFonts.plusJakartaSans(
-                fontSize: 16, fontWeight: FontWeight.bold)),
+                fontSize: 20, fontWeight: FontWeight.bold)),
         const SizedBox(width: 12),
         IconButton(
             onPressed: () => _changeMonth(-1),
             icon: const Icon(Icons.chevron_left)),
         Text('${_namaBulan[_month.month - 1]} ${_month.year}',
             style: GoogleFonts.plusJakartaSans(
-                fontSize: 14, fontWeight: FontWeight.w600)),
+                fontSize: 15, fontWeight: FontWeight.w600)),
         IconButton(
             onPressed: () => _changeMonth(1),
             icon: const Icon(Icons.chevron_right)),
@@ -324,7 +370,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
             icon: const Icon(Icons.refresh)),
         ElevatedButton.icon(
           onPressed: () => _showBookingDialog(day: _selectedDay),
-          icon: const Icon(Icons.add, size: 16),
+          icon: const Icon(Icons.add, size: 18),
           label: const Text('Booking'),
         ),
       ],
@@ -333,7 +379,10 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
 
   Widget _buildTodayStatus() {
     if (_rooms.isEmpty) {
-      return Text('Belum ada data ruang meeting.',
+      return Text(
+          _isVehicle
+              ? 'Belum ada data kendaraan.'
+              : 'Belum ada data ruang meeting.',
           style: GoogleFonts.plusJakartaSans(color: Colors.black54));
     }
     final now = _toWib(DateTime.now());
@@ -380,6 +429,10 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
                   style: GoogleFonts.plusJakartaSans(
                       fontWeight: FontWeight.bold, fontSize: 13)),
               const SizedBox(height: 4),
+              if (room.type == 'vehicle' && room.facilities.isNotEmpty)
+                Text(room.facilities,
+                    style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11, color: Colors.black54)),
               Text(status,
                   style: GoogleFonts.plusJakartaSans(
                       fontSize: 12,
@@ -568,7 +621,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
             padding: const EdgeInsets.only(top: 4),
             child: TextButton.icon(
               onPressed: () => _showBookingDialog(day: day),
-              icon: const Icon(Icons.add, size: 14),
+              icon: const Icon(Icons.add, size: 16),
               label: const Text('Tambah booking di tanggal ini'),
             ),
           ),
@@ -598,9 +651,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                room.capacity != null
-                    ? '${room.name} • ${room.capacity} orang'
-                    : room.name,
+                _roomSubtitle(room),
                 style: GoogleFonts.plusJakartaSans(
                     fontSize: 12, fontWeight: FontWeight.w700),
               ),
@@ -700,26 +751,108 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
     }
   }
 
+  // Menit sejak 00:00 -> "HH:mm"
+  String _fmtMin(int m) =>
+      '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+
+  String _durasi(int m) {
+    final h = m ~/ 60;
+    final r = m % 60;
+    if (h > 0 && r > 0) return '$h jam $r menit';
+    if (h > 0) return '$h jam';
+    return '$r menit';
+  }
+
+  /// Slot yang sudah terbooking pada [date] untuk ruang/kendaraan [roomId],
+  /// dalam bentuk [menitMulai, menitSelesai] sejak 00:00 (WIB).
+  Future<List<List<int>>> _fetchBusy(
+      dynamic roomId, DateTime date, dynamic excludeId) async {
+    try {
+      final base = DateTime.utc(date.year, date.month, date.day);
+      final dayStart = _fromWib(base);
+      final dayEnd = dayStart.add(const Duration(days: 1));
+      final rows = await Supabase.instance.client
+          .from('meeting_bookings')
+          .select('id,start_at,end_at')
+          .eq('room_id', roomId)
+          .eq('status', 'active')
+          .lt('start_at', dayEnd.toIso8601String())
+          .gt('end_at', dayStart.toIso8601String());
+      int cl(int v) => v < 0 ? 0 : (v > 1440 ? 1440 : v);
+      final out = <List<int>>[];
+      for (final r in rows as List) {
+        if (excludeId != null && r['id'].toString() == excludeId.toString()) {
+          continue;
+        }
+        final s = _toWib(DateTime.parse(r['start_at'].toString()));
+        final e = _toWib(DateTime.parse(r['end_at'].toString()));
+        out.add([
+          cl(s.difference(base).inMinutes),
+          cl(e.difference(base).inMinutes)
+        ]);
+      }
+      return out;
+    } catch (_) {
+      return [];
+    }
+  }
+
   Future<void> _showBookingDialog({_Booking? existing, DateTime? day}) async {
     if (_rooms.isEmpty) {
-      _snack('Belum ada data ruang meeting.', error: true);
+      _snack(
+          _isVehicle
+              ? 'Belum ada data kendaraan.'
+              : 'Belum ada data ruang meeting.',
+          error: true);
       return;
     }
 
     dynamic roomId = existing?.roomId ?? _roomFilter ?? _rooms.first.id;
     final base = existing != null ? existing.start : (day ?? _selectedDay);
     DateTime date = DateTime.utc(base.year, base.month, base.day);
-    TimeOfDay startT = existing != null
-        ? TimeOfDay(hour: existing.start.hour, minute: existing.start.minute)
-        : const TimeOfDay(hour: 9, minute: 0);
-    TimeOfDay endT = existing != null
-        ? TimeOfDay(hour: existing.end.hour, minute: existing.end.minute)
-        : const TimeOfDay(hour: 10, minute: 0);
+
+    int startMin = existing != null
+        ? existing.start.hour * 60 + existing.start.minute
+        : 9 * 60;
+    int endMin = existing != null
+        ? (existing.end.day == existing.start.day
+            ? existing.end.hour * 60 + existing.end.minute
+            : 1440)
+        : 10 * 60;
+
+    // Rentang garis waktu: 07:00-19:00, otomatis melebar kalau data lama di luar itu.
+    final int dayStartMin = math.min(7 * 60, (startMin ~/ 60) * 60);
+    final int dayEndMin = math.max(19 * 60, ((endMin + 59) ~/ 60) * 60);
+
     final titleC = TextEditingController(text: existing?.title ?? '');
     final picC = TextEditingController(text: existing?.pic ?? _myName);
     final notesC = TextEditingController(text: existing?.notes ?? '');
     bool saving = false;
     String? errorText;
+
+    List<List<int>> busy = await _fetchBusy(roomId, date, existing?.id);
+
+    bool overlaps(int s, int e) => busy.any((b) => s < b[1] && e > b[0]);
+
+    void pickDefault() {
+      final order = <int>[];
+      for (int m = 9 * 60; m < dayEndMin; m += 30) {
+        order.add(m);
+      }
+      for (int m = dayStartMin; m < 9 * 60; m += 30) {
+        order.add(m);
+      }
+      for (final m in order) {
+        if (!overlaps(m, m + 30)) {
+          startMin = m;
+          endMin =
+              (m + 60 <= dayEndMin && !overlaps(m, m + 60)) ? m + 60 : m + 30;
+          return;
+        }
+      }
+    }
+
+    if (existing == null && overlaps(startMin, endMin)) pickDefault();
 
     // Gaya dialog: ringkas & konsisten (isi 13, label 12, judul/tombol 13-15)
     const TextStyle fieldStyle = TextStyle(fontSize: 13, color: Colors.black87);
@@ -742,28 +875,42 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
       );
     }
 
-    Widget h24(BuildContext c, Widget? child) => MediaQuery(
-        data: MediaQuery.of(c).copyWith(alwaysUse24HourFormat: true),
-        child: child!);
+    final bool vehicle = _isVehicle;
 
     final saved = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setD) {
+        Future<void> refreshBusy() async {
+          final b = await _fetchBusy(roomId, date, existing?.id);
+          if (!ctx.mounted) return;
+          setD(() {
+            busy = b;
+            if (overlaps(startMin, endMin)) pickDefault();
+          });
+        }
+
         Future<void> save() async {
           final title = titleC.text.trim();
           if (title.isEmpty) {
-            setD(() => errorText = 'Agenda / judul meeting wajib diisi');
+            setD(() => errorText = vehicle
+                ? 'Tujuan / keperluan wajib diisi'
+                : 'Agenda / judul meeting wajib diisi');
+            return;
+          }
+          if (endMin <= startMin) {
+            setD(() => errorText = 'Pilih jam pada garis waktu');
+            return;
+          }
+          if (overlaps(startMin, endMin)) {
+            setD(() => errorText =
+                'Jam yang dipilih bertabrakan dengan booking lain.');
             return;
           }
           final s = DateTime.utc(
-              date.year, date.month, date.day, startT.hour, startT.minute);
+              date.year, date.month, date.day, startMin ~/ 60, startMin % 60);
           final e = DateTime.utc(
-              date.year, date.month, date.day, endT.hour, endT.minute);
-          if (!e.isAfter(s)) {
-            setD(() => errorText = 'Jam selesai harus setelah jam mulai');
-            return;
-          }
+              date.year, date.month, date.day, endMin ~/ 60, endMin % 60);
           setD(() {
             saving = true;
             errorText = null;
@@ -791,7 +938,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
             setD(() {
               saving = false;
               errorText = err.code == '23P01'
-                  ? 'Ruang sudah dibooking pada jam tersebut. Pilih jam atau ruang lain.'
+                  ? 'Sudah dibooking pada jam tersebut. Pilih jam atau pilihan lain.'
                   : 'Gagal menyimpan: ${err.message}';
             });
           } catch (err) {
@@ -809,17 +956,18 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
           title: Text(
             existing == null ? 'Tambah Booking' : 'Ubah Booking',
             style: GoogleFonts.plusJakartaSans(
-                fontSize: 14, fontWeight: FontWeight.bold),
+                fontSize: 15, fontWeight: FontWeight.bold),
           ),
           content: SizedBox(
-            width: 400,
+            width: 460,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 4),
                   InputDecorator(
-                    decoration: deco('Ruang'),
+                    decoration: deco(vehicle ? 'Kendaraan' : 'Ruang'),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<dynamic>(
                         value: roomId,
@@ -829,10 +977,15 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
                         items: _rooms
                             .map((r) => DropdownMenuItem<dynamic>(
                                 value: r.id,
-                                child: Text(r.name, style: fieldStyle)))
+                                child:
+                                    Text(_roomSubtitle(r), style: fieldStyle)))
                             .toList(),
-                        onChanged:
-                            saving ? null : (v) => setD(() => roomId = v),
+                        onChanged: saving
+                            ? null
+                            : (v) {
+                                setD(() => roomId = v);
+                                refreshBusy();
+                              },
                       ),
                     ),
                   ),
@@ -849,50 +1002,46 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
                       );
                       if (p != null) {
                         setD(() => date = DateTime.utc(p.year, p.month, p.day));
+                        refreshBusy();
                       }
                     },
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: pickerField(
-                          'Mulai',
-                          startT.format(ctx),
-                          () async {
-                            final p = await showTimePicker(
-                                context: ctx,
-                                initialTime: startT,
-                                builder: h24);
-                            if (p != null) setD(() => startT = p);
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: pickerField(
-                          'Selesai',
-                          endT.format(ctx),
-                          () async {
-                            final p = await showTimePicker(
-                                context: ctx, initialTime: endT, builder: h24);
-                            if (p != null) setD(() => endT = p);
-                          },
-                        ),
-                      ),
-                    ],
+                  const SizedBox(height: 14),
+                  Text('Jam (klik atau geser pada garis waktu)',
+                      style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12, color: Colors.black54)),
+                  const SizedBox(height: 6),
+                  _TimeRangeSelector(
+                    dayStartMin: dayStartMin,
+                    dayEndMin: dayEndMin,
+                    startMin: startMin,
+                    endMin: endMin,
+                    busy: busy,
+                    color: _roomColor(roomId),
+                    onChanged: (r) => setD(() {
+                      startMin = r[0];
+                      endMin = r[1];
+                    }),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${_fmtMin(startMin)} - ${_fmtMin(endMin)}   (${_durasi(endMin - startMin)})',
+                    style: GoogleFonts.plusJakartaSans(
+                        fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 14),
                   TextField(
                     controller: titleC,
                     style: fieldStyle,
-                    decoration: deco('Agenda Meeting'),
+                    decoration: deco(vehicle
+                        ? 'Tujuan / keperluan'
+                        : 'Agenda / judul meeting'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: picC,
                     style: fieldStyle,
-                    decoration: deco('PIC'),
+                    decoration: deco(vehicle ? 'Pemesan' : 'PIC / pemesan'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -937,5 +1086,199 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
       _snack(existing == null ? 'Booking disimpan' : 'Booking diperbarui');
       await _load();
     }
+  }
+}
+
+/// Garis waktu horizontal per 30 menit. Klik satu kotak atau geser (drag) untuk
+/// memilih rentang jam. Kotak merah = sudah terbooking (tidak bisa dipilih).
+class _TimeRangeSelector extends StatefulWidget {
+  final int dayStartMin;
+  final int dayEndMin;
+  final int startMin;
+  final int endMin;
+  final List<List<int>> busy; // [menitMulai, menitSelesai]
+  final Color color;
+  final ValueChanged<List<int>> onChanged;
+
+  const _TimeRangeSelector({
+    required this.dayStartMin,
+    required this.dayEndMin,
+    required this.startMin,
+    required this.endMin,
+    required this.busy,
+    required this.color,
+    required this.onChanged,
+  });
+
+  @override
+  State<_TimeRangeSelector> createState() => _TimeRangeSelectorState();
+}
+
+class _TimeRangeSelectorState extends State<_TimeRangeSelector> {
+  static const int _slot = 30;
+  int? _anchor;
+
+  int get _count => (widget.dayEndMin - widget.dayStartMin) ~/ _slot;
+
+  bool _isBusy(int i) {
+    final s = widget.dayStartMin + i * _slot;
+    final e = s + _slot;
+    return widget.busy.any((b) => s < b[1] && e > b[0]);
+  }
+
+  int _indexAt(double dx, double width) {
+    int i = (dx / (width / _count)).floor();
+    if (i < 0) i = 0;
+    if (i >= _count) i = _count - 1;
+    return i;
+  }
+
+  void _select(int anchor, int current) {
+    int lo = anchor;
+    int hi = anchor;
+    if (current >= anchor) {
+      for (int i = anchor + 1; i <= current; i++) {
+        if (_isBusy(i)) break;
+        hi = i;
+      }
+    } else {
+      for (int i = anchor - 1; i >= current; i--) {
+        if (_isBusy(i)) break;
+        lo = i;
+      }
+    }
+    widget.onChanged([
+      widget.dayStartMin + lo * _slot,
+      widget.dayStartMin + (hi + 1) * _slot,
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selS = (widget.startMin - widget.dayStartMin) ~/ _slot;
+    final selE = (widget.endMin - widget.dayStartMin) ~/ _slot; // eksklusif
+
+    return LayoutBuilder(builder: (context, c) {
+      final w = c.maxWidth;
+      final cell = w / _count;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 14,
+            width: w,
+            child: Stack(
+              children: [
+                for (int i = 0; i < _count; i++)
+                  if ((widget.dayStartMin + i * _slot) % 60 == 0)
+                    Positioned(
+                      left: i * cell,
+                      child: Text(
+                        ((widget.dayStartMin + i * _slot) ~/ 60)
+                            .toString()
+                            .padLeft(2, '0'),
+                        style: const TextStyle(
+                            fontSize: 10, color: Colors.black54),
+                      ),
+                    ),
+              ],
+            ),
+          ),
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              // 'down' = titik awal geser dihitung dari posisi klik pertama
+              dragStartBehavior: DragStartBehavior.down,
+              onTapDown: (d) {
+                final i = _indexAt(d.localPosition.dx, w);
+                if (_isBusy(i)) {
+                  _anchor = null;
+                  return;
+                }
+                _anchor = i;
+                _select(i, i);
+              },
+              onHorizontalDragStart: (d) {
+                final i = _indexAt(d.localPosition.dx, w);
+                if (_isBusy(i)) {
+                  _anchor = null;
+                  return;
+                }
+                _anchor = i;
+                _select(i, i);
+              },
+              onHorizontalDragUpdate: (d) {
+                final a = _anchor;
+                if (a == null) return;
+                _select(a, _indexAt(d.localPosition.dx, w));
+              },
+              child: Container(
+                height: 34,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade400),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(5),
+                  child: Row(
+                    children: [
+                      for (int i = 0; i < _count; i++)
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: _isBusy(i)
+                                  ? Colors.red.withOpacity(0.25)
+                                  : (i >= selS && i < selE
+                                      ? widget.color.withOpacity(0.85)
+                                      : Colors.white),
+                              border: Border(
+                                left: BorderSide(
+                                  color:
+                                      (widget.dayStartMin + i * _slot) % 60 == 0
+                                          ? Colors.grey.shade400
+                                          : Colors.grey.shade200,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              _legend(widget.color.withOpacity(0.85), 'Dipilih'),
+              const SizedBox(width: 12),
+              _legend(Colors.red.withOpacity(0.25), 'Sudah terbooking'),
+              const SizedBox(width: 12),
+              _legend(Colors.white, 'Kosong', border: true),
+            ],
+          ),
+        ],
+      );
+    });
+  }
+
+  Widget _legend(Color color, String text, {bool border = false}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            border: border ? Border.all(color: Colors.grey.shade400) : null,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(text, style: const TextStyle(fontSize: 10, color: Colors.black54)),
+      ],
+    );
   }
 }
