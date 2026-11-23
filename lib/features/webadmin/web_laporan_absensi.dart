@@ -1,8 +1,6 @@
 import 'package:web/web.dart' as web;
 import 'dart:js_interop';
 import 'dart:math';
-// Border & BorderStyle disembunyikan dari Flutter karena namanya bentrok
-// dengan Border & BorderStyle milik package excel (dipakai di export Excel).
 import 'package:flutter/material.dart' hide Border, BorderStyle;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -865,38 +863,76 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     Sheet sheetObject = excel[sheetName];
     excel.setDefaultSheet(sheetName);
 
+    // Semua sel ditulis dengan nomor baris eksplisit (bukan appendRow).
+    // appendRow selalu menempel di baris terakhir yang berisi data, sehingga
+    // baris kosong pemisah antar karyawan tidak pernah muncul dan posisi
+    // style/merge bisa bergeser. Dengan nomor baris eksplisit, baris kosong
+    // cukup dibuat dengan menaikkan currentRow.
     int currentRow = 0;
 
+    CellIndex idx(int col, int row) =>
+        CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row);
+
+    void putCell(int col, int row, String value, CellStyle style) {
+      sheetObject.updateCell(idx(col, row), TextCellValue(value),
+          cellStyle: style);
+    }
+
+    void styleCell(int col, int row, CellStyle style) {
+      sheetObject.cell(idx(col, row)).cellStyle = style;
+    }
+
+    void mergeCells(int c1, int r1, int c2, int r2) {
+      sheetObject.merge(idx(c1, r1), idx(c2, r2));
+    }
+
+    // ---------- Border ----------
+    final Border sideBorder = Border(
+      borderStyle: BorderStyle.Thin,
+      borderColorHex: ExcelColor.fromHexString('#BDBDBD'),
+    );
+    final Border groupDividerBorder = Border(
+      borderStyle: BorderStyle.Thin,
+      borderColorHex: ExcelColor.fromHexString('#9E9E9E'),
+    );
+    final Border innerDashedBorder = Border(
+      borderStyle: BorderStyle.Dotted,
+      borderColorHex: ExcelColor.fromHexString('#E0E0E0'),
+    );
+
+    // ---------- Style ----------
     final titleStyle = CellStyle(
       bold: true,
       fontSize: 13,
-      fontColorHex: ExcelColor.fromHexString('#0D47A1'),
+      fontColorHex: ExcelColor.fromHexString('#FFFFFF'),
+      backgroundColorHex: ExcelColor.fromHexString('#0D47A1'),
+      horizontalAlign: HorizontalAlign.Left,
+      verticalAlign: VerticalAlign.Center,
     );
 
     final infoLabelStyle = CellStyle(
       bold: true,
       fontSize: 10,
       fontColorHex: ExcelColor.fromHexString('#333333'),
+      backgroundColorHex: ExcelColor.fromHexString('#E3F2FD'),
+      horizontalAlign: HorizontalAlign.Left,
+      verticalAlign: VerticalAlign.Center,
+      topBorder: sideBorder,
+      bottomBorder: sideBorder,
+      leftBorder: sideBorder,
+      rightBorder: sideBorder,
     );
 
     final infoValueStyle = CellStyle(
       fontSize: 10,
       fontColorHex: ExcelColor.fromHexString('#000000'),
-    );
-
-    final sideBorder = Border(
-      borderStyle: BorderStyle.Thin,
-      borderColorHex: ExcelColor.fromHexString('#BDBDBD'),
-    );
-
-    final groupDividerBorder = Border(
-      borderStyle: BorderStyle.Thin,
-      borderColorHex: ExcelColor.fromHexString('#9E9E9E'),
-    );
-
-    final innerDashedBorder = Border(
-      borderStyle: BorderStyle.Dotted,
-      borderColorHex: ExcelColor.fromHexString('#E0E0E0'),
+      backgroundColorHex: ExcelColor.fromHexString('#FFFFFF'),
+      horizontalAlign: HorizontalAlign.Left,
+      verticalAlign: VerticalAlign.Center,
+      topBorder: sideBorder,
+      bottomBorder: sideBorder,
+      leftBorder: sideBorder,
+      rightBorder: sideBorder,
     );
 
     final headerStyle = CellStyle(
@@ -912,8 +948,9 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       rightBorder: sideBorder,
     );
 
-    CellStyle buildPairRowStyle({
-      required bool isFirstSubRow,
+    CellStyle buildBodyStyle({
+      required Border top,
+      required Border bottom,
       HorizontalAlign align = HorizontalAlign.Left,
       String bgHex = '#FFFFFF',
       String fontHex = '#212121',
@@ -926,8 +963,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         backgroundColorHex: ExcelColor.fromHexString(bgHex),
         horizontalAlign: align,
         verticalAlign: VerticalAlign.Center,
-        topBorder: isFirstSubRow ? groupDividerBorder : innerDashedBorder,
-        bottomBorder: isFirstSubRow ? innerDashedBorder : groupDividerBorder,
+        topBorder: top,
+        bottomBorder: bottom,
         leftBorder: sideBorder,
         rightBorder: sideBorder,
       );
@@ -937,6 +974,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       bold: true,
       fontSize: 10,
       backgroundColorHex: ExcelColor.fromHexString('#ECEFF1'),
+      horizontalAlign: HorizontalAlign.Left,
+      verticalAlign: VerticalAlign.Center,
       topBorder: sideBorder,
       bottomBorder: sideBorder,
       leftBorder: sideBorder,
@@ -948,29 +987,12 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       fontSize: 10,
       backgroundColorHex: ExcelColor.fromHexString('#ECEFF1'),
       horizontalAlign: HorizontalAlign.Center,
+      verticalAlign: VerticalAlign.Center,
       topBorder: sideBorder,
       bottomBorder: sideBorder,
       leftBorder: sideBorder,
       rightBorder: sideBorder,
     );
-
-    void addBlankRow() {
-      sheetObject.appendRow([TextCellValue('')]);
-      currentRow++;
-    }
-
-    void addInfoRow(String label, String value) {
-      sheetObject.appendRow([TextCellValue(label), TextCellValue(value)]);
-      sheetObject
-          .cell(
-              CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow))
-          .cellStyle = infoLabelStyle;
-      sheetObject
-          .cell(
-              CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow))
-          .cellStyle = infoValueStyle;
-      currentRow++;
-    }
 
     final List<String> headers = [
       'Hari',
@@ -984,6 +1006,36 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       'Aktifitas',
       'Notes',
     ];
+    final int lastCol = headers.length - 1;
+
+    // Kolom yang di-merge ke bawah (2 baris check-in & check-out jadi 1 sel)
+    const List<int> mergedCols = [0, 1, 2, 6, 7, 8, 9];
+    // Kolom yang rata tengah
+    const List<int> centerCols = [0, 1, 2, 3, 6, 7, 8];
+
+    // Baris info identitas karyawan: label (kolom A-B) + isi (kolom C-F)
+    void addInfoRow(String label, String value) {
+      mergeCells(0, currentRow, 1, currentRow);
+      mergeCells(2, currentRow, 5, currentRow);
+      putCell(0, currentRow, label, infoLabelStyle);
+      styleCell(1, currentRow, infoLabelStyle);
+      putCell(2, currentRow, value, infoValueStyle);
+      for (int c = 3; c <= 5; c++) {
+        styleCell(c, currentRow, infoValueStyle);
+      }
+      sheetObject.setRowHeight(currentRow, 19);
+      currentRow++;
+    }
+
+    // Baris ringkasan: label (kolom A-B) + nilai (kolom C)
+    void addSummaryRow(String label, String value) {
+      mergeCells(0, currentRow, 1, currentRow);
+      putCell(0, currentRow, label, summaryLabelStyle);
+      styleCell(1, currentRow, summaryLabelStyle);
+      putCell(2, currentRow, value, summaryValueStyle);
+      sheetObject.setRowHeight(currentRow, 20);
+      currentRow++;
+    }
 
     bool isFirstEmployee = true;
 
@@ -992,48 +1044,43 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       final firstRow = rows.first;
       final empName = firstRow['employee_name'] ?? 'Karyawan';
 
+      // 2 baris kosong sebagai pemisah antar karyawan
       if (!isFirstEmployee) {
-        addBlankRow();
-        addBlankRow();
+        currentRow += 2;
       }
       isFirstEmployee = false;
 
-      sheetObject.appendRow([TextCellValue('LAPORAN KEHADIRAN KARYAWAN')]);
-      sheetObject.merge(
-        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow),
-        CellIndex.indexByColumnRow(
-            columnIndex: headers.length - 1, rowIndex: currentRow),
-      );
-      sheetObject
-          .cell(
-              CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow))
-          .cellStyle = titleStyle;
+      // ---- Judul ----
+      mergeCells(0, currentRow, lastCol, currentRow);
+      putCell(0, currentRow, 'LAPORAN KEHADIRAN KARYAWAN', titleStyle);
+      for (int c = 1; c <= lastCol; c++) {
+        styleCell(c, currentRow, titleStyle);
+      }
       sheetObject.setRowHeight(currentRow, 24);
       currentRow++;
 
-      addInfoRow('Nama Karyawan', ': $empName');
-      addInfoRow('ID / NIK', ': ${firstRow['nik'] ?? '-'}');
-      addInfoRow('Jabatan', ': ${firstRow['jabatan'] ?? '-'}');
-      addInfoRow('Divisi', ': ${firstRow['department'] ?? '-'}');
+      // ---- Identitas ----
+      addInfoRow('Nama Karyawan', '$empName');
+      addInfoRow('ID / NIK', '${firstRow['nik'] ?? '-'}');
+      addInfoRow('Jabatan', '${firstRow['jabatan'] ?? '-'}');
+      addInfoRow('Divisi', '${firstRow['department'] ?? '-'}');
       addInfoRow(
         'Periode',
-        ': ${DateFormat('dd-MM-yyyy').format(_startDate)} s/d ${DateFormat('dd-MM-yyyy').format(_endDate)}',
+        '${DateFormat('dd-MM-yyyy').format(_startDate)} s/d ${DateFormat('dd-MM-yyyy').format(_endDate)}',
       );
-      addBlankRow();
+      currentRow++; // 1 baris kosong sebelum tabel
 
-      sheetObject.appendRow(headers.map((e) => TextCellValue(e)).toList());
-      sheetObject.setRowHeight(currentRow, 24);
+      // ---- Header tabel ----
       for (int c = 0; c < headers.length; c++) {
-        sheetObject
-            .cell(CellIndex.indexByColumnRow(
-                columnIndex: c, rowIndex: currentRow))
-            .cellStyle = headerStyle;
+        putCell(c, currentRow, headers[c], headerStyle);
       }
+      sheetObject.setRowHeight(currentRow, 24);
       currentRow++;
 
       int totalHariKerja = 0;
       int totalDetikTerlambat = 0;
 
+      // ---- Data: tiap tanggal = 2 baris (check-in & check-out) ----
       for (int i = 0; i < rows.length; i++) {
         final row = rows[i];
 
@@ -1044,7 +1091,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           totalHariKerja++;
         }
 
-        String lateStr = row['late'] ?? '-';
+        final String lateStr = row['late'] ?? '-';
         if (lateStr != '-' && lateStr != '00:00:00') {
           List<String> parts = lateStr.split(':');
           if (parts.length == 3) {
@@ -1067,6 +1114,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           rowBg = '#FFEBEE';
         }
 
+        final int topRow = currentRow;
+        final int bottomRow = currentRow + 1;
+
+        // Nilai baris atas (check-in) untuk semua kolom
         final List<String> rowDataCheckIn = [
           row['day'] ?? '-',
           row['date'] ?? '-',
@@ -1080,15 +1131,20 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           notes,
         ];
 
-        sheetObject
-            .appendRow(rowDataCheckIn.map((e) => TextCellValue(e)).toList());
-        sheetObject.setRowHeight(currentRow, 19);
+        // Nilai baris bawah (check-out) hanya untuk kolom 3, 4, 5
+        final Map<int, String> rowDataCheckOut = {
+          3: row['check_out'] ?? '-',
+          4: row['coordinate_out'] ?? '-',
+          5: row['location_out'] ?? '-',
+        };
 
-        for (int c = 0; c < rowDataCheckIn.length; c++) {
-          final bool isCenterCol = const [0, 1, 2, 3, 6, 7].contains(c);
+        for (int c = 0; c < headers.length; c++) {
+          final HorizontalAlign align = centerCols.contains(c)
+              ? HorizontalAlign.Center
+              : HorizontalAlign.Left;
+
           String fontHex = '#212121';
           bool isBold = false;
-
           if (c == 6 && lateStr != '-' && lateStr != '00:00:00') {
             fontHex = '#C62828';
             isBold = true;
@@ -1100,85 +1156,62 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             isBold = true;
           }
 
-          sheetObject
-              .cell(CellIndex.indexByColumnRow(
-                  columnIndex: c, rowIndex: currentRow))
-              .cellStyle = buildPairRowStyle(
-            isFirstSubRow: true,
-            align: isCenterCol ? HorizontalAlign.Center : HorizontalAlign.Left,
-            bgHex: rowBg,
-            fontHex: fontHex,
-            isBold: isBold,
-          );
+          if (mergedCols.contains(c)) {
+            // 1 sel setinggi 2 baris
+            mergeCells(c, topRow, c, bottomRow);
+            final style = buildBodyStyle(
+              top: groupDividerBorder,
+              bottom: groupDividerBorder,
+              align: align,
+              bgHex: rowBg,
+              fontHex: fontHex,
+              isBold: isBold,
+            );
+            putCell(c, topRow, rowDataCheckIn[c], style);
+            styleCell(c, bottomRow, style);
+          } else {
+            putCell(
+              c,
+              topRow,
+              rowDataCheckIn[c],
+              buildBodyStyle(
+                top: groupDividerBorder,
+                bottom: innerDashedBorder,
+                align: align,
+                bgHex: rowBg,
+                fontHex: fontHex,
+                isBold: isBold,
+              ),
+            );
+            putCell(
+              c,
+              bottomRow,
+              rowDataCheckOut[c] ?? '-',
+              buildBodyStyle(
+                top: innerDashedBorder,
+                bottom: groupDividerBorder,
+                align: align,
+                bgHex: rowBg,
+              ),
+            );
+          }
         }
-        currentRow++;
 
-        final List<String> rowDataCheckOut = [
-          '',
-          '',
-          '',
-          row['check_out'] ?? '-',
-          row['coordinate_out'] ?? '-',
-          row['location_out'] ?? '-',
-          '',
-          '',
-          '',
-          '',
-        ];
-
-        sheetObject
-            .appendRow(rowDataCheckOut.map((e) => TextCellValue(e)).toList());
-        sheetObject.setRowHeight(currentRow, 19);
-
-        for (int c = 0; c < rowDataCheckOut.length; c++) {
-          final bool isCenterCol = const [0, 1, 2, 3, 6, 7].contains(c);
-          sheetObject
-              .cell(CellIndex.indexByColumnRow(
-                  columnIndex: c, rowIndex: currentRow))
-              .cellStyle = buildPairRowStyle(
-            isFirstSubRow: false,
-            align: isCenterCol ? HorizontalAlign.Center : HorizontalAlign.Left,
-            bgHex: rowBg,
-          );
-        }
-        currentRow++;
+        sheetObject.setRowHeight(topRow, 19);
+        sheetObject.setRowHeight(bottomRow, 19);
+        currentRow += 2;
       }
 
+      // ---- Ringkasan ----
       int th = totalDetikTerlambat ~/ 3600;
       int tm = (totalDetikTerlambat % 3600) ~/ 60;
       int ts = totalDetikTerlambat % 60;
-      String totalLateFormatted =
+      final String totalLateFormatted =
           '${th.toString().padLeft(2, '0')}:${tm.toString().padLeft(2, '0')}:${ts.toString().padLeft(2, '0')}';
-      String totalJamKerjaFormatted = _formatDurasi(_sumWorkSeconds(rows));
+      final String totalJamKerjaFormatted =
+          _formatDurasi(_sumWorkSeconds(rows));
 
-      addBlankRow();
-
-      void addSummaryRow(String label, String value) {
-        sheetObject.appendRow([
-          TextCellValue(label),
-          TextCellValue(''),
-          TextCellValue(value),
-        ]);
-        sheetObject.merge(
-          CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow),
-          CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow),
-        );
-        sheetObject
-            .cell(CellIndex.indexByColumnRow(
-                columnIndex: 0, rowIndex: currentRow))
-            .cellStyle = summaryLabelStyle;
-        sheetObject
-            .cell(CellIndex.indexByColumnRow(
-                columnIndex: 1, rowIndex: currentRow))
-            .cellStyle = summaryLabelStyle;
-        sheetObject
-            .cell(CellIndex.indexByColumnRow(
-                columnIndex: 2, rowIndex: currentRow))
-            .cellStyle = summaryValueStyle;
-        sheetObject.setRowHeight(currentRow, 20);
-        currentRow++;
-      }
-
+      currentRow++; // 1 baris kosong sebelum ringkasan
       addSummaryRow('Total Hari Kerja', '$totalHariKerja hari');
       addSummaryRow('Total Jam Terlambat', totalLateFormatted);
       addSummaryRow('Total Jam Kerja', totalJamKerjaFormatted);
