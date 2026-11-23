@@ -851,12 +851,17 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     if (_groupedAttendanceData.isEmpty) return;
 
     var excel = Excel.createExcel();
-    excel.delete('Sheet1');
 
-    // Semua karyawan dalam SATU sheet, disusun ke bawah per karyawan
+    // Semua karyawan dalam SATU sheet, disusun ke bawah per karyawan.
+    // Sheet bawaan (Sheet1) di-rename supaya tidak ada sheet kosong tersisa.
     const String sheetName = 'Laporan Kehadiran';
+    excel.rename('Sheet1', sheetName);
     Sheet sheetObject = excel[sheetName];
     excel.setDefaultSheet(sheetName);
+
+    // appendRow([]) tidak menambah baris di package excel, jadi baris kosong
+    // dibuat dengan 1 sel berisi string kosong.
+    void addBlankRow() => sheetObject.appendRow([TextCellValue('')]);
 
     bool isFirstEmployee = true;
 
@@ -867,8 +872,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
       // Jarak antar karyawan (kosong 2 baris) supaya blok terlihat terpisah
       if (!isFirstEmployee) {
-        sheetObject.appendRow([]);
-        sheetObject.appendRow([]);
+        addBlankRow();
+        addBlankRow();
       }
       isFirstEmployee = false;
 
@@ -883,7 +888,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         TextCellValue(
             'Periode: ${DateFormat('dd-MM-yyyy').format(_startDate)} s/d ${DateFormat('dd-MM-yyyy').format(_endDate)}')
       ]);
-      sheetObject.appendRow([]);
+      addBlankRow();
 
       List<String> headers = [
         'Hari',
@@ -963,7 +968,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           '${th.toString().padLeft(2, '0')}:${tm.toString().padLeft(2, '0')}:${ts.toString().padLeft(2, '0')}';
       String totalJamKerjaFormatted = _formatDurasi(_sumWorkSeconds(rows));
 
-      sheetObject.appendRow([]);
+      addBlankRow();
       sheetObject.appendRow([
         TextCellValue('Total Hari Kerja:'),
         TextCellValue('$totalHariKerja hari')
@@ -978,7 +983,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       ]);
     });
 
-    final fileBytes = excel.save();
+    final fileBytes = excel.encode();
     if (fileBytes != null) {
       final uint8List = Uint8List.fromList(fileBytes);
       final blob = web.Blob(
