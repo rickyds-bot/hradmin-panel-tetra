@@ -5,9 +5,6 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 
-// Hitung jumlah hari cuti yang mengurangi saldo: hanya hari kerja (Senin-Jumat)
-// dan bukan hari libur nasional (tabel hari_libur). Sabtu, Minggu, dan tanggal
-// merah tidak mengurangi saldo.
 Future<int> _hitungHariCutiKerja(DateTime start, DateTime end) async {
   final DateTime first = DateTime(start.year, start.month, start.day);
   final DateTime last = DateTime(end.year, end.month, end.day);
@@ -1609,6 +1606,122 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
     }
   }
 
+  // Lampiran pengajuan (mis. surat dokter untuk izin sakit) - sama seperti web dashboard
+  bool _isPreviewableImage(String url) {
+    final path = (Uri.tryParse(url)?.path ?? url).toLowerCase();
+    return !(path.endsWith('.pdf') ||
+        path.endsWith('.doc') ||
+        path.endsWith('.docx'));
+  }
+
+  Future<void> _openAttachment(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri != null && await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal membuka file lampiran.')),
+      );
+    }
+  }
+
+  void _showAttachmentDialog(String url, String empName) {
+    final bool isImage = _isPreviewableImage(url);
+    final double previewHeight = MediaQuery.of(context).size.height * 0.5;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Lampiran: $empName',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(dialogContext),
+                  ),
+                ],
+              ),
+              const Divider(),
+              SizedBox(
+                height: previewHeight,
+                width: double.infinity,
+                child: isImage
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: InteractiveViewer(
+                          child: Image.network(
+                            url,
+                            fit: BoxFit.contain,
+                            loadingBuilder: (context, child, progress) {
+                              if (progress == null) return child;
+                              return const Center(
+                                child: CircularProgressIndicator(),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Center(
+                              child: Text(
+                                'Gagal memuat pratinjau gambar.',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    : Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.insert_drive_file,
+                                size: 64, color: Colors.grey.shade500),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Pratinjau tidak tersedia untuk file ini.',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  onPressed: () => _openAttachment(url),
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: const Text(
+                    'Buka / Download',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   String _getEmployeeName(dynamic identifier) {
     if (identifier == null || identifier.toString().trim().isEmpty) {
       return "Karyawan";
@@ -1951,6 +2064,34 @@ class __RequestListWidgetState extends State<_RequestListWidget> {
                                 fontStyle: FontStyle.italic,
                               ),
                             ),
+                            if (widget.tableName == 'leave_requests' &&
+                                (row['attachment_url'] ?? '')
+                                    .toString()
+                                    .trim()
+                                    .isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              OutlinedButton.icon(
+                                onPressed: () => _showAttachmentDialog(
+                                  row['attachment_url'].toString().trim(),
+                                  namaKaryawan,
+                                ),
+                                icon: const Icon(Icons.attach_file, size: 14),
+                                label: const Text(
+                                  'Lihat Lampiran',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.teal.shade800,
+                                  side: BorderSide(color: Colors.teal.shade300),
+                                  minimumSize: const Size(0, 30),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10),
+                                ),
+                              ),
+                            ],
                             if (rawStatus != 'pending' &&
                                 approver.isNotEmpty &&
                                 approver != 'Karyawan') ...[
