@@ -853,15 +853,24 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     var excel = Excel.createExcel();
     excel.delete('Sheet1');
 
+    // Semua karyawan dalam SATU sheet, disusun ke bawah per karyawan
+    const String sheetName = 'Laporan Kehadiran';
+    Sheet sheetObject = excel[sheetName];
+    excel.setDefaultSheet(sheetName);
+
+    bool isFirstEmployee = true;
+
     _groupedAttendanceData.forEach((empId, rows) {
       if (rows.isEmpty) return;
       final firstRow = rows.first;
       final empName = firstRow['employee_name'] ?? 'Karyawan';
-      String sheetName = empName.replaceAll(RegExp(r'[\/?*\[\]:]'), '_');
-      if (sheetName.length > 31) sheetName = sheetName.substring(0, 31);
 
-      Sheet sheetObject = excel[sheetName];
-      excel.setDefaultSheet(sheetName);
+      // Jarak antar karyawan (kosong 2 baris) supaya blok terlihat terpisah
+      if (!isFirstEmployee) {
+        sheetObject.appendRow([]);
+        sheetObject.appendRow([]);
+      }
+      isFirstEmployee = false;
 
       sheetObject.appendRow([TextCellValue('LAPORAN KEHADIRAN KARYAWAN')]);
       sheetObject.appendRow([
