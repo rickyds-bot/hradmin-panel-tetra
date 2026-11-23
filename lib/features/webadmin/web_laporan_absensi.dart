@@ -1,7 +1,9 @@
 import 'package:web/web.dart' as web;
 import 'dart:js_interop';
 import 'dart:math';
-import 'package:flutter/material.dart';
+// Border & BorderStyle disembunyikan dari Flutter karena namanya bentrok
+// dengan Border & BorderStyle milik package excel (dipakai di export Excel).
+import 'package:flutter/material.dart' hide Border, BorderStyle;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -102,12 +104,9 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     setState(() => _isLoading = true);
 
     try {
-      // Mulai dari H-1 jam 12:00 supaya check-out lewat tengah malam pada
-      // tanggal awal bisa dipasangkan dengan check-in hari sebelumnya.
       DateTime startUtc = DateTime(
               _startDate.year, _startDate.month, _startDate.day - 1, 12, 0, 0)
           .toUtc();
-      // Sampai H+1 jam 12:00 supaya check-out pagi shift security terbawa
       DateTime endUtc =
           DateTime(_endDate.year, _endDate.month, _endDate.day + 1, 12, 0, 0)
               .toUtc();
@@ -204,7 +203,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     return 'Luar Area Kantor';
   }
 
-  // Role administrator: tidak ikut dalam laporan kehadiran
   bool _isAdminRole(dynamic role) {
     final r = (role ?? '').toString().trim().toLowerCase();
     return r == 'admin' || r == 'administrator';
@@ -242,13 +240,11 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     return (jabatan ?? '').toString().trim().toLowerCase() == 'security';
   }
 
-  // Jabatan dengan jam kerja 08:00-17:00: driver, OB, CS
   bool _isDriverJabatan(dynamic jabatan) {
     final j = (jabatan ?? '').toString().trim().toLowerCase();
     return const ['driver', 'ob', 'cs'].contains(j);
   }
 
-  // Jenis absen berdasarkan status: 'in' (check-in), 'out' (check-out), atau null
   String? _punchKind(dynamic item) {
     final st = (item['status'] ?? '').toString().toLowerCase();
     if (st.contains('out') || st.contains('pulang') || st.contains('keluar')) {
@@ -260,9 +256,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     return null;
   }
 
-  // Security punya 2 shift: pagi 07:00-17:00 dan malam 17:00-07:00.
-  // Check-in memulai shift, check-out berikutnya menutupnya.
-  // Hasil: tanggal shift (yyyy-MM-dd) -> {punches, hasIn, shift}
   Map<String, Map<String, dynamic>> _groupSecurityShifts(List<dynamic> list,
       {bool isSec = true}) {
     final Map<String, Map<String, dynamic>> result = {};
@@ -280,8 +273,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       if (currentHasIn) {
         shift = firstDt.hour < 12 ? 'day' : 'night';
       } else {
-        // check-out tanpa check-in: pagi = sisa shift malam, sore = shift pagi
-        // (aturan ini hanya untuk security)
         shift = isSec && firstDt.hour < 12 ? 'night' : 'day';
         if (isSec && firstDt.hour < 12) {
           shiftDay = shiftDay.subtract(const Duration(days: 1));
@@ -332,7 +323,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
   void _processAttendanceData(List<dynamic> rawData) {
     Map<String, Map<String, List<dynamic>>> empDatePunches = {};
 
-    // Peta id karyawan -> apakah security (shift malam 17:00 - 07:00)
     final Map<String, bool> securityMap = {};
     final Map<String, List<dynamic>> secRaw = {};
     final Map<String, Map<String, Map<String, dynamic>>> secShifts = {};
@@ -350,9 +340,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       DateTime? dt = DateTime.tryParse(createdAtStr)?.toLocal();
       if (dt == null) continue;
 
-      // Semua karyawan dikelompokkan per sesi (check-in -> check-out) setelah
-      // loop ini, bukan per tanggal kalender, agar check-out lewat tengah malam
-      // masuk ke tanggal check-in-nya.
       secRaw.putIfAbsent(empId, () => []).add(item);
     }
 
@@ -427,7 +414,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
         var punches = empDatePunches[empIdStr]?[dateKey];
 
-        // Security: info shift (pagi/malam) & apakah ada check-in
         Map<String, dynamic>? secInfo;
         if (isSecurity) {
           final secByDate = secShifts[empIdStr];
@@ -464,14 +450,12 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
           String lateStr = '-';
 
-          // Batas terlambat (toleransi 15 menit): security malam 17:15 / pagi 07:15, driver 08:15 (masuk 08:00 + toleransi 15 menit), lainnya 08:45
           DateTime limitTime = isSecurity
               ? DateTime(
                   curr.year, curr.month, curr.day, isNightShift ? 17 : 7, 15, 0)
               : DateTime(checkInDt.year, checkInDt.month, checkInDt.day, 8,
                   isDriver ? 15 : 45, 0);
 
-          // Sabtu/Minggu (non-security) berstatus Lembur: tidak dihitung terlambat
           final bool skipLate = (isWeekend && !isSecurity) || onlyCheckOut;
 
           if (!skipLate && checkInDt.isAfter(limitTime)) {
@@ -499,7 +483,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           }
 
           if (checkOutDt != null) {
-            // Batas pulang: security malam 07:00 (hari berikutnya) / pagi 17:00, driver 17:00, lainnya 17:30
             DateTime earlyLimit = isSecurity
                 ? (isNightShift
                     ? DateTime(curr.year, curr.month, curr.day + 1, 7, 0, 0)
@@ -515,15 +498,12 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             aktifitas = 'Belum Checkout';
           }
 
-          // Security: kolom aktifitas dikosongkan (kerja setiap hari).
-          // Lainnya: Lembur jika absen (check-in & check-out) di Sabtu/Minggu.
           if (isSecurity) {
             aktifitas = '';
           } else if (isWeekend && checkOutDt != null) {
             aktifitas = 'Lembur';
           }
 
-          // --- PERUBAHAN: Durasi kerja dikurangi jam istirahat (12:00 - 13:00) ---
           int workSeconds = 0;
           if (checkOutDt != null && !onlyCheckOut) {
             workSeconds = checkOutDt.difference(checkInDt).inSeconds;
@@ -535,11 +515,9 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
 
             if (checkInDt.isBefore(breakStart) &&
                 checkOutDt.isAfter(breakEnd)) {
-              // Karyawan bekerja full melewati jam istirahat -> Kurangi 1 jam (3600 detik)
               workSeconds -= 3600;
             } else if (checkInDt.isBefore(breakEnd) &&
                 checkOutDt.isAfter(breakStart)) {
-              // Jika overlap parsial (misal check-out jam 12:30 atau check-in jam 12:15)
               DateTime overlapStart =
                   checkInDt.isAfter(breakStart) ? checkInDt : breakStart;
               DateTime overlapEnd =
@@ -552,15 +530,28 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
               }
             }
           }
-          // ------------------------------------------------------------------------
 
-          String coordinate =
-              '${firstPunch['latitude'] ?? '-'}, ${firstPunch['longitude'] ?? '-'}';
+          // Koordinat & Lokasi Check-in
+          String coordinateIn = onlyCheckOut
+              ? '-'
+              : '${firstPunch['latitude'] ?? '-'}, ${firstPunch['longitude'] ?? '-'}';
+          String locationIn = onlyCheckOut
+              ? '-'
+              : (isFreeLocation
+                  ? 'Absen Bebas'
+                  : _matchLocationName(
+                      firstPunch['latitude'], firstPunch['longitude']));
 
-          String locationName = isFreeLocation
-              ? 'Absen Bebas'
-              : _matchLocationName(
-                  firstPunch['latitude'], firstPunch['longitude']);
+          // Koordinat & Lokasi Check-out (diambil dari lastPunch)
+          String coordinateOut = checkOutDt != null
+              ? '${lastPunch['latitude'] ?? '-'}, ${lastPunch['longitude'] ?? '-'}'
+              : '-';
+          String locationOut = checkOutDt != null
+              ? (isFreeLocation
+                  ? 'Absen Bebas'
+                  : _matchLocationName(
+                      lastPunch['latitude'], lastPunch['longitude']))
+              : '-';
 
           var row = {
             'employee_id': empIdStr,
@@ -575,8 +566,10 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                 : workHours,
             'check_in': checkInTime,
             'check_out': checkOutTime,
-            'coordinate': coordinate,
-            'location': locationName,
+            'coordinate': coordinateIn,
+            'location': locationIn,
+            'coordinate_out': coordinateOut,
+            'location_out': locationOut,
             'late': lateStr,
             'work_seconds': workSeconds,
             'work_total': workSeconds > 0 ? _formatDurasi(workSeconds) : '-',
@@ -600,7 +593,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             aktifitas = 'Libur';
           }
 
-          // Security bekerja setiap hari: kolom aktifitas dikosongkan
           if (isSecurity) {
             aktifitas = '';
           }
@@ -618,6 +610,8 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
             'check_out': '-',
             'coordinate': '-',
             'location': '-',
+            'coordinate_out': '-',
+            'location_out': '-',
             'late': '-',
             'work_seconds': 0,
             'work_total': '-',
@@ -682,8 +676,7 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     final headers = [
       'Hari | Tanggal',
       'Jam Kerja',
-      'Jam Check-in',
-      'Jam Check-out',
+      'Jam Check-in / Check-out',
       'Kordinat',
       'Nama Lokasi',
       'Terlambat',
@@ -703,7 +696,9 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       int totalHariKerja = 0;
       int totalDetikTerlambat = 0;
 
-      final pdfData = rows.map((row) {
+      // 2 baris per tanggal: Baris 1 = Check-in, Baris 2 = Check-out (beserta kordinat & lokasi check-out)
+      final List<List<String>> pdfData = [];
+      for (var row in rows) {
         if (row['aktifitas'] == 'Bekerja' ||
             row['aktifitas'] == 'Check-out lbh awal' ||
             row['aktifitas'] == 'Belum Checkout' ||
@@ -721,19 +716,32 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           }
         }
 
-        return [
+        // Baris 1: Check-in
+        pdfData.add([
           '${row['day']} | ${row['date']}',
           row['work_hours'] ?? '-',
           row['check_in'] ?? '-',
-          row['check_out'] ?? '-',
           row['coordinate'] ?? '-',
           row['location'] ?? '-',
-          row['late'] ?? '-',
+          lateStr,
           row['work_total'] ?? '-',
           row['aktifitas'] ?? '-',
           row['notes'] ?? '-',
-        ];
-      }).toList();
+        ]);
+
+        // Baris 2: Check-out
+        pdfData.add([
+          '',
+          '',
+          row['check_out'] ?? '-',
+          row['coordinate_out'] ?? '-',
+          row['location_out'] ?? '-',
+          '',
+          '',
+          '',
+          '',
+        ]);
+      }
 
       int th = totalDetikTerlambat ~/ 3600;
       int tm = (totalDetikTerlambat % 3600) ~/ 60;
@@ -789,14 +797,15 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                 border:
                     pw.TableBorder.all(width: 0.5, color: PdfColors.grey400),
                 headerStyle: pw.TextStyle(
-                    fontSize: 9,
+                    fontSize: 8.5,
                     fontWeight: pw.FontWeight.bold,
                     color: PdfColors.white),
                 headerDecoration:
                     const pw.BoxDecoration(color: PdfColors.blue800),
-                cellStyle: pw.TextStyle(fontSize: 8),
+                cellStyle: const pw.TextStyle(fontSize: 7.5),
                 cellAlignment: pw.Alignment.centerLeft,
-                cellPadding: const pw.EdgeInsets.all(6),
+                cellPadding:
+                    const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 3.5),
               ),
               pw.SizedBox(height: 12),
               pw.Container(
@@ -851,17 +860,130 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
     if (_groupedAttendanceData.isEmpty) return;
 
     var excel = Excel.createExcel();
-
-    // Semua karyawan dalam SATU sheet, disusun ke bawah per karyawan.
-    // Sheet bawaan (Sheet1) di-rename supaya tidak ada sheet kosong tersisa.
     const String sheetName = 'Laporan Kehadiran';
     excel.rename('Sheet1', sheetName);
     Sheet sheetObject = excel[sheetName];
     excel.setDefaultSheet(sheetName);
 
-    // appendRow([]) tidak menambah baris di package excel, jadi baris kosong
-    // dibuat dengan 1 sel berisi string kosong.
-    void addBlankRow() => sheetObject.appendRow([TextCellValue('')]);
+    int currentRow = 0;
+
+    final titleStyle = CellStyle(
+      bold: true,
+      fontSize: 13,
+      fontColorHex: ExcelColor.fromHexString('#0D47A1'),
+    );
+
+    final infoLabelStyle = CellStyle(
+      bold: true,
+      fontSize: 10,
+      fontColorHex: ExcelColor.fromHexString('#333333'),
+    );
+
+    final infoValueStyle = CellStyle(
+      fontSize: 10,
+      fontColorHex: ExcelColor.fromHexString('#000000'),
+    );
+
+    final sideBorder = Border(
+      borderStyle: BorderStyle.Thin,
+      borderColorHex: ExcelColor.fromHexString('#BDBDBD'),
+    );
+
+    final groupDividerBorder = Border(
+      borderStyle: BorderStyle.Thin,
+      borderColorHex: ExcelColor.fromHexString('#9E9E9E'),
+    );
+
+    final innerDashedBorder = Border(
+      borderStyle: BorderStyle.Dotted,
+      borderColorHex: ExcelColor.fromHexString('#E0E0E0'),
+    );
+
+    final headerStyle = CellStyle(
+      bold: true,
+      fontSize: 10,
+      fontColorHex: ExcelColor.fromHexString('#FFFFFF'),
+      backgroundColorHex: ExcelColor.fromHexString('#1565C0'),
+      horizontalAlign: HorizontalAlign.Center,
+      verticalAlign: VerticalAlign.Center,
+      topBorder: sideBorder,
+      bottomBorder: sideBorder,
+      leftBorder: sideBorder,
+      rightBorder: sideBorder,
+    );
+
+    CellStyle buildPairRowStyle({
+      required bool isFirstSubRow,
+      HorizontalAlign align = HorizontalAlign.Left,
+      String bgHex = '#FFFFFF',
+      String fontHex = '#212121',
+      bool isBold = false,
+    }) {
+      return CellStyle(
+        bold: isBold,
+        fontSize: 10,
+        fontColorHex: ExcelColor.fromHexString(fontHex),
+        backgroundColorHex: ExcelColor.fromHexString(bgHex),
+        horizontalAlign: align,
+        verticalAlign: VerticalAlign.Center,
+        topBorder: isFirstSubRow ? groupDividerBorder : innerDashedBorder,
+        bottomBorder: isFirstSubRow ? innerDashedBorder : groupDividerBorder,
+        leftBorder: sideBorder,
+        rightBorder: sideBorder,
+      );
+    }
+
+    final summaryLabelStyle = CellStyle(
+      bold: true,
+      fontSize: 10,
+      backgroundColorHex: ExcelColor.fromHexString('#ECEFF1'),
+      topBorder: sideBorder,
+      bottomBorder: sideBorder,
+      leftBorder: sideBorder,
+      rightBorder: sideBorder,
+    );
+
+    final summaryValueStyle = CellStyle(
+      bold: true,
+      fontSize: 10,
+      backgroundColorHex: ExcelColor.fromHexString('#ECEFF1'),
+      horizontalAlign: HorizontalAlign.Center,
+      topBorder: sideBorder,
+      bottomBorder: sideBorder,
+      leftBorder: sideBorder,
+      rightBorder: sideBorder,
+    );
+
+    void addBlankRow() {
+      sheetObject.appendRow([TextCellValue('')]);
+      currentRow++;
+    }
+
+    void addInfoRow(String label, String value) {
+      sheetObject.appendRow([TextCellValue(label), TextCellValue(value)]);
+      sheetObject
+          .cell(
+              CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow))
+          .cellStyle = infoLabelStyle;
+      sheetObject
+          .cell(
+              CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow))
+          .cellStyle = infoValueStyle;
+      currentRow++;
+    }
+
+    final List<String> headers = [
+      'Hari',
+      'Tanggal',
+      'Jam Kerja',
+      'Jam Check-in / Check-out',
+      'Kordinat',
+      'Nama Lokasi',
+      'Terlambat',
+      'Total Jam Kerja',
+      'Aktifitas',
+      'Notes',
+    ];
 
     bool isFirstEmployee = true;
 
@@ -870,7 +992,6 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       final firstRow = rows.first;
       final empName = firstRow['employee_name'] ?? 'Karyawan';
 
-      // Jarak antar karyawan (kosong 2 baris) supaya blok terlihat terpisah
       if (!isFirstEmployee) {
         addBlankRow();
         addBlankRow();
@@ -878,42 +999,51 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       isFirstEmployee = false;
 
       sheetObject.appendRow([TextCellValue('LAPORAN KEHADIRAN KARYAWAN')]);
-      sheetObject.appendRow([
-        TextCellValue('Nama: $empName'),
-        TextCellValue('NIK: ${firstRow['nik']}'),
-        TextCellValue('Jabatan: ${firstRow['jabatan']}'),
-        TextCellValue('Divisi: ${firstRow['department'] ?? '-'}')
-      ]);
-      sheetObject.appendRow([
-        TextCellValue(
-            'Periode: ${DateFormat('dd-MM-yyyy').format(_startDate)} s/d ${DateFormat('dd-MM-yyyy').format(_endDate)}')
-      ]);
+      sheetObject.merge(
+        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow),
+        CellIndex.indexByColumnRow(
+            columnIndex: headers.length - 1, rowIndex: currentRow),
+      );
+      sheetObject
+          .cell(
+              CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow))
+          .cellStyle = titleStyle;
+      sheetObject.setRowHeight(currentRow, 24);
+      currentRow++;
+
+      addInfoRow('Nama Karyawan', ': $empName');
+      addInfoRow('ID / NIK', ': ${firstRow['nik'] ?? '-'}');
+      addInfoRow('Jabatan', ': ${firstRow['jabatan'] ?? '-'}');
+      addInfoRow('Divisi', ': ${firstRow['department'] ?? '-'}');
+      addInfoRow(
+        'Periode',
+        ': ${DateFormat('dd-MM-yyyy').format(_startDate)} s/d ${DateFormat('dd-MM-yyyy').format(_endDate)}',
+      );
       addBlankRow();
 
-      List<String> headers = [
-        'Hari',
-        'Tanggal',
-        'Jam Kerja',
-        'Jam Check-in / Check-out',
-        'Kordinat',
-        'Nama Lokasi',
-        'Terlambat',
-        'Total Jam Kerja',
-        'Aktifitas',
-        'Notes'
-      ];
       sheetObject.appendRow(headers.map((e) => TextCellValue(e)).toList());
+      sheetObject.setRowHeight(currentRow, 24);
+      for (int c = 0; c < headers.length; c++) {
+        sheetObject
+            .cell(CellIndex.indexByColumnRow(
+                columnIndex: c, rowIndex: currentRow))
+            .cellStyle = headerStyle;
+      }
+      currentRow++;
 
       int totalHariKerja = 0;
       int totalDetikTerlambat = 0;
 
-      for (var row in rows) {
+      for (int i = 0; i < rows.length; i++) {
+        final row = rows[i];
+
         if (row['aktifitas'] == 'Bekerja' ||
             row['aktifitas'] == 'Check-out lbh awal' ||
             row['aktifitas'] == 'Belum Checkout' ||
             (row['check_in'] != '-' && row['check_in'] != null)) {
           totalHariKerja++;
         }
+
         String lateStr = row['late'] ?? '-';
         if (lateStr != '-' && lateStr != '00:00:00') {
           List<String> parts = lateStr.split(':');
@@ -925,40 +1055,93 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           }
         }
 
-        String checkIn = row['check_in'] ?? '-';
-        String checkOut = row['check_out'] ?? '-';
+        final String aktifitas = row['aktifitas'] ?? '-';
+        final String notes = row['notes'] ?? '-';
 
-        // Baris Pertama: Menampilkan jam Check-in (Terlambat & Notes diisi)
-        List<String> rowDataCheckIn = [
-          row['day'] ?? '',
-          row['date'] ?? '',
-          row['work_hours'] ?? '',
-          checkIn,
-          row['coordinate'] ?? '',
-          row['location'] ?? '',
-          row['late'] ?? '',
-          row['work_total'] ?? '',
-          row['aktifitas'] ?? '',
-          row['notes'] ?? '',
+        String rowBg = i.isEven ? '#FFFFFF' : '#F4F7FA';
+        if (aktifitas == 'Libur') {
+          rowBg = '#FFF8E1';
+        } else if (aktifitas == 'Cuti/Izin') {
+          rowBg = '#E8F5E9';
+        } else if (aktifitas == 'Alpa') {
+          rowBg = '#FFEBEE';
+        }
+
+        final List<String> rowDataCheckIn = [
+          row['day'] ?? '-',
+          row['date'] ?? '-',
+          row['work_hours'] ?? '-',
+          row['check_in'] ?? '-',
+          row['coordinate'] ?? '-',
+          row['location'] ?? '-',
+          lateStr,
+          row['work_total'] ?? '-',
+          aktifitas,
+          notes,
         ];
+
         sheetObject
             .appendRow(rowDataCheckIn.map((e) => TextCellValue(e)).toList());
+        sheetObject.setRowHeight(currentRow, 19);
 
-        // Baris Kedua: Menampilkan jam Check-out (Terlambat & Notes dikosongkan)
-        List<String> rowDataCheckOut = [
-          row['day'] ?? '',
-          row['date'] ?? '',
-          row['work_hours'] ?? '',
-          checkOut,
-          row['coordinate'] ?? '',
-          row['location'] ?? '',
-          '', // Kolom Terlambat dikosongkan
-          '', // Kolom Total Jam Kerja dikosongkan
-          row['aktifitas'] ?? '',
-          '', // Kolom Notes dikosongkan
+        for (int c = 0; c < rowDataCheckIn.length; c++) {
+          final bool isCenterCol = const [0, 1, 2, 3, 6, 7].contains(c);
+          String fontHex = '#212121';
+          bool isBold = false;
+
+          if (c == 6 && lateStr != '-' && lateStr != '00:00:00') {
+            fontHex = '#C62828';
+            isBold = true;
+          } else if (c == 9 && notes == 'Terlambat') {
+            fontHex = '#C62828';
+            isBold = true;
+          } else if (c == 9 && notes == 'Cuti/Izin') {
+            fontHex = '#2E7D32';
+            isBold = true;
+          }
+
+          sheetObject
+              .cell(CellIndex.indexByColumnRow(
+                  columnIndex: c, rowIndex: currentRow))
+              .cellStyle = buildPairRowStyle(
+            isFirstSubRow: true,
+            align: isCenterCol ? HorizontalAlign.Center : HorizontalAlign.Left,
+            bgHex: rowBg,
+            fontHex: fontHex,
+            isBold: isBold,
+          );
+        }
+        currentRow++;
+
+        final List<String> rowDataCheckOut = [
+          '',
+          '',
+          '',
+          row['check_out'] ?? '-',
+          row['coordinate_out'] ?? '-',
+          row['location_out'] ?? '-',
+          '',
+          '',
+          '',
+          '',
         ];
+
         sheetObject
             .appendRow(rowDataCheckOut.map((e) => TextCellValue(e)).toList());
+        sheetObject.setRowHeight(currentRow, 19);
+
+        for (int c = 0; c < rowDataCheckOut.length; c++) {
+          final bool isCenterCol = const [0, 1, 2, 3, 6, 7].contains(c);
+          sheetObject
+              .cell(CellIndex.indexByColumnRow(
+                  columnIndex: c, rowIndex: currentRow))
+              .cellStyle = buildPairRowStyle(
+            isFirstSubRow: false,
+            align: isCenterCol ? HorizontalAlign.Center : HorizontalAlign.Left,
+            bgHex: rowBg,
+          );
+        }
+        currentRow++;
       }
 
       int th = totalDetikTerlambat ~/ 3600;
@@ -969,19 +1152,53 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
       String totalJamKerjaFormatted = _formatDurasi(_sumWorkSeconds(rows));
 
       addBlankRow();
-      sheetObject.appendRow([
-        TextCellValue('Total Hari Kerja:'),
-        TextCellValue('$totalHariKerja hari')
-      ]);
-      sheetObject.appendRow([
-        TextCellValue('Total Jam Terlambat:'),
-        TextCellValue(totalLateFormatted)
-      ]);
-      sheetObject.appendRow([
-        TextCellValue('Total Jam Kerja:'),
-        TextCellValue(totalJamKerjaFormatted)
-      ]);
+
+      void addSummaryRow(String label, String value) {
+        sheetObject.appendRow([
+          TextCellValue(label),
+          TextCellValue(''),
+          TextCellValue(value),
+        ]);
+        sheetObject.merge(
+          CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow),
+          CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow),
+        );
+        sheetObject
+            .cell(CellIndex.indexByColumnRow(
+                columnIndex: 0, rowIndex: currentRow))
+            .cellStyle = summaryLabelStyle;
+        sheetObject
+            .cell(CellIndex.indexByColumnRow(
+                columnIndex: 1, rowIndex: currentRow))
+            .cellStyle = summaryLabelStyle;
+        sheetObject
+            .cell(CellIndex.indexByColumnRow(
+                columnIndex: 2, rowIndex: currentRow))
+            .cellStyle = summaryValueStyle;
+        sheetObject.setRowHeight(currentRow, 20);
+        currentRow++;
+      }
+
+      addSummaryRow('Total Hari Kerja', '$totalHariKerja hari');
+      addSummaryRow('Total Jam Terlambat', totalLateFormatted);
+      addSummaryRow('Total Jam Kerja', totalJamKerjaFormatted);
     });
+
+    final List<double> colWidths = [
+      12, // 0: Hari
+      15, // 1: Tanggal
+      16, // 2: Jam Kerja
+      24, // 3: Jam Check-in / Check-out
+      26, // 4: Kordinat
+      26, // 5: Nama Lokasi
+      14, // 6: Terlambat
+      18, // 7: Total Jam Kerja
+      20, // 8: Aktifitas
+      32, // 9: Notes
+    ];
+    for (int c = 0; c < colWidths.length; c++) {
+      sheetObject.setColumnWidth(c, colWidths[c]);
+    }
 
     final fileBytes = excel.encode();
     if (fileBytes != null) {
@@ -1075,22 +1292,23 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
                     width: 260,
                     child: Autocomplete<Map<String, dynamic>>(
                       optionsBuilder: (TextEditingValue textEditingValue) {
-                        List<Map<String, dynamic>> allOptions = [
+                        final List<Map<String, dynamic>> allOptions = [
                           {
                             'id': 'all',
                             'full_name': 'Semua Karyawan',
                             'nik': 'ALL',
                             'jabatan_name': '-'
-                          }
+                          },
+                          ..._employees,
                         ];
-                        allOptions.addAll(_employees);
 
                         return allOptions.where((emp) {
                           if (_selectedDepartmentId != 'all' &&
                               emp['id'] != 'all') {
                             final empDeptId = emp['department_id']?.toString();
-                            if (empDeptId != _selectedDepartmentId)
+                            if (empDeptId != _selectedDepartmentId) {
                               return false;
+                            }
                           }
 
                           final name =
