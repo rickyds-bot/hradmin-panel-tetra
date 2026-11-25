@@ -1,6 +1,8 @@
 import 'package:web/web.dart' as web;
 import 'dart:js_interop';
 import 'dart:math';
+// Border & BorderStyle disembunyikan dari Flutter karena namanya bentrok
+// dengan Border & BorderStyle milik package excel (dipakai di export Excel).
 import 'package:flutter/material.dart' hide Border, BorderStyle;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -109,10 +111,20 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
           DateTime(_endDate.year, _endDate.month, _endDate.day + 1, 12, 0, 0)
               .toUtc();
 
-      final leaveResponse = await Supabase.instance.client
-          .from('leave_requests')
-          .select('employee_id, start_date, end_date')
-          .eq('status', 'approved');
+      // Cuti approved juga diambil per halaman (batas 1000 baris per request)
+      final List<dynamic> leaveResponse = [];
+      int leaveFrom = 0;
+      while (true) {
+        final List<dynamic> leavePage = await Supabase.instance.client
+            .from('leave_requests')
+            .select('employee_id, start_date, end_date')
+            .eq('status', 'approved')
+            .order('id', ascending: true)
+            .range(leaveFrom, leaveFrom + 999);
+        leaveResponse.addAll(leavePage);
+        if (leavePage.length < 1000) break;
+        leaveFrom += 1000;
+      }
 
       _approvedLeaves.clear();
       for (var l in leaveResponse) {
@@ -146,19 +158,34 @@ class _WebLaporanAbsensiPageState extends State<WebLaporanAbsensiPage> {
         }
       }
 
-      var query = Supabase.instance.client.from('attendance').select('*');
+      // Supabase membatasi 1 request maksimal 1000 baris. Untuk "Semua
+      // Karyawan" 1 bulan, jumlah absen bisa lebih dari 1000 sehingga data
+      // paling akhir terpotong. Karena itu data diambil per halaman (1000
+      // baris) sampai habis.
+      const int pageSize = 1000;
+      final List<dynamic> rawData = [];
+      int from = 0;
 
-      if (_selectedEmployee['id'] != 'all') {
-        final empId = _selectedEmployee['id'];
-        query = query.eq('employee_id', empId);
+      while (true) {
+        var query = Supabase.instance.client.from('attendance').select('*');
+
+        if (_selectedEmployee['id'] != 'all') {
+          final empId = _selectedEmployee['id'];
+          query = query.eq('employee_id', empId);
+        }
+
+        final List<dynamic> page = await query
+            .gte('created_at', startUtc.toIso8601String())
+            .lte('created_at', endUtc.toIso8601String())
+            .order('created_at', ascending: true)
+            .order('id', ascending: true) // urutan stabil antar halaman
+            .range(from, from + pageSize - 1);
+
+        rawData.addAll(page);
+        if (page.length < pageSize) break;
+        from += pageSize;
       }
 
-      final response = await query
-          .gte('created_at', startUtc.toIso8601String())
-          .lte('created_at', endUtc.toIso8601String())
-          .order('created_at', ascending: true);
-
-      List<dynamic> rawData = response as List<dynamic>? ?? [];
       _processAttendanceData(rawData);
     } catch (e) {
       debugPrint('Error fetching attendance: $e');
