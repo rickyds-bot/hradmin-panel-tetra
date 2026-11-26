@@ -129,26 +129,31 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           tetap++;
         } else if (empStatus == 'kontrak') {
           kontrak++;
-          // Hanya karyawan aktif yang masuk daftar kontrak akan berakhir
-          if (emp['is_active'] != false && emp['contract_end'] != null) {
-            try {
-              DateTime endDate = DateTime.parse(emp['contract_end'].toString());
-              DateTime endDay =
-                  DateTime(endDate.year, endDate.month, endDate.day);
-              int diffDays = endDay.difference(todayLocal).inDays;
-
-              if (diffDays <= 30) {
-                tempExpiring.add({
-                  'name': emp['full_name'] ?? 'Tanpa Nama',
-                  'contract_number': emp['contract_number'] ?? '-',
-                  'end_date': emp['contract_end'],
-                  'diff_days': diffDays,
-                });
-              }
-            } catch (_) {}
-          }
         } else if (empStatus == 'magang') {
           magang++;
+        }
+
+        // Karyawan Kontrak & Magang yang aktif masuk daftar "kontrak akan
+        // berakhir": tampil 30 hari sebelum s/d 30 hari sesudah tanggal berakhir.
+        if ((empStatus == 'kontrak' || empStatus == 'magang') &&
+            emp['is_active'] != false &&
+            emp['contract_end'] != null) {
+          try {
+            DateTime endDate = DateTime.parse(emp['contract_end'].toString());
+            DateTime endDay =
+                DateTime(endDate.year, endDate.month, endDate.day);
+            int diffDays = endDay.difference(todayLocal).inDays;
+
+            if (diffDays <= 30 && diffDays >= -30) {
+              tempExpiring.add({
+                'name': emp['full_name'] ?? 'Tanpa Nama',
+                'contract_number': emp['contract_number'] ?? '-',
+                'end_date': emp['contract_end'],
+                'diff_days': diffDays,
+                'status': empStatus == 'magang' ? 'Magang' : 'Kontrak',
+              });
+            }
+          } catch (_) {}
         }
       }
 
@@ -1400,7 +1405,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Kontrak yg Akan Berakhir (Karyawan Kontrak)',
+                  'Kontrak yg Akan Berakhir (Kontrak & Magang)',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -1414,7 +1419,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Batas toleransi: 1 Bulan (30 Hari)',
+            'Tampil 30 hari sebelum s/d 30 hari sesudah berakhir',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               color: Colors.grey[500],
@@ -1428,7 +1433,7 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                 children: [
                   if (_expiringContracts.isEmpty)
                     Text(
-                      'Tidak ada kontrak yang akan berakhir dalam 1 bulan ke depan.',
+                      'Tidak ada kontrak yang akan berakhir dalam 30 hari ke depan atau baru berakhir dalam 30 hari terakhir.',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 12,
                         color: Colors.grey,
@@ -1480,7 +1485,9 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
                                 text: TextSpan(
                                   children: [
                                     TextSpan(
-                                      text: '${emp['name']} ',
+                                      text: emp['status'] == 'Magang'
+                                          ? '${emp['name']} (Magang) '
+                                          : '${emp['name']} ',
                                       style: GoogleFonts.plusJakartaSans(
                                         fontSize: 12,
                                         fontWeight: FontWeight.bold,
