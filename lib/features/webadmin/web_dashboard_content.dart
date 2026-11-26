@@ -232,16 +232,16 @@ class _WebDashboardContentState extends State<WebDashboardContent> {
       _tidakHadirList = tidakHadir;
       _totalTidakHadirHariIni = tidakHadir.length;
 
-      // 5. Lembur Pending (belum di-approve/reject), per karyawan unik
+      // 5. Lembur Pending (belum di-approve/reject)
+      // Dihitung per PENGAJUAN (bukan per karyawan unik), supaya satu karyawan
+      // dengan beberapa pengajuan pending tetap terhitung semuanya.
       final lemburRes = await Supabase.instance.client
           .from('overtime_requests')
           .select('employee_id')
           .ilike('status', 'pending');
 
       _totalPendingLembur = lemburRes
-          .map((e) => e['employee_id'].toString())
-          .where((id) => nonAdminStrings.contains(id))
-          .toSet()
+          .where((e) => nonAdminStrings.contains(e['employee_id'].toString()))
           .length;
 
       // 6. Data Grafik Tren Kehadiran
