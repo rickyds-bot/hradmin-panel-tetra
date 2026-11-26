@@ -42,6 +42,64 @@ Future<int> _hitungHariCutiKerja(DateTime start, DateTime end) async {
   return count;
 }
 
+// Sesuaikan saldo cuti saat status berubah (hanya Cuti Tahunan yang memengaruhi saldo).
+//  - bukan approved -> approved : saldo dipotong
+//  - approved -> pending/rejected: saldo DIKEMBALIKAN
+Future<void> _sesuaikanSaldoCuti({
+  required dynamic userUuid,
+  required String? leaveType,
+  required String oldStatus,
+  required String newStatus,
+  required String startDate,
+  required String endDate,
+}) async {
+  if (leaveType != 'Cuti Tahunan') return;
+  final bool wasApproved = oldStatus == 'approved';
+  final bool nowApproved = newStatus == 'approved';
+  if (wasApproved == nowApproved) return; // tidak ada perubahan efektif
+
+  if (userUuid == null || userUuid.toString().isEmpty) {
+    throw 'User UUID untuk karyawan ini tidak ditemukan, tidak dapat memperbarui saldo cuti.';
+  }
+
+  final int durasi = await _hitungHariCutiKerja(
+    DateTime.parse(startDate),
+    DateTime.parse(endDate),
+  );
+  final int delta = nowApproved ? durasi : -durasi; // + = pemakaian bertambah
+
+  final client = Supabase.instance.client;
+  final balance = await client
+      .from('leave_balance')
+      .select('*')
+      .eq('user_id', userUuid)
+      .maybeSingle();
+
+  if (balance == null) {
+    if (!nowApproved) return; // tidak ada saldo yang perlu dikembalikan
+    await client.from('leave_balance').insert({
+      'user_id': userUuid,
+      'total_leave': 12,
+      'used_leave': durasi,
+      'remaining_leave': 12 - durasi,
+    });
+    return;
+  }
+
+  final int total = (balance['total_leave'] as num?)?.toInt() ?? 12;
+  final int curUsed = (balance['used_leave'] as num?)?.toInt() ?? 0;
+  final int curRemaining =
+      (balance['remaining_leave'] as num?)?.toInt() ?? (total - curUsed);
+
+  int newUsed = curUsed + delta;
+  if (newUsed < 0) newUsed = 0;
+
+  await client.from('leave_balance').update({
+    'used_leave': newUsed,
+    'remaining_leave': curRemaining - delta,
+  }).eq('user_id', userUuid);
+}
+
 class WebCutiPage extends StatefulWidget {
   const WebCutiPage({super.key});
 
@@ -450,6 +508,7 @@ class _WebCutiPageState extends State<WebCutiPage> {
     String startDate,
     String endDate, {
     String? leaveType,
+    String oldStatus = 'pending',
   }) async {
     try {
       final currentUser = Supabase.instance.client.auth.currentUser;
@@ -468,46 +527,21 @@ class _WebCutiPageState extends State<WebCutiPage> {
         if (newStatus != 'pending') 'approved_by': adminEmpId
       }).eq('id', id);
 
-      // Saldo hanya dipotong untuk Cuti Tahunan (izin & cuti khusus tidak memotong)
-      if (newStatus == 'approved' && leaveType == 'Cuti Tahunan') {
-        if (userUuid == null || userUuid.toString().isEmpty) {
-          throw 'User UUID untuk karyawan ini tidak ditemukan, tidak dapat memperbarui saldo cuti.';
-        }
-
-        DateTime start = DateTime.parse(startDate);
-        DateTime end = DateTime.parse(endDate);
-        // Sabtu, Minggu & tanggal merah tidak mengurangi saldo
-        int durasi = await _hitungHariCutiKerja(start, end);
-
-        Map<String, dynamic>? balanceData = await Supabase.instance.client
-            .from('leave_balance')
-            .select('*')
-            .eq('user_id', userUuid)
-            .maybeSingle();
-
-        if (balanceData == null) {
-          await Supabase.instance.client.from('leave_balance').insert({
-            'user_id': userUuid,
-            'total_leave': 12,
-            'used_leave': durasi,
-            'remaining_leave': 12 - durasi,
-          });
-        } else {
-          int currentUsed = balanceData['used_leave'] ?? 0;
-          int currentRemaining = balanceData['remaining_leave'] ?? 12;
-
-          if (balanceData['id'] != null) {
-            await Supabase.instance.client.from('leave_balance').update({
-              'used_leave': currentUsed + durasi,
-              'remaining_leave': currentRemaining - durasi,
-            }).eq('id', balanceData['id']);
-          } else {
-            await Supabase.instance.client.from('leave_balance').update({
-              'used_leave': currentUsed + durasi,
-              'remaining_leave': currentRemaining - durasi,
-            }).eq('user_id', userUuid);
-          }
-        }
+      try {
+        await _sesuaikanSaldoCuti(
+          userUuid: userUuid,
+          leaveType: leaveType,
+          oldStatus: oldStatus,
+          newStatus: newStatus,
+          startDate: startDate,
+          endDate: endDate,
+        );
+      } catch (e) {
+        // Saldo gagal diperbarui -> kembalikan status agar data tetap konsisten
+        await Supabase.instance.client
+            .from('leave_requests')
+            .update({'status': oldStatus}).eq('id', id);
+        rethrow;
       }
 
       _fetchCutiData();
@@ -1582,10 +1616,31 @@ class _EditStatusCutiDialogState extends State<EditStatusCutiDialog> {
 
       final int? adminEmpId = adminData?['id'];
 
+      final String oldStatus = (widget.cutiData['status'] ?? 'pending')
+          .toString()
+          .trim()
+          .toLowerCase();
+
       await Supabase.instance.client.from('leave_requests').update({
         'status': _selectedStatus,
         if (_selectedStatus != 'pending') 'approved_by': adminEmpId,
       }).eq('id', widget.cutiData['id']);
+
+      try {
+        await _sesuaikanSaldoCuti(
+          userUuid: widget.cutiData['user_id'],
+          leaveType: widget.cutiData['leave_type']?.toString(),
+          oldStatus: oldStatus,
+          newStatus: _selectedStatus,
+          startDate: widget.cutiData['start_date'].toString(),
+          endDate: widget.cutiData['end_date'].toString(),
+        );
+      } catch (e) {
+        await Supabase.instance.client
+            .from('leave_requests')
+            .update({'status': oldStatus}).eq('id', widget.cutiData['id']);
+        rethrow;
+      }
 
       if (mounted) {
         Navigator.pop(context);
