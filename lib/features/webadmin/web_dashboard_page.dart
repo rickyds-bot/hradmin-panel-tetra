@@ -209,11 +209,11 @@ class _WebDashboardPageState extends State<WebDashboardPage> {
                         Icons.campaign_outlined,
                         'Pemberitahuan',
                       ),
-                      // _buildNavItem(
-                      //   11,
-                      //   Icons.meeting_room_outlined,
-                      //   'Rg Meeting & Kendaraan',
-                      // ),
+                      _buildNavItem(
+                        11,
+                        Icons.meeting_room_outlined,
+                        'Rg Meeting & Kendaraan',
+                      ),
                       Padding(
                         padding: const EdgeInsets.symmetric(
                           vertical: 8,
