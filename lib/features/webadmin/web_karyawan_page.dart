@@ -1989,10 +1989,23 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
     }
   }
 
-  Future<void> _showAddContractDialog() async {
-    final startCtrl = TextEditingController();
-    final endCtrl = TextEditingController();
-    final historyContractNumCtrl = TextEditingController();
+  // Dialog tambah kontrak baru (existing == null) atau edit kontrak yang
+  // sudah tersimpan (existing != null).
+  Future<void> _showContractDialog({Map<String, dynamic>? existing}) async {
+    final bool isEdit = existing != null;
+    String dateOnly(dynamic v) {
+      final str = v?.toString() ?? '';
+      return str.length >= 10 ? str.substring(0, 10) : str;
+    }
+
+    final startCtrl =
+        TextEditingController(text: dateOnly(existing?['contract_start']));
+    final endCtrl =
+        TextEditingController(text: dateOnly(existing?['contract_end']));
+    final historyContractNumCtrl = TextEditingController(
+        text: existing?['contract_number']?.toString() ?? '');
+    final bool hasExistingFile =
+        (existing?['contract_file']?.toString() ?? '').isNotEmpty;
     Uint8List? fileBytes;
     String? fileName;
 
@@ -2000,7 +2013,7 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
         BuildContext ctx, TextEditingController ctrl) async {
       final picked = await showDatePicker(
         context: ctx,
-        initialDate: DateTime.now(),
+        initialDate: DateTime.tryParse(ctrl.text) ?? DateTime.now(),
         firstDate: DateTime(2000),
         lastDate: DateTime(2100),
       );
@@ -2014,7 +2027,7 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDlg) {
           return AlertDialog(
-            title: Text('Tambah Perpanjangan Kontrak',
+            title: Text(isEdit ? 'Edit Kontrak' : 'Tambah Perpanjangan Kontrak',
                 style: GoogleFonts.plusJakartaSans(
                     fontSize: 16, fontWeight: FontWeight.bold)),
             content: SizedBox(
@@ -2073,7 +2086,10 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                       },
                       icon: const Icon(Icons.upload_file, size: 16),
                       label: Text(
-                          fileName ?? 'Upload Surat Kontrak (PDF/Opsional)',
+                          fileName ??
+                              (isEdit && hasExistingFile
+                                  ? 'Ganti Surat Kontrak (PDF) - file sudah ada'
+                                  : 'Upload Surat Kontrak (PDF/Opsional)'),
                           style: GoogleFonts.plusJakartaSans(fontSize: 12)),
                     ),
                   ]
@@ -2093,6 +2109,7 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                   if (startCtrl.text.isEmpty || endCtrl.text.isEmpty) return;
 
                   try {
+                    bool editedIsLatest = false;
                     String? contractNum = historyContractNumCtrl.text.isNotEmpty
                         ? historyContractNumCtrl.text
                         : null;
@@ -2112,22 +2129,57 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                           .getPublicUrl(filePath);
                     }
 
-                    await Supabase.instance.client
-                        .from('employee_contracts')
-                        .insert({
-                      'employee_id': widget.karyawan['id'],
-                      'contract_start': startCtrl.text,
-                      'contract_end': endCtrl.text,
-                      'contract_number': contractNum,
-                      'contract_file': fileUrl,
-                    });
+                    if (isEdit) {
+                      // EDIT kontrak yang sudah tersimpan (file lama dipertahankan
+                      // kecuali ada file baru yang diupload)
+                      await Supabase.instance.client
+                          .from('employee_contracts')
+                          .update({
+                        'contract_start': startCtrl.text,
+                        'contract_end': endCtrl.text,
+                        'contract_number': contractNum,
+                        if (fileUrl != null) 'contract_file': fileUrl,
+                      }).eq('id', existing!['id']);
 
-                    await Supabase.instance.client.from('employees').update({
-                      'contract_start': startCtrl.text,
-                      'contract_end': endCtrl.text,
-                      if (contractNum != null) 'contract_number': contractNum,
-                      if (fileUrl != null) 'contract_file': fileUrl,
-                    }).eq('id', widget.karyawan['id']);
+                      // Jika yang diedit adalah kontrak terbaru (kontrak aktif),
+                      // sinkronkan juga ke data utama karyawan.
+                      final latest = await Supabase.instance.client
+                          .from('employee_contracts')
+                          .select()
+                          .eq('employee_id', widget.karyawan['id'])
+                          .order('contract_start', ascending: false)
+                          .limit(1)
+                          .maybeSingle();
+
+                      if (latest != null && latest['id'] == existing['id']) {
+                        editedIsLatest = true;
+                        await Supabase.instance.client
+                            .from('employees')
+                            .update({
+                          'contract_start': latest['contract_start'],
+                          'contract_end': latest['contract_end'],
+                          'contract_number': latest['contract_number'],
+                          'contract_file': latest['contract_file'],
+                        }).eq('id', widget.karyawan['id']);
+                      }
+                    } else {
+                      await Supabase.instance.client
+                          .from('employee_contracts')
+                          .insert({
+                        'employee_id': widget.karyawan['id'],
+                        'contract_start': startCtrl.text,
+                        'contract_end': endCtrl.text,
+                        'contract_number': contractNum,
+                        'contract_file': fileUrl,
+                      });
+
+                      await Supabase.instance.client.from('employees').update({
+                        'contract_start': startCtrl.text,
+                        'contract_end': endCtrl.text,
+                        if (contractNum != null) 'contract_number': contractNum,
+                        if (fileUrl != null) 'contract_file': fileUrl,
+                      }).eq('id', widget.karyawan['id']);
+                    }
 
                     //await AppLogger.log(
                     //  activity:
@@ -2137,15 +2189,27 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
 
                     Navigator.pop(context);
 
-                    if (contractNum != null) {
+                    if (isEdit) {
+                      // Samakan form utama agar "Simpan Perubahan" tidak
+                      // menimpa dengan nilai kontrak yang lama.
+                      if (editedIsLatest) {
+                        setState(() {
+                          _contractStartCtrl.text = startCtrl.text;
+                          _contractEndCtrl.text = endCtrl.text;
+                          _contractNumberCtrl.text = contractNum ?? '';
+                        });
+                      }
+                    } else if (contractNum != null) {
                       setState(() {
                         _contractNumberCtrl.text = contractNum;
                       });
                     }
                     _fetchContractHistory();
 
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('Kontrak berhasil diperpanjang!'),
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(isEdit
+                            ? 'Kontrak berhasil diperbarui!'
+                            : 'Kontrak berhasil diperpanjang!'),
                         backgroundColor: Colors.green));
                   } catch (e) {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -2469,7 +2533,7 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                                   fontWeight: FontWeight.bold,
                                   color: Colors.blue[800])),
                           ElevatedButton.icon(
-                            onPressed: _showAddContractDialog,
+                            onPressed: () => _showContractDialog(),
                             icon: const Icon(Icons.add, size: 14),
                             label: Text('Tambah Kontrak Baru',
                                 style:
@@ -2522,6 +2586,16 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
                                                       .plusJakartaSans(
                                                           fontSize: 10,
                                                           color: Colors.grey)),
+                                            IconButton(
+                                              icon: Icon(Icons.edit,
+                                                  color: Colors.orange,
+                                                  size: 20),
+                                              tooltip: 'Edit Kontrak',
+                                              onPressed: () =>
+                                                  _showContractDialog(
+                                                      existing: Map<String,
+                                                          dynamic>.from(c)),
+                                            ),
                                             if (c['contract_file'] != null &&
                                                 c['contract_file']
                                                     .toString()
