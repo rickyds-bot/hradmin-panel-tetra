@@ -2227,6 +2227,62 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
     );
   }
 
+  // Samakan kontrak yang diisi di form biodata dengan tabel riwayat kontrak
+  // (employee_contracts), supaya tampil di "Riwayat Perpanjangan Kontrak".
+  Future<void> _syncContractToHistory(String? contractNum) async {
+    final client = Supabase.instance.client;
+    final empId = widget.karyawan['id'];
+
+    String dateOnly(dynamic v) {
+      final str = v?.toString() ?? '';
+      return str.length >= 10 ? str.substring(0, 10) : str;
+    }
+
+    final newStart = _contractStartCtrl.text;
+    final newEnd =
+        _contractEndCtrl.text.isNotEmpty ? _contractEndCtrl.text : null;
+    final oldStart = dateOnly(widget.karyawan['contract_start']);
+
+    final rows = await client
+        .from('employee_contracts')
+        .select()
+        .eq('employee_id', empId);
+
+    // Cari baris riwayat yang dimaksud: tanggal mulai sama dengan form, atau
+    // tanggal mulai lama (kalau tanggal mulai dikoreksi lewat form).
+    Map<String, dynamic>? target;
+    for (final r in rows) {
+      if (dateOnly(r['contract_start']) == newStart) {
+        target = Map<String, dynamic>.from(r);
+        break;
+      }
+    }
+    if (target == null && oldStart.isNotEmpty) {
+      for (final r in rows) {
+        if (dateOnly(r['contract_start']) == oldStart) {
+          target = Map<String, dynamic>.from(r);
+          break;
+        }
+      }
+    }
+
+    if (target != null) {
+      await client.from('employee_contracts').update({
+        'contract_start': newStart,
+        'contract_end': newEnd,
+        'contract_number': contractNum,
+      }).eq('id', target['id']);
+    } else {
+      await client.from('employee_contracts').insert({
+        'employee_id': empId,
+        'contract_start': newStart,
+        'contract_end': newEnd,
+        'contract_number': contractNum,
+        'contract_file': widget.karyawan['contract_file'],
+      });
+    }
+  }
+
   Future<void> _updateData() async {
     setState(() => _isSaving = true);
     try {
@@ -2302,6 +2358,12 @@ class _EditKaryawanDialogState extends State<EditKaryawanDialog> {
             ? _contractEndCtrl.text
             : null,
       }).eq('id', widget.karyawan['id']);
+
+      // Kontrak/Magang: catat juga ke riwayat kontrak
+      if ((_selectedEmpStatus == 'Kontrak' || _selectedEmpStatus == 'Magang') &&
+          _contractStartCtrl.text.isNotEmpty) {
+        await _syncContractToHistory(contractNum);
+      }
 
       //await AppLogger.log(
       //  activity: 'Memperbarui biodata karyawan: ${_nameCtrl.text}',
