@@ -544,13 +544,6 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
                                   ),
                                   columns: [
                                     DataColumn(
-                                      label: const Text('No. Induk Karyawan'),
-                                      onSort: (colIndex, ascending) => _sort(
-                                          (d) => d['nik'] ?? '',
-                                          colIndex,
-                                          ascending),
-                                    ),
-                                    DataColumn(
                                       label: const Text('Nama Karyawan'),
                                       onSort: (colIndex, ascending) => _sort(
                                           (d) => d['full_name'] ?? '',
@@ -626,7 +619,6 @@ class _WebKaryawanPageState extends State<WebKaryawanPage> {
 
                                       return DataRow(
                                         cells: [
-                                          DataCell(Text(item['nik'] ?? '-')),
                                           DataCell(
                                             InkWell(
                                               onTap: () =>
