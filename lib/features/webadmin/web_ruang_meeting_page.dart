@@ -87,7 +87,10 @@ class WebRuangMeetingPage extends StatefulWidget {
   /// true = admin (boleh ubah/batalkan semua booking).
   /// false = user biasa (boleh booking, serta ubah/batalkan booking miliknya sendiri).
   final bool isAdmin;
-  const WebRuangMeetingPage({super.key, this.isAdmin = false});
+
+  /// Padding konten. Web memakai default 24; mobile bisa mengirim nilai lebih kecil.
+  final EdgeInsets? padding;
+  const WebRuangMeetingPage({super.key, this.isAdmin = false, this.padding});
 
   @override
   State<WebRuangMeetingPage> createState() => _WebRuangMeetingPageState();
@@ -108,6 +111,9 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
   String _myName = '';
 
   String? get _uid => Supabase.instance.client.auth.currentUser?.id;
+
+  /// Layar sempit (HP): kalender dibuat ringkas (titik warna, tanpa teks).
+  bool get _compact => MediaQuery.of(context).size.width < 600;
 
   /// Admin boleh mengelola semua booking; user biasa hanya miliknya sendiri.
   bool _canManage(_Booking b) =>
@@ -273,7 +279,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: widget.padding ?? const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -523,7 +529,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
     );
     if (dayNum < 1 || dayNum > days) {
       return Container(
-        height: 96,
+        height: _compact ? 54 : 96,
         decoration: BoxDecoration(color: Colors.grey.shade50, border: border),
       );
     }
@@ -535,7 +541,7 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
     return InkWell(
       onTap: () => setState(() => _selectedDay = date),
       child: Container(
-        height: 96,
+        height: _compact ? 54 : 96,
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           color: isSelected ? Colors.blue.withOpacity(0.08) : Colors.white,
@@ -560,28 +566,40 @@ class _WebRuangMeetingPageState extends State<WebRuangMeetingPage> {
                         color: isToday ? Colors.white : Colors.black87)),
               ),
               const SizedBox(height: 2),
-              ...items.take(3).map((b) => Padding(
-                    padding: const EdgeInsets.only(bottom: 1),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                              color: _roomColor(b.roomId),
-                              shape: BoxShape.circle),
-                        ),
-                        const SizedBox(width: 3),
-                        Expanded(
-                          child: Text('${_hm(b.start)} ${b.title}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.plusJakartaSans(fontSize: 10)),
-                        ),
-                      ],
+              if (_compact)
+                Wrap(spacing: 2, runSpacing: 2, children: [
+                  for (final b in items.take(6))
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                          color: _roomColor(b.roomId), shape: BoxShape.circle),
                     ),
-                  )),
-              if (items.length > 3)
+                ])
+              else
+                ...items.take(3).map((b) => Padding(
+                      padding: const EdgeInsets.only(bottom: 1),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                                color: _roomColor(b.roomId),
+                                shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text('${_hm(b.start)} ${b.title}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style:
+                                    GoogleFonts.plusJakartaSans(fontSize: 10)),
+                          ),
+                        ],
+                      ),
+                    )),
+              if (!_compact && items.length > 3)
                 Text('+${items.length - 3} lagi',
                     style: GoogleFonts.plusJakartaSans(
                         fontSize: 10, color: Colors.black54)),

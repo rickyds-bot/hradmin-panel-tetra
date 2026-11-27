@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
+import 'package:mobile_absensi/features/webadmin/web_ruang_meeting_page.dart';
 
 Future<int> _hitungHariCutiKerja(DateTime start, DateTime end) async {
   final DateTime first = DateTime(start.year, start.month, start.day);
@@ -427,7 +428,7 @@ class _AdminPageState extends State<AdminPage> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         backgroundColor: Colors.grey.shade100,
         appBar: AppBar(
@@ -466,21 +467,26 @@ class _AdminPageState extends State<AdminPage> {
                 indicatorColor: Colors.white,
                 labelPadding: EdgeInsets.symmetric(horizontal: 4),
                 labelStyle:
-                    TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                 tabs: [
                   Tab(text: "Karyawan"),
                   Tab(text: "Aktifitas"),
                   Tab(text: "Pengajuan"),
+                  Tab(text: "Booking"),
                   Tab(text: "Lokasi"),
                 ],
               ),
             ),
-            const Expanded(
+            Expanded(
               child: TabBarView(
                 children: [
                   KaryawanTab(),
                   AktivitasTab(),
                   PengajuanTab(),
+                  WebRuangMeetingPage(
+                    isAdmin: true,
+                    padding: EdgeInsets.all(12),
+                  ),
                   LokasiTab(),
                 ],
               ),
